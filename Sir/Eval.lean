@@ -160,7 +160,7 @@ def execEvm : EvmOp → List Word → CoFree EvalE (List Word)
 
 def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals) :
     Operation → CoFree EvalE Locals
-  | .unop op a out => do pure (l.insert out (op.eval (← lookup l a)))
+  | .unop op a out => do return (l.insert out (op.eval (← lookup l a)))
   | .binop op a b out => do pure (l.insert out (op.eval (← lookup l a) (← lookup l b)))
   | .ternop op a b c out => do
     pure (l.insert out (op.eval (← lookup l a) (← lookup l b) (← lookup l c)))
@@ -188,7 +188,7 @@ def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals)
   | .runtimeLength out => pure (l.insert out ctx.layout.runtimeLength)
   | .getImmutable i out => do
     unless ctx.entry = .main do malformed .wrongEntry
-    let some v := ctx.immutables.values[i.id]? | malformed (.invalidImmutable i)
+    let some v := ctx.immutables[i]? | malformed (.invalidImmutable i)
     pure (l.insert out v)
   | .setImmutable i ptr value => do
     unless ctx.entry = .init do malformed .wrongEntry

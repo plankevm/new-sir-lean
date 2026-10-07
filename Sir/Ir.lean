@@ -33,12 +33,6 @@ instance {n : Nat} : OfNat FunctionId n := ⟨⟨n⟩⟩
 instance {n : Nat} : OfNat DataId n := ⟨⟨n⟩⟩
 instance {n : Nat} : OfNat ImmutableId n := ⟨⟨n⟩⟩
 
-/-- A memory access width in bytes, `1..=32` (`mload<8n>` / `mstore<8n>`). -/
-structure ByteSize where
-  val : Nat
-  valid : 1 ≤ val ∧ val ≤ 32 := by decide
-  deriving DecidableEq
-
 /-- Pure EVM operations with one input. -/
 inductive UnOp
   | iszero | not | clz
@@ -131,22 +125,26 @@ structure Program where
 /-- The values `getimmutable` reads: fixed for a whole run, one per immutable, each fitting the
 immutable's declared size. -/
 structure Immutables (p : Program) where
-  values : Array Word
-  size_eq : values.size = p.immutables.size
-  fits : ∀ (i : Nat) (h : i < values.size),
-    values[i].toNat < 2 ^ (8 * (p.immutables[i]'(size_eq ▸ h)).val)
+  values : (i : Fin p.immutables.size) → { v : Word // v.has_size p.immutables[i]}
 
-def Word.lowBytes (n : Nat) (w : Word) : Word := (w.setWidth (8 * n)).setWidth 256
+instance {p : Program} : GetElem? (Immutables p) ImmutableId Word (fun _imm i => i.id <
+p.immutables.size) where
+  getElem imm i valid := (imm.values ⟨i.id, valid⟩).val
+  getElem? imm i :=
+    if h : i.id < p.immutables.size
+    then some <| imm.values ⟨i.id, h⟩
+    else .none
 
-theorem Word.lowBytes_lt (n : Nat) (w : Word) : (Word.lowBytes n w).toNat < 2 ^ (8 * n) := by
-  simp only [Word.lowBytes, BitVec.toNat_setWidth]
-  exact Nat.lt_of_le_of_lt (Nat.mod_le _ _) (Nat.mod_lt _ (Nat.two_pow_pos _))
 
 /-- Immutable `i` takes the low bytes of `ws[i]` (0 if absent). -/
 def Immutables.ofWords (p : Program) (ws : Array Word) : Immutables p where
-  values := p.immutables.mapIdx fun i s => Word.lowBytes s.val (ws[i]?.getD 0)
-  size_eq := Array.size_mapIdx
-  fits i h := by simp only [Array.getElem_mapIdx]; exact Word.lowBytes_lt _ _
+  values := fun i =>
+    match h: ws[i]? with
+    | none => ⟨0, by grind [Word.has_size]⟩
+    | some x => ⟨x.lowBits p.immutables[i].bits, by {
+      simp [Word.has_size]
+      exact (Word.lowBits_lt _ _)
+    }⟩
 
 inductive Entry
   | init

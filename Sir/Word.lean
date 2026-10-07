@@ -1,8 +1,24 @@
 /-! EVM words and the pure EVM operations on them. -/
 
+structure ByteSize where
+  val : Nat
+  valid : 1 ≤ val ∧ val ≤ 32 := by decide
+  deriving DecidableEq
+
+def ByteSize.bits (s : ByteSize) : Nat := s.val * 8
+
 abbrev Word := BitVec 256
 
 namespace Word
+
+def has_size (x : Word) (s : ByteSize) : Prop :=
+  x.toNat < 2 ^ s.bits
+
+def lowBits (n : Nat) (w : Word) : Word := (w.setWidth n).setWidth 256
+
+theorem lowBits_lt (n : Nat) (w : Word) : (Word.lowBits n w).toNat < 2 ^ n := by
+  simp only [Word.lowBits , BitVec.toNat_setWidth]
+  exact Nat.lt_of_le_of_lt (Nat.mod_le _ _) (Nat.mod_lt _ (Nat.two_pow_pos _))
 
 def ofBool (b : Bool) : Word := if b then 1 else 0
 
