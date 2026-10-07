@@ -1,0 +1,17 @@
+name = "sir"
+version = "0.1.0"
+defaultTargets = ["Sir", "SirTests"]
+
+[leanOptions]
+autoImplicit = false
+warningAsError = true
+
+[[require]]
+name = "itree"
+path = "../itree"
+
+[[lean_lib]]
+name = "Sir"
+
+[[lean_lib]]
+name = "SirTests"

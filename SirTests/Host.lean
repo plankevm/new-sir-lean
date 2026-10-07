@@ -1,0 +1,88 @@
+import Sir
+
+/-! A concrete test host: answers `Host` operations from a small world, with deterministic
+placement (bump from `0x80`) and `anyByte = 0xAA`. Terminal operations end the run with an
+`Outcome`; the world survives because the state sits under the exception. -/
+
+namespace SirTests
+
+open Sir
+
+inductive Outcome
+  | stop
+  | ret (data : List UInt8)
+  | revert (data : List UInt8)
+  | invalid
+  | selfdestruct (beneficiary : Word)
+  | fault (fault : Fault)
+  | hostError (msg : String)
+  | outOfFuel
+  deriving DecidableEq, Repr
+
+structure World where
+  storage : List (Word × Word) := []
+  transient : List (Word × Word) := []
+  logs : Array (List Word × List UInt8) := #[]
+  calls : Array (CallKind × Word × List UInt8) := #[]
+  calldata : ByteArray := .empty
+  code : ByteArray := .empty
+  callResult : Bool × ByteArray := (true, .empty)
+  immutable : ImmutableId → Word := fun _ => 0
+  queries : Nat := 0
+
+def World.sload (w : World) (k : Word) : Word := ((w.storage.find? (·.1 == k)).map (·.2)).getD 0
+
+def World.tload (w : World) (k : Word) : Word := ((w.transient.find? (·.1 == k)).map (·.2)).getD 0
+
+abbrev HostM := ExceptT Outcome (StateM World)
+
+def queryAnswer (w : World) : Query → Word
+  | .sload k => w.sload k
+  | .tload k => w.tload k
+  | .immutable i => w.immutable i
+  | .address => 0xA0
+  | .caller => 0xC0
+  | .gas => 1000000
+  | .chainid => 1
+  | _ => 7
+
+def answer : (op : HostOp) → HostM (HostOp.Resp op)
+  | .query q => do
+    modify fun w => { w with queries := w.queries + 1 }
+    pure (queryAnswer (← get) q)
+  | .sstore k v => modify fun w => { w with storage := (k, v) :: w.storage }
+  | .tstore k v => modify fun w => { w with transient := (k, v) :: w.transient }
+  | .calldata => do pure (← get).calldata
+  | .code => do pure (← get).code
+  | .extcode _ => pure (⟨#[1, 2, 3]⟩ : ByteArray)
+  | .log topics data => modify fun w => { w with logs := w.logs.push (topics, data.toList) }
+  | .call kind _ account input => do
+    modify fun w => { w with calls := w.calls.push (kind, account, input.toList) }
+    pure (← get).callResult
+  | .create _ salt _ => pure ((if salt.isSome then 0xC2 else 0xC1 : Word), ByteArray.empty)
+  | .alloc size live => do
+    let start := live.foldl (fun s a => max s (a.1 + a.2)) 0x80
+    if h : Placement live size start then pure ⟨start, h⟩ else throw (.hostError "alloc")
+  | .anyByte => pure (0xAA : UInt8)
+  | .stop => throw .stop
+  | .ret data => throw (.ret data.toList)
+  | .revert data => throw (.revert data.toList)
+  | .invalid => throw .invalid
+  | .selfdestruct a => throw (.selfdestruct a)
+  | .fault f => throw (.fault f)
+
+def runWith (world : World) (p : Program) (layout : Layout) (e : Entry) (fuel : Nat := 100000) :
+    Outcome × World :=
+  match (CoFree.runM answer fuel (exec p layout e)).run.run world with
+  | (.ok none, w) => (.outOfFuel, w)
+  | (.ok (some x), _) => nomatch x
+  | (.error o, w) => (o, w)
+
+def noLayout : Layout where
+  dataOffset _ d := BitVec.ofNat 256 (0x1000 + d.id)
+  runtimeStartOffset := 0x40
+  initEndOffset := 0x200
+  runtimeLength := 8
+  immutableRefs _ := []
+
+end SirTests
