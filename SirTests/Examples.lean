@@ -6,6 +6,7 @@ open Sir
 
 def b8 : ByteSize := ⟨1, by decide⟩
 def b16 : ByteSize := ⟨2, by decide⟩
+def b32bit : ByteSize := ⟨4, by decide⟩
 def b32 : ByteSize := ⟨32, by decide⟩
 
 def ev (op : EvmOp) (ins outs : Array VarId) : Operation := .evm op ins outs
@@ -40,13 +41,36 @@ def memory : Program := initOnly #[
       .const 1 10, ev .add #[2, 10] #[11], .const 0xBEEF 12, .mstore b16 11 12,
       .mload b32 2 5,
       ev .keccak256 #[2, 1] #[6],
-      .const 4 13, .mallocany 13 7, .mload b32 7 8,
-      ev .mcopy #[7, 2, 13] #[], .mload b32 7 9,
-      .const 0 20, .const 1 21, .const 2 22, .const 3 23, .const 4 24,
+      .const 4 13, .mallocany 1 7, ev .mcopy #[7, 2, 13] #[], .mload b32bit 7 8,
+      .const 0 20, .const 1 21, .const 2 22, .const 3 23,
       ev .sstore #[20, 4] #[], ev .sstore #[21, 5] #[], ev .sstore #[22, 6] #[],
-      ev .sstore #[23, 8] #[], ev .sstore #[24, 9] #[],
+      ev .sstore #[23, 8] #[],
       ev .log2 #[2, 13, 20, 21] #[],
       .const 0x10 30, .mstore b8 30 20],
+    control := .lastOpTerminates }]
+
+def oobRead : Program := initOnly #[
+  { ops := #[.const 4 1, .malloc 1 2, .mload b32 2 3, ev .stop #[] #[]],
+    control := .lastOpTerminates }]
+
+/-- Writes the first byte of a `mallocany`, reads it, then reads one unwritten byte too. -/
+def uninitRead : Program := initOnly #[
+  { ops := #[.const 32 1, .mallocany 1 2, .const 0xFF 3, .mstore b8 2 3, .mload b8 2 4,
+      .const 0 5, ev .sstore #[5, 4] #[], .mload b16 2 6, ev .stop #[] #[]],
+    control := .lastOpTerminates }]
+
+/-- Copying unwritten bytes is fine; the copy is unwritten too. -/
+def uninitCopy : Program := initOnly #[
+  { ops := #[.const 32 1, .mallocany 1 2, .malloc 1 3, ev .mcopy #[3, 2, 1] #[],
+      .const 0 4, ev .sstore #[4, 4] #[], .mload b8 3 5, ev .stop #[] #[]],
+    control := .lastOpTerminates }]
+
+def uninitReturn : Program := initOnly #[
+  { ops := #[.const 4 1, .mallocany 1 2, ev .return #[2, 1] #[]], control := .lastOpTerminates }]
+
+def outOfMemory : Program := initOnly #[
+  { ops := #[.const 32 1, .malloc 1 2, .const (BitVec.allOnes 256) 3, .malloc 3 4,
+      ev .stop #[] #[]],
     control := .lastOpTerminates }]
 
 def revert : Program := initOnly #[
@@ -74,7 +98,8 @@ def immutables : Program where
     { ops := #[.runtimeLength 1, .malloc 1 2, .const 0xABCD 3, .setImmutable 0 2 3,
         ev .return #[2, 1] #[]],
       control := .lastOpTerminates },
-    { ops := #[.getImmutable 0 4, .const 0 5, ev .sstore #[5, 4] #[], ev .stop #[] #[]],
+    { ops := #[.getImmutable 0 4, .const 0 5, ev .sstore #[5, 4] #[], .getImmutable 0 6,
+        .const 1 7, ev .sstore #[7, 6] #[], ev .stop #[] #[]],
       control := .lastOpTerminates }]
 
 def getImmutableInInit : Program :=
@@ -112,14 +137,12 @@ def fallsThrough : Program := initOnly #[{ control := .lastOpTerminates }]
 def entryReturns : Program := initOnly #[{ control := .iret }]
 
 def run (p : Program) (e : Entry := .init) (world : World := {}) (layout : Layout := noLayout)
-    (fuel : Nat := 100000) : Outcome × World :=
-  runWith world p layout e fuel
+    (imm : Array Word := #[]) (fuel : Nat := 100000) : Outcome × World :=
+  runWith world p layout (.ofWords p imm) e fuel
 
 def storage (r : Outcome × World) : List (Word × Word) := r.2.storage.reverse
 
 def wordBytes (n : Nat) : List UInt8 := (Word.toBytes 32 (BitVec.ofNat 256 n)).toList
-
-def aa : Word := BitVec.allOnes 256 / 0xff * 0xaa
 
 def checks : List (String × Bool) :=
   let mem := run memory
@@ -128,11 +151,19 @@ def checks : List (String × Bool) :=
   let env := run environment (world := { calldata := ⟨#[1, 2, 3]⟩ })
   [ ("loop sums 0..9", (run loopSum).1 == .stop && storage (run loopSum) == [(0, 45)]),
     ("icall returns (7, 12)", (run internalCall).1 == .ret (wordBytes 7 ++ wordBytes 12)),
-    ("memory: faults on out-of-allocation write",
-      mem.1 == .fault (.memoryOutOfBounds 0x10 1)),
-    ("memory: mload8, partial mstore16, keccak, mallocany, mcopy", storage mem == ([(0, 0xAB), (1, (0xABBEEF : Word) <<< 232),
+    ("UB: out-of-allocation write", mem.1 == .fault (.memoryOutOfBounds 0x10 1)),
+    ("memory: mload8, partial mstore16, keccak, mcopy into mallocany",
+      storage mem == ([(0, 0xAB), (1, (0xABBEEF : Word) <<< 232),
        (2, 0x3e889ef1ce94d5e823a41b0e65c5e971dcd08e9d92a3dff1038a5eeefc54f39d),
-       (3, aa), (4, ((0xABBEEF00 : Word) <<< 224) ||| (aa >>> 32))] : List (Word × Word))),
+       (3, 0xABBEEF00)] : List (Word × Word))),
+    ("UB: out-of-allocation read", (run oobRead).1 == .fault (.memoryOutOfBounds 0x80 32)),
+    ("UB: reading an unwritten mallocany byte",
+      (run uninitRead).1 == .fault (.uninitializedRead 0x80 2) && storage (run uninitRead) == [(0, 0xFF)]),
+    ("UB: mcopy keeps bytes unwritten, reading the copy is UB",
+      (run uninitCopy).1 == .fault (.uninitializedRead 0xA0 1) && storage (run uninitCopy) == [(0, 0)]),
+    ("UB: returning unwritten bytes", (run uninitReturn).1 == .fault (.uninitializedRead 0x80 4)),
+    ("UB: no placement for an allocation",
+      (run outOfMemory).1 == .fault (.outOfMemory (2 ^ 256 - 1))),
     ("memory: log2", mem.2.logs.toList == [([0, 1], [0xAB, 0xBE, 0xEF, 0])]),
     ("revert with data", (run revert).1 == .revert [0xDE, 0xAD]),
     ("divergence: out of fuel", (run spin (fuel := 1000)).1 == .outOfFuel),
@@ -142,8 +173,11 @@ def checks : List (String × Bool) :=
       (run immutables (layout := immLayout [1, 5])).1 == .ret [0, 0xAB, 0xCD, 0, 0, 0xAB, 0xCD, 0]),
     ("setimmutable outside the runtime copy is UB",
       (run immutables (layout := immLayout [7])).1 == .fault (.memoryOutOfBounds 0x87 2)),
-    ("getimmutable keeps the low size bytes",
-      storage (run immutables .main (world := { immutable := fun _ => 0x12345 })) == [(0, 0x2345)]),
+    ("getimmutable: the run's fixed value, the same on every read, without host queries",
+      let r := run immutables .main (imm := #[0x2345])
+      r.1 == .stop && storage r == [(0, 0x2345), (1, 0x2345)] && r.2.queries == 0),
+    ("Immutables.ofWords keeps the low size bytes",
+      (Immutables.ofWords immutables #[0x12345]).values == #[0x2345]),
     ("getimmutable in init faults", (run getImmutableInInit).1 == .fault .wrongEntry),
     ("call: success, returndatasize, truncated return copy",
       storage call == [(0, 1), (1, 3), (2, 0x0102)]),

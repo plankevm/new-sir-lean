@@ -103,6 +103,26 @@ structure Program where
   data : Array ByteArray := #[]
   immutables : Array ByteSize := #[]
 
+/-- The values `getimmutable` reads: fixed for a whole run, one per immutable, each fitting the
+immutable's declared size. -/
+structure Immutables (p : Program) where
+  values : Array Word
+  size_eq : values.size = p.immutables.size
+  fits : ∀ (i : Nat) (h : i < values.size),
+    values[i].toNat < 2 ^ (8 * (p.immutables[i]'(size_eq ▸ h)).val)
+
+def Word.lowBytes (n : Nat) (w : Word) : Word := (w.setWidth (8 * n)).setWidth 256
+
+theorem Word.lowBytes_lt (n : Nat) (w : Word) : (Word.lowBytes n w).toNat < 2 ^ (8 * n) := by
+  simp only [Word.lowBytes, BitVec.toNat_setWidth]
+  exact Nat.lt_of_le_of_lt (Nat.mod_le _ _) (Nat.mod_lt _ (Nat.two_pow_pos _))
+
+/-- Immutable `i` takes the low bytes of `ws[i]` (0 if absent). -/
+def Immutables.ofWords (p : Program) (ws : Array Word) : Immutables p where
+  values := p.immutables.mapIdx fun i s => Word.lowBytes s.val (ws[i]?.getD 0)
+  size_eq := Array.size_mapIdx
+  fits i h := by simp only [Array.getElem_mapIdx]; exact Word.lowBytes_lt _ _
+
 inductive Entry
   | init
   | main

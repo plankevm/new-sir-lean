@@ -9,7 +9,7 @@ abstract: the EVM, the world and the bytecode an entry point runs as. -/
 
 namespace Sir
 
-/-- Why a run cannot continue: the program is malformed, or it hit undefined behavior. -/
+/-- Why a run is stuck: the program is malformed, or it hit undefined behavior. -/
 inductive Fault
   | undefinedVariable (var : VarId)
   | invalidFunction (function : FunctionId)
@@ -26,6 +26,8 @@ inductive Fault
   | wrongEntry
   | switchNoMatch
   | memoryOutOfBounds (offset length : Nat)
+  | uninitializedRead (offset length : Nat)
+  | outOfMemory (size : Nat)
   deriving DecidableEq, Repr
 
 /-- Word-valued reads of the environment, the world and the deployed code. -/
@@ -35,8 +37,6 @@ inductive Query
   | blockhash (number : Word) | coinbase | timestamp | number | prevrandao | gaslimit | chainid
   | selfbalance | basefee | blobhash (index : Word) | blobbasefee
   | sload (key : Word) | tload (key : Word)
-  /-- The value baked into the running runtime code; only the low `size` bytes are used. -/
-  | immutable (immutable : ImmutableId)
   deriving DecidableEq, Repr
 
 inductive CallKind
@@ -65,7 +65,6 @@ inductive HostOp
   | call (kind : CallKind) (gas account : Word) (input : ByteArray)
   | create (value : Word) (salt : Option Word) (initcode : ByteArray)
   | alloc (size : Nat) (live : List (Nat × Nat))
-  | anyByte
   | stop
   | ret (data : ByteArray)
   | revert (data : ByteArray)
@@ -84,7 +83,6 @@ def HostOp.Resp : HostOp → Type
   | .call .. => Bool × ByteArray
   | .create .. => Word × ByteArray
   | .alloc size live => { start : Nat // Placement live size start }
-  | .anyByte => UInt8
   | .stop => Empty
   | .ret _ => Empty
   | .revert _ => Empty
@@ -98,6 +96,7 @@ inductive MemOp
   | alloc (zeroed : Bool) (size : Nat)
   | read (offset length : Nat)
   | write (offset : Nat) (bytes : ByteArray)
+  | copy (dst src length : Nat)
   | returnData
   | setReturnData (bytes : ByteArray)
 
@@ -105,6 +104,7 @@ def MemOp.Resp : MemOp → Type
   | .alloc .. => Word
   | .read .. => ByteArray
   | .write .. => Unit
+  | .copy .. => Unit
   | .returnData => ByteArray
   | .setReturnData _ => Unit
 

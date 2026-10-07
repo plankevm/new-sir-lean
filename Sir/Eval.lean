@@ -17,6 +17,7 @@ structure Ctx where
   program : Program
   layout : Layout
   entry : Entry
+  immutables : Immutables program
 
 def mem (op : MemOp) : CoFree EvalE (MemOp.Resp op) := perform (E := EvalE) (.inr (.inl op))
 
@@ -135,7 +136,7 @@ def execEvm : EvmOp → List Word → CoFree EvalE (List Word)
   | .sstore, [k, v] => do host (.sstore k v); pure []
   | .tload, [k] => do pure [← query (.tload k)]
   | .tstore, [k, v] => do host (.tstore k v); pure []
-  | .mcopy, [dst, src, len] => do write dst (← read src len); pure []
+  | .mcopy, [dst, src, len] => do mem (.copy dst.toNat src.toNat len.toNat); pure []
   | .log0, [off, len] => logOut off len []
   | .log1, [off, len, t0] => logOut off len [t0]
   | .log2, [off, len, t0, t1] => logOut off len [t0, t1]
@@ -183,9 +184,8 @@ def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals)
   | .runtimeLength out => pure (l.insert out ctx.layout.runtimeLength)
   | .getImmutable i out => do
     unless ctx.entry = .main do fault .wrongEntry
-    let some size := ctx.program.immutables[i.id]? | fault (.invalidImmutable i)
-    let v ← query (.immutable i)
-    pure (l.insert out (Word.ofBytes (Word.toBytes size.val v)))
+    let some v := ctx.immutables.values[i.id]? | fault (.invalidImmutable i)
+    pure (l.insert out v)
   | .setImmutable i ptr value => do
     unless ctx.entry = .init do fault .wrongEntry
     unless ctx.program.main.isSome do fault .noMain
@@ -239,12 +239,13 @@ def faultTop {α : Type} (f : Fault) : CoFree SirE α := do
 
 /-- An entry point runs until a terminating operation; entry functions take no inputs and
 must not return. -/
-def runEntry (p : Program) (layout : Layout) (e : Entry) : CoFree SirE Empty :=
+def runEntry (p : Program) (layout : Layout) (imm : Immutables p) (e : Entry) :
+    CoFree SirE Empty :=
   let f? := match e with
     | .init => some p.init
     | .main => p.main
   match f? with
   | none => faultTop .noMain
-  | some f => (evalFunction ⟨p, layout, e⟩ (f, #[])).bind fun _ => faultTop .entryReturned
+  | some f => (evalFunction ⟨p, layout, e, imm⟩ (f, #[])).bind fun _ => faultTop .entryReturned
 
 end Sir

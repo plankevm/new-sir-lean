@@ -6,6 +6,9 @@ defaultTargets = ["Sir", "SirTests"]
 autoImplicit = false
 warningAsError = true
 
+# TODO: switch to `git = "git@github.com:Philogy/itree.git"` with a pinned `rev` once itree's
+# CoFree-only rewrite is committed and pushed; origin/main (cd9a138) is the older quotient
+# version and lacks `Effect.Rec`, so sir does not build against it.
 [[require]]
 name = "itree"
 path = "../itree"

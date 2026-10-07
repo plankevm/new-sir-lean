@@ -1,7 +1,7 @@
 import Sir
 
 /-! A concrete test host: answers `Host` operations from a small world, with deterministic
-placement (bump from `0x80`) and `anyByte = 0xAA`. Terminal operations end the run with an
+placement (bump from `0x80`). Terminal operations end the run with an
 `Outcome`; the world survives because the state sits under the exception. -/
 
 namespace SirTests
@@ -27,7 +27,6 @@ structure World where
   calldata : ByteArray := .empty
   code : ByteArray := .empty
   callResult : Bool × ByteArray := (true, .empty)
-  immutable : ImmutableId → Word := fun _ => 0
   queries : Nat := 0
 
 def World.sload (w : World) (k : Word) : Word := ((w.storage.find? (·.1 == k)).map (·.2)).getD 0
@@ -39,7 +38,6 @@ abbrev HostM := ExceptT Outcome (StateM World)
 def queryAnswer (w : World) : Query → Word
   | .sload k => w.sload k
   | .tload k => w.tload k
-  | .immutable i => w.immutable i
   | .address => 0xA0
   | .caller => 0xC0
   | .gas => 1000000
@@ -63,7 +61,6 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
   | .alloc size live => do
     let start := live.foldl (fun s a => max s (a.1 + a.2)) 0x80
     if h : Placement live size start then pure ⟨start, h⟩ else throw (.hostError "alloc")
-  | .anyByte => pure (0xAA : UInt8)
   | .stop => throw .stop
   | .ret data => throw (.ret data.toList)
   | .revert data => throw (.revert data.toList)
@@ -71,9 +68,9 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
   | .selfdestruct a => throw (.selfdestruct a)
   | .fault f => throw (.fault f)
 
-def runWith (world : World) (p : Program) (layout : Layout) (e : Entry) (fuel : Nat := 100000) :
-    Outcome × World :=
-  match (CoFree.runM answer fuel (exec p layout e)).run.run world with
+def runWith (world : World) (p : Program) (layout : Layout) (imm : Immutables p) (e : Entry)
+    (fuel : Nat := 100000) : Outcome × World :=
+  match (CoFree.runM answer fuel (exec p layout imm e)).run.run world with
   | (.ok none, w) => (.outOfFuel, w)
   | (.ok (some x), _) => nomatch x
   | (.error o, w) => (o, w)

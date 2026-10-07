@@ -6,7 +6,9 @@ The authoritative description of this package. It is an executable semantics of 
 `plankc/sir/docs/{README,ir_text_format}.md` and the debug backend. Structure follows sir-lean
 (`main` AST, `coinductive-semantics` evaluator) re-expressed on `../itree`.
 
-Core Lean only, toolchain `v4.34.1`, depends on `../itree`. `lake build` builds the library and
+Core Lean only, toolchain `v4.34.1`, depends on itree as a separate library. Until itree's
+`CoFree`-only rewrite is pushed, the dependency is the local path `../itree` (TODO in
+`lakefile.toml`); it becomes a git dependency pinned to a pushed commit. `lake build` builds the library and
 runs every gate below.
 
 ## Modules
@@ -15,10 +17,10 @@ runs every gate below.
 |---|---|
 | `Sir/Word.lean` | `Word := BitVec 256`, pure EVM arithmetic (`Word.div`, `sdiv`, `signextend`, `byte`, `sar`, `clz`, …), big-endian byte conversion, `ByteArray.slicePad`. |
 | `Sir/Keccak.lean` | Keccak-256 in pure Lean, `Word.keccak256`. |
-| `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `EvmOp`), `Entry`, `Layout`, `Layout.Consistent`. |
+| `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `EvmOp`), `Immutables`, `Entry`, `Layout`, `Layout.Consistent`. |
 | `Sir/Effect.lean` | Effects: `Mem`, `Host`, `SirE := Mem ⊕ₑ Host`; `Fault`, `Query`, `CallKind`, `Placement`. |
-| `Sir/Eval.lean` | Evaluator: `evalFunction`, `runEntry : Program → Layout → Entry → CoFree SirE Empty`. |
-| `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : Program → Layout → Entry → CoFree Host Empty`. |
+| `Sir/Eval.lean` | Evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
+| `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Host Empty`. |
 | `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, axiom audit. |
 
 ## AST
@@ -38,22 +40,21 @@ input is the top of the stack (`emit_simple_operation` pushes inputs in reverse)
 `CoFree SirE` programs emit two kinds of operations.
 
 `Mem` (frame-local, handled by `handleMem`): `alloc zeroed size : Word`,
-`read offset length : ByteArray`, `write offset bytes : Unit`, `returnData : ByteArray`,
-`setReturnData bytes : Unit`.
+`read offset length : ByteArray`, `write offset bytes : Unit`, `copy dst src length : Unit`,
+`returnData : ByteArray`, `setReturnData bytes : Unit`.
 
 `Host` (abstract; the EVM, the world, the deployed code):
 
 | Op | Response | |
 |---|---|---|
-| `query q` | `Word` | `address`, `balance a`, `origin`, `caller`, `callvalue`, `gasprice`, `extcodehash a`, `gas`, `blockhash n`, `coinbase`, `timestamp`, `number`, `prevrandao`, `gaslimit`, `chainid`, `selfbalance`, `basefee`, `blobhash i`, `blobbasefee`, `sload k`, `tload k`, `immutable i` |
+| `query q` | `Word` | `address`, `balance a`, `origin`, `caller`, `callvalue`, `gasprice`, `extcodehash a`, `gas`, `blockhash n`, `coinbase`, `timestamp`, `number`, `prevrandao`, `gaslimit`, `chainid`, `selfbalance`, `basefee`, `blobhash i`, `blobbasefee`, `sload k`, `tload k` |
 | `sstore k v`, `tstore k v` | `Unit` | |
 | `calldata`, `code`, `extcode a` | `ByteArray` | whole buffers; loads, sizes and copies are derived |
 | `log topics data` | `Unit` | |
 | `call kind gas account input` | `Bool × ByteArray` | success, return data; `kind` carries the value for `call`/`callcode` |
 | `create value salt? initcode` | `Word × ByteArray` | address (0 on failure), return data |
-| `alloc size live` | `{start // Placement live size start}` | the host places allocations; no valid answer = cannot continue |
-| `anyByte` | `UInt8` | an arbitrary byte |
-| `stop`, `ret data`, `revert data`, `invalid`, `selfdestruct a`, `fault f` | `Empty` | terminal |
+| `alloc size live` | `{start // Placement live size start}` | the host places allocations; asked only when a placement exists, so it can always answer |
+| `stop`, `ret data`, `revert data`, `invalid`, `selfdestruct a`, `fault f` | `Empty` | terminal; `fault` is the stuck state (see Undefined behavior) |
 
 Gas exhaustion, static-context violations, call depth and the like are not SIR-level: a host
 handler may end the run instead of answering any operation.
@@ -89,25 +90,53 @@ Operations:
 - `const`, `copy`, `noop` are local. `data_offset`, `runtime_start_offset`, `init_end_offset`,
   `runtime_length` read the `Layout` (a parameter, fixed by the compiler, not an effect);
   `runtime_start_offset` and `init_end_offset` fault outside `init`.
-- `getimmutable i` (main only, else `fault wrongEntry`) queries the host and keeps the low
-  `size i` bytes. `setimmutable i ptr v` (init only, needs a `main`) writes the low `size i` bytes
+- `getimmutable i` (main only, else `fault wrongEntry`) returns `imm.values[i]`, where
+  `imm : Immutables p` is a parameter of the run, like `Layout`: chosen once before the run
+  starts, so every read in a run sees the same value, and by construction each value fits the
+  immutable's declared size (`Immutables.fits`; `Immutables.ofWords` builds one by keeping low
+  bytes). It is not read from the code bytes and is not a host query.
+- `setimmutable i ptr v` (init only, needs a `main`) writes the low `size i` bytes
   of `v` at `ptr + r` for every placeholder `r ∈ layout.immutableRefs i`; a bad `ptr` is caught
   only as an out-of-allocation write.
 
-Memory (`handleMem`, state `FrameMem`): a list of allocations plus the return data buffer.
-`malloc` allocations are zeroed; `mallocany` bytes are unknown until written. Reading an unknown
-byte, or a byte outside every allocation, asks the host for `anyByte` on every read. Writing any
-byte outside every allocation is undefined behavior: `fault (memoryOutOfBounds offset length)`.
-Zero-length accesses touch nothing.
+Memory (`handleMem`, state `FrameMem`): a list of allocations plus the return data buffer; each
+byte is `some b` or `none` (unwritten). `malloc` bytes start as `some 0`, `mallocany` bytes as
+`none`. `read` returns bytes only if every byte is allocated and written; `write` requires every
+byte to be allocated; `copy` (`mcopy`) requires both ranges to be allocated and moves byte
+states, so copying unwritten bytes is defined and the destination is unwritten. Zero-length
+accesses touch nothing. `alloc` asks the host for a placement only if one exists (`placeable`:
+the lowest placement starts at 0 or at the end of a live allocation); otherwise it is out of
+memory.
 
 `exec p layout e : CoFree Host Empty` is the semantics of an entry point. `Layout.Consistent`
 states what the compiler must guarantee about the layout (data segments at their offsets, the
 runtime slice and placeholders in bounds, `init_end_offset` = init code size); it is an assumption
 for compiler proofs, not checked at run time.
 
-Faults (`Fault`) end a run without further observable effects. They cover malformed programs
-(undefined locals, bad ids, arity mismatches, wrong entry for an operation) and undefined behavior
-(out-of-allocation writes, switch without a match).
+## Undefined behavior
+
+There is one mechanism: the terminal host operation `fault f`, whose response type is `Empty`,
+so no continuation exists and the run is stuck with no defined result. `f : Fault` is only a
+diagnostic. A refinement statement treats a source run reaching `fault` as allowing any target
+behavior from that point. Faults cover malformed programs (undefined locals, bad ids, arity
+mismatches, wrong entry for an operation, falling through a terminating block) and undefined
+behavior:
+
+| UB | Fault |
+|---|---|
+| read of a byte outside every allocation | `memoryOutOfBounds offset length` |
+| write of a byte outside every allocation | `memoryOutOfBounds offset length` |
+| read of a `mallocany` byte before it is written | `uninitializedRead offset length` |
+| allocation with no possible placement | `outOfMemory size` |
+| `switch` without a matching case or fallback | `switchNoMatch` |
+
+"Read" is any operation that observes memory contents as values: `mload`, `keccak256`, `log*`,
+`return`, `revert`, `create*` initcode and call arguments. Unwritten `mallocany` bytes are
+modeled as `none` rather than as host-chosen bytes because no SIR program may depend on them:
+with arbitrary bytes, a program reading them would have defined (nondeterministic) behavior that
+a compiler would have to preserve; with `none`, a read is UB, which leaves the compiler free to
+leave the memory uninitialized or reuse it. `mcopy` is the exception because copying bytes
+does not depend on their values; it propagates `none`, and a later read of the copy is UB.
 
 ## Coverage of plankc operations (`32710d2`, 95 kinds)
 
@@ -123,13 +152,13 @@ Faults (`Fault`) end a run without further observable effects. They cover malfor
 | `ReturnDataSize` `ReturnDataCopy` | modeled: `evm`, frame return data (`Mem`) |
 | `BlockHash` `Coinbase` `Timestamp` `Number` `Difficulty` `GasLimit` `ChainId` `SelfBalance` `BaseFee` `BlobHash` `BlobBaseFee` | modeled: `evm`, host query (`Difficulty` is `prevrandao`) |
 | `SLoad` `SStore` `TLoad` `TStore` | modeled: `evm`, host |
-| `MemoryCopy` (`mcopy`) | modeled: `evm`, memory read then write |
+| `MemoryCopy` (`mcopy`) | modeled: `evm`, `Mem.copy` (moves byte states, unwritten stays unwritten) |
 | `Log0` `Log1` `Log2` `Log3` `Log4` | modeled: `evm`, host `log` |
 | `Create` `Create2` | modeled: `evm`, host `create` |
 | `Call` `CallCode` `DelegateCall` `StaticCall` | modeled: `evm`, host `call` |
 | `Return` `Stop` `Revert` `Invalid` `SelfDestruct` | modeled: `evm`, terminal host ops |
 | `DynamicAllocZeroed` (`malloc`) | modeled: `Operation.malloc` |
-| `DynamicAllocAnyBytes` (`mallocany`) | modeled: `Operation.mallocany` |
+| `DynamicAllocAnyBytes` (`mallocany`) | modeled: `Operation.mallocany`; bytes unwritten until written, reading them is UB |
 | `MemoryLoad` (`mload<N>`) | modeled: `Operation.mload` |
 | `MemoryStore` (`mstore<N>`) | modeled: `Operation.mstore` |
 | `SetCopy` | modeled: `Operation.copy` |
@@ -139,7 +168,8 @@ Faults (`Fault`) end a run without further observable effects. They cover malfor
 | `InternalCall` | modeled: `Operation.icall` |
 | `InternalCallNever` | modeled: `Operation.icallNever` |
 | `RuntimeStartOffset` `InitEndOffset` `RuntimeLength` | modeled: from `Layout` |
-| `GetImmutable` `SetImmutable` | modeled |
+| `GetImmutable` | modeled: `Operation.getImmutable`, from the run's fixed `Immutables p` |
+| `SetImmutable` | modeled: `Operation.setImmutable`, writes the low `size` bytes at each placeholder |
 | `StaticAllocZeroed` `StaticAllocAnyBytes` (`salloc`, `sallocany`) | omitted: the frontend does not emit static allocation |
 | `AcquireFreePointer` (`freeptr`) | omitted: exposes the allocator's free pointer, which the allocation-based memory model deliberately abstracts away |
 
@@ -151,7 +181,10 @@ all modeled.
 
 - `SirTests.Ops`: pure operations and Keccak-256 (vectors including one- and two-block inputs).
 - `SirTests.Examples`: example programs run on the test host (loop, internal call, memory and
-  Keccak, logs, revert, divergence with and without effects and inside a callee, immutables,
-  calls and return data, switch, environment, faults).
+  Keccak, logs, revert, divergence with and without effects and inside a callee, immutables
+  including `getimmutable` returning the same fixed value on every read without host queries,
+  calls and return data, switch, environment, faults, and each UB case: out-of-allocation read
+  and write, unwritten `mallocany` read via `mload` and `return`, `mcopy` of unwritten bytes,
+  out of memory).
 - `SirTests.Audit`: every `Sir` declaration uses only `propext`, `Quot.sound`,
   `Classical.choice` (no `sorry`).
