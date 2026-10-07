@@ -4,7 +4,9 @@ The authoritative description of this package. It is an executable semantics of 
 (SIR), checked against `~/Documents/Plank/monorepo-plank` at `32710d2`
 (`feat/sir-immutables-v2`), `plankc/sir/crates/data/src/operation/mod.rs` (`define_operations!`),
 `plankc/sir/docs/{README,ir_text_format}.md` and the debug backend. Structure follows sir-lean
-(`main` AST, `coinductive-semantics` evaluator) re-expressed on `../itree`.
+(`main` AST, `coinductive-semantics` evaluator) re-expressed on `../itree`. The AST deliberately
+departs from plankc's representation in two places (see "Deviations from plankc"); the set of
+operations and their meaning do not.
 
 Core Lean only, toolchain `v4.34.1`, depends on itree as a separate library: a Lake git
 dependency on `git@github.com:Philogy/itree.git` pinned to `rev = 93dcc9e` (full hash in
@@ -26,14 +28,22 @@ below.
 
 ## AST
 
-As in plankc: a `Program` has `init : FunctionId`, `main : Option FunctionId`, and program-wide
-arrays of functions, blocks, data segments and immutable sizes. A `Function` is its entry block
-and a `ReturnKind` (`never` or `values n`). A `Block` has `inputs`, `outputs`, `ops` and a
-`Control`: `lastOpTerminates`, `iret`, `continuesTo`, `branches cond nonZero zero`, or
-`switch cond cases fallback?`. Locals (`VarId`) hold `Word`s.
+A `Program` has `init : FunctionId`, `main : Option FunctionId`, and program-wide arrays of
+functions, data segments and immutable sizes. A `Function` has an `entry : BlockId`, a
+`ReturnKind` (`never` or `values n`) and its own `blocks : Array Block`; a `BlockId` indexes the
+blocks of the enclosing function. A `Block` has `inputs`, `outputs`, `ops` and a `Control`:
 
-`Operation` has one constructor per non-EVM plankc operation. Operations plankc lowers to one
-EVM opcode come in two forms:
+| `Control` | |
+|---|---|
+| `iret` | return the block's outputs to the caller |
+| `continuesTo t`, `branches cond nonZero zero`, `switch cond cases fallback?` | jump to a block of the same function |
+| `stop`, `return off len`, `revert off len`, `invalid`, `selfdestruct beneficiary` | halt the run (the EVM halting opcodes, with their operands) |
+| `icallNever f args` | call `f`, which must not return |
+
+Locals (`VarId`) hold `Word`s.
+
+`Operation` has one constructor per non-EVM, non-halting plankc operation. Non-halting
+operations plankc lowers to one EVM opcode come in two forms:
 
 - Pure word operations (words in, one word out, no memory, environment or host access) have
   exact arity: `unop (op : UnOp) a out`, `binop (op : BinOp) a b out`,
@@ -49,6 +59,31 @@ Operands are in EVM stack order, as in plankc's `ins`: the first input is the to
 (`emit_simple_operation` pushes inputs in reverse). So `binop .sub a b` is `a - b`,
 `binop .shl s x` is `x << s`, `binop .byte i x` and `binop .signextend b x` take the index
 first, and `ternop .addmod a b n` is `(a + b) % n`.
+
+## Deviations from plankc
+
+The AST is not a 1:1 port of plankc's `EthIRProgram`; two invariants plankc checks separately
+are made structural so that the semantics and the well-formedness theorem need not mention them.
+
+- **Function-owned blocks.** plankc keeps all blocks in one program-wide array and a function
+  only names its entry block; which blocks belong to which function is implicit (reachability
+  from the entry). Here each `Function` owns its blocks and block ids are local, so a jump to
+  another function's block cannot be written, and two functions cannot share a block.
+- **Explicit terminators.** plankc ends halting blocks with `Control::LastOpTerminates` and
+  keeps the halting op (`return`, `stop`, `revert`, `invalid`, `selfdestruct`) or
+  `icall_never` as the block's last `Operation`. Here those are `Control` constructors and are
+  not operations, so a block cannot halt mid-way or fall off its end.
+
+An importer from plankc maps a program onto this AST by:
+
+1. Partitioning blocks by function: for each function, collect the blocks reachable from its
+   entry through `ContinuesTo`/`Branches`/`Switch` and renumber them `0..n` (entry need not be
+   0), rewriting jump targets. A block reachable from two functions is duplicated into each.
+2. For each `LastOpTerminates` block, removing its last operation and making it the `Control`
+   (`Return`/`Revert` with their two inputs, `SelfDestruct` with its one input, `Stop`,
+   `Invalid`, `InternalCallNever` with its function and inputs). A `LastOpTerminates` block
+   whose last op is not one of these, or a halting op that is not last, is rejected (in plankc
+   these are malformed).
 
 ## Effects
 
@@ -78,8 +113,9 @@ handler may end the run instead of answering any operation.
 
 `runEntry p layout e` runs `init` or `main` (no `main` ⇒ malformed `noMain`). Internal calls are
 `CoFree.fix` over `(FunctionId × Array Word) → Array Word`; a function body is `CoFree.iter` over
-`(BlockId × Locals)`, with `Locals := Std.HashMap VarId Word` per activation. A block runs its
-operations in order, then its control:
+`(BlockId × Locals)`, block ids resolved in the running function, with
+`Locals := Std.HashMap VarId Word` per activation. A block runs its operations in order, then
+its control:
 
 - `continuesTo`/`branches`/`switch`: the block's outputs are bound to the target's inputs.
   `branches` takes `nonZero` iff the condition is not 0. `switch` takes the first case equal to the
@@ -87,7 +123,10 @@ operations in order, then its control:
 - `iret`: returns the block's outputs; the count must match `values n`, and `never` functions
   must not return (malformed `returnKindMismatch`). Entry functions must not return
   (malformed `entryReturned`).
-- `lastOpTerminates`: reaching the end of the block is malformed `fellThrough`.
+- `stop`, `invalid`: the terminal host operation of the same name. `return off len` and
+  `revert off len` read `len` bytes of memory at `off` (a read, see Memory) and end with
+  `ret`/`revert`; `selfdestruct a` ends with `selfdestruct a`.
+- `icallNever f args`: runs `f` like `icall`; if it returns, malformed `neverReturned`.
 
 Operations:
 
@@ -96,11 +135,12 @@ Operations:
 - Environment and world reads are `Host` queries; `calldataload`/`calldatasize`/`calldatacopy`,
   `codesize`/`codecopy`, `extcodesize`/`extcodecopy` slice the whole buffer, zero-padded.
 - Memory operations read and write through `Mem`. `mload<8n>`/`mstore<8n>` access exactly `n`
-  bytes big-endian (low `n` bytes of the value). `keccak256`, `log*`, `return`, `revert`, `create*`
-  and call arguments read memory; calls write `min(retLen, |output|)` bytes of output and set the
+  bytes big-endian (low `n` bytes of the value). `keccak256`, `log*`, `create*`, call arguments
+  and the `return`/`revert` controls read memory; calls write `min(retLen, |output|)` bytes of output and set the
   return data; creates set the return data. Writes follow "Memory bounds" below.
-- `icall` runs the callee and binds its results; `icall_never` runs the callee and faults if it
-  returns.
+- `icall` runs the callee and binds its results.
+- `returndatacopy` reading out of bounds halts with `invalid` mid-block (see below); it is the
+  only operation that can halt, and only conditionally.
 - `const`, `copy`, `noop` are local. `data_offset`, `runtime_start_offset`, `init_end_offset`,
   `runtime_length` read the `Layout` (a parameter, fixed by the compiler, not an effect);
   `runtime_start_offset` and `init_end_offset` are malformed (`wrongEntry`) outside `init`.
@@ -162,12 +202,11 @@ from that point. The split exists for the well-formedness theorem below.
 |---|---|---|---|
 | `undefinedVariable v` | malformed | a use of `v` with no value in the activation | every use is defined on every path to it |
 | `invalidFunction f` | malformed | `icall`/`icall_never`/entry to a nonexistent function | function ids in range |
-| `invalidBlock b` | malformed | jump to / entry block is a nonexistent block | block ids in range |
+| `invalidBlock f b` | malformed | jump to / entry block is a nonexistent block of `f` | block ids in range of their function's blocks |
 | `invalidData d` | malformed | `data_offset` of a nonexistent segment | data ids in range |
 | `invalidImmutable i` | malformed | `get`/`setimmutable` of a nonexistent immutable | immutable ids in range |
 | `arity expected actual` | malformed | input/output count mismatch at a jump, a call, a call's results or an `evm` op's outputs | arities agree |
 | `badOperands op n` | malformed | `evm` op with the wrong number of inputs | per-op arity (`unop`/`binop`/`ternop` have exact arity and cannot reach this) |
-| `fellThrough b` | malformed | end of a `lastOpTerminates` block reached | its last op terminates (halting EVM op or `icall_never`) |
 | `returnKindMismatch f` | malformed | `iret` in a `never` function, or with the wrong count | `iret` only in `values n` functions, with `n` outputs |
 | `neverReturned f` | malformed | the callee of `icall_never` returned | `icall_never` targets `never` functions |
 | `entryReturned` | malformed | an entry function returned | `init`/`main` are `never` |
@@ -181,12 +220,16 @@ from that point. The split exists for the well-formedness theorem below.
 Ambiguous cases, and the choice made: `switchNoMatch` is UB, not malformed, because whether a
 case matches depends on a run-time value and plankc lowers it to UB. `noMain` for `.main` is
 malformed rather than "the empty runtime" because SIR does not say what code a program without
-`main` deploys; the intended theorem excludes it by hypothesis. `neverReturned` and `fellThrough`
-are malformed because the static conditions in the last column exclude them even though the
-callee itself may diverge or fault.
+`main` deploys; the intended theorem excludes it by hypothesis. `neverReturned` is malformed
+because the static condition in the last column excludes it even though the callee itself may
+diverge or fault.
+
+Cases removed by the structural deviations: plankc-style programs could fall off the end of a
+`LastOpTerminates` block (`fellThrough`), halt mid-block, or jump into another function's
+blocks; none of these is expressible here, so there is no fault or WF condition for them.
 
 "Read" is any operation that observes memory contents as values: `mload`, `keccak256`, `log*`,
-`return`, `revert`, `create*` initcode and call arguments. Unwritten `mallocany` bytes are
+the `return`/`revert` controls, `create*` initcode and call arguments. Unwritten `mallocany` bytes are
 modeled as `none` rather than as host-chosen bytes because no SIR program may depend on them:
 with arbitrary bytes, a program reading them would have defined (nondeterministic) behavior that
 a compiler would have to preserve; with `none`, a read is UB, which leaves the compiler free to
@@ -204,10 +247,12 @@ theorem wf_not_malformed (p : Program) (hp : p.WF) (layout : Layout) (imm : Immu
 where `Reaches P t` (to be defined) holds if, for some sequence of host answers, `t` reaches an
 operation satisfying `P` after finitely many steps. `layout` and `imm` are unconstrained:
 `Layout.Consistent` is not needed, since layout values only flow into words. `Program.WF` does
-not exist yet; it is the conjunction of the last column of the malformed rows: ids in range,
-arities (jumps, calls and results, EVM ops), definedness of every use on every path,
-return-kind discipline (`iret` vs `never`/`values n`, `icall_never` targets, entries `never`),
-terminating last ops, and entry-restricted ops reachable only from their entry.
+not exist yet; it is the conjunction of the last column of the malformed rows: function, data
+and immutable ids in range, block ids in range of their own function, arities (jumps, calls and
+results, EVM ops), definedness of every use on every path, return-kind discipline (`iret` vs
+`never`/`values n`, `icall_never` targets, entries `never`), and entry-restricted ops reachable
+only from their entry. It has no condition on terminators or on which blocks a function may
+jump to: the types rule those out.
 
 ## Coverage of plankc operations (`32710d2`, 95 kinds)
 
@@ -229,7 +274,7 @@ terminating last ops, and entry-restricted ops reachable only from their entry.
 | `Log0` `Log1` `Log2` `Log3` `Log4` | modeled: `evm`, host `log` |
 | `Create` `Create2` | modeled: `evm`, host `create` |
 | `Call` `CallCode` `DelegateCall` `StaticCall` | modeled: `evm`, host `call` |
-| `Return` `Stop` `Revert` `Invalid` `SelfDestruct` | modeled: `evm`, terminal host ops |
+| `Return` `Stop` `Revert` `Invalid` `SelfDestruct` | modeled: `Control` terminators, terminal host ops |
 | `DynamicAllocZeroed` (`malloc`) | modeled: `Operation.malloc` |
 | `DynamicAllocAnyBytes` (`mallocany`) | modeled: `Operation.mallocany`; bytes unwritten until written, reading them is UB |
 | `MemoryLoad` (`mload<N>`) | modeled: `Operation.mload` |
@@ -239,16 +284,17 @@ terminating last ops, and entry-restricted ops reachable only from their entry.
 | `SetDataOffset` | modeled: `Operation.dataOffset`, from `Layout` |
 | `Noop` | modeled: `Operation.noop` |
 | `InternalCall` | modeled: `Operation.icall` |
-| `InternalCallNever` | modeled: `Operation.icallNever` |
+| `InternalCallNever` | modeled: `Control.icallNever` |
 | `RuntimeStartOffset` `InitEndOffset` `RuntimeLength` | modeled: from `Layout` |
 | `GetImmutable` | modeled: `Operation.getImmutable`, from the run's fixed `Immutables p` |
 | `SetImmutable` | modeled: `Operation.setImmutable`, writes the low `size` bytes at each placeholder |
 | `StaticAllocZeroed` `StaticAllocAnyBytes` (`salloc`, `sallocany`) | omitted: the frontend does not emit static allocation |
 | `AcquireFreePointer` (`freeptr`) | omitted: exposes the allocator's free pointer, which the allocation-based memory model deliberately abstracts away |
 
-Control (`Control`): `LastOpTerminates`, `InternalReturn`, `ContinuesTo`, `Branches`, `Switch`:
-all modeled. Program parts: functions with `ReturnKind`, global blocks, data segments, immutables:
-all modeled.
+Control: `InternalReturn`, `ContinuesTo`, `Branches`, `Switch` are modeled as `Control`
+constructors; `LastOpTerminates` is replaced by the terminator constructors (see "Deviations
+from plankc"). Program parts: functions with `ReturnKind`, blocks (owned by functions), data
+segments, immutables: all modeled.
 
 ## Gates (`lake build`)
 
@@ -257,7 +303,8 @@ all modeled.
 - `SirTests.Examples`: example programs run on the test host (loop, internal call, memory and
   Keccak, logs, revert, divergence with and without effects and inside a callee, immutables
   including `getimmutable` returning the same fixed value on every read without host queries,
-  calls and return data, switch, environment, faults, and each UB case: out-of-allocation read
+  calls and return data, switch, environment, block ids local to their function, `icall_never`
+  into a halting callee and into one that returns, faults, and each UB case: out-of-allocation read
   and write, unwritten `mallocany` read via `mload` and `return`, `mcopy` of unwritten bytes,
   out of memory, call output written past an allocation, `returndatacopy` destination past an
   allocation; and the defined cases: a call writing only its returned bytes of a larger `retLen`,

@@ -156,11 +156,6 @@ def execEvm : EvmOp → List Word → CoFree EvalE (List Word)
   | .callcode, [g, a, v, ao, al, ro, rl] => callOut (.callcode v) g a ao al ro rl
   | .delegatecall, [g, a, ao, al, ro, rl] => callOut .delegatecall g a ao al ro rl
   | .staticcall, [g, a, ao, al, ro, rl] => callOut .staticcall g a ao al ro rl
-  | .return, [off, len] => do halt (.ret (← read off len)) rfl
-  | .stop, [] => halt .stop rfl
-  | .revert, [off, len] => do halt (.revert (← read off len)) rfl
-  | .invalid, [] => halt .invalid rfl
-  | .selfdestruct, [a] => halt (.selfdestruct a) rfl
   | op, args => malformed (.badOperands op args.length)
 
 def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals) :
@@ -186,9 +181,6 @@ def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals)
   | .icall f ins outs => do
     let rs ← call (f, (← lookupAll l ins).toArray)
     assignAll l outs rs.toList
-  | .icallNever f ins => do
-    let _ ← call (f, (← lookupAll l ins).toArray)
-    malformed (.neverReturned f)
   | .runtimeStartOffset out =>
     if ctx.entry = .init then pure (l.insert out ctx.layout.runtimeStartOffset) else malformed .wrongEntry
   | .initEndOffset out =>
@@ -208,48 +200,56 @@ def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals)
       mem (.write (p.toNat + r) bytes)
     pure l
 
-def block (ctx : Ctx) (b : BlockId) : CoFree EvalE Block :=
-  match ctx.program.blocks[b.id]? with
+def block (f : FunctionId) (fn : Function) (b : BlockId) : CoFree EvalE Block :=
+  match fn.blocks[b.id]? with
   | some blk => pure blk
-  | none => malformed (.invalidBlock b)
+  | none => malformed (.invalidBlock f b)
 
-/-- Control transfer: the source block's outputs become the target block's inputs. -/
-def jump (ctx : Ctx) (l : Locals) (src : Block) (target : BlockId) :
+/-- Control transfer within `fn`: the source block's outputs become the target block's inputs. -/
+def jump (f : FunctionId) (fn : Function) (l : Locals) (src : Block) (target : BlockId) :
     CoFree EvalE (IterStep (BlockId × Locals) (Array Word)) := do
-  let dst ← block ctx target
+  let dst ← block f fn target
   let l ← assignAll l dst.inputs (← lookupAll l src.outputs)
   pure (.repeat (target, l))
 
 def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
   CoFree.fix fun call (f, args) => do
     let some fn := ctx.program.functions[f.id]? | malformed (.invalidFunction f)
-    let l ← assignAll ∅ (← block ctx fn.entry).inputs args.toList
+    let l ← assignAll ∅ (← block f fn fn.entry).inputs args.toList
     CoFree.iter (fn.entry, l) fun (b, l) => do
-      let blk ← block ctx b
+      let blk ← block f fn b
       let mut l := l
       for op in blk.ops do
         l ← execOp ctx call l op
       match blk.control with
-      | .lastOpTerminates => malformed (.fellThrough b)
       | .iret => match fn.returns with
         | .never => malformed (.returnKindMismatch f)
         | .values n => do
           let rs ← lookupAll l blk.outputs
           if rs.length = n then pure (.exit rs.toArray) else malformed (.returnKindMismatch f)
-      | .continuesTo t => jump ctx l blk t
-      | .branches c nonZero zero => do jump ctx l blk (if (← lookup l c) ≠ 0 then nonZero else zero)
+      | .continuesTo t => jump f fn l blk t
+      | .branches c nonZero zero => do
+        jump f fn l blk (if (← lookup l c) ≠ 0 then nonZero else zero)
       | .switch c cases fallback => do
         let v ← lookup l c
         match cases.find? (·.1 == v), fallback with
-        | some (_, t), _ => jump ctx l blk t
-        | none, some t => jump ctx l blk t
+        | some (_, t), _ => jump f fn l blk t
+        | none, some t => jump f fn l blk t
         | none, none => fault (.ub .switchNoMatch)
+      | .stop => halt .stop rfl
+      | .return off len => do halt (.ret (← read (← lookup l off) (← lookup l len))) rfl
+      | .revert off len => do halt (.revert (← read (← lookup l off) (← lookup l len))) rfl
+      | .invalid => halt .invalid rfl
+      | .selfdestruct a => do halt (.selfdestruct (← lookup l a)) rfl
+      | .icallNever g ins => do
+        let _ ← call (g, (← lookupAll l ins).toArray)
+        malformed (.neverReturned g)
 
 def malformedTop {α : Type} (m : Malformed) : CoFree SirE α := do
   let e ← perform (E := SirE) (.inr (.fault (.malformed m)))
   Empty.elim e
 
-/-- An entry point runs until a terminating operation; entry functions take no inputs and
+/-- An entry point runs until a halting control; entry functions take no inputs and
 must not return. -/
 def runEntry (p : Program) (layout : Layout) (imm : Immutables p) (e : Entry) :
     CoFree SirE Empty :=

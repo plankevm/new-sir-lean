@@ -14,8 +14,7 @@ def ev (op : EvmOp) (ins outs : Array VarId) : Operation := .evm op ins outs
 def initOnly (blocks : Array Block) (extra : Array Function := #[]) : Program where
   init := 0
   main := none
-  functions := #[⟨0, .never⟩] ++ extra
-  blocks := blocks
+  functions := #[⟨0, .never, blocks⟩] ++ extra
 
 /-- `for i in 0..10: acc += i`, then `sstore 0 acc`. -/
 def loopSum : Program := initOnly #[
@@ -23,16 +22,17 @@ def loopSum : Program := initOnly #[
   { inputs := #[3, 4],
     ops := #[.binop .add 4 3 5, .const 1 6, .binop .add 3 6 7, .const 10 8, .binop .lt 7 8 9],
     outputs := #[7, 5], control := .branches 9 1 2 },
-  { inputs := #[10, 11], ops := #[.const 0 12, ev .sstore #[12, 11] #[], ev .stop #[] #[]],
-    control := .lastOpTerminates }]
+  { inputs := #[10, 11], ops := #[.const 0 12, ev .sstore #[12, 11] #[]],
+    control := .stop }]
 
 /-- An internal call returning two values, whose results are returned as ABI words. -/
-def internalCall : Program := initOnly (extra := #[⟨1, .values 2⟩]) #[
-  { ops := #[.const 3 1, .const 4 2, .icall 1 #[1, 2] #[3, 4], .const 64 5, .malloc 5 6,
-      .mstore b32 6 3, .const 32 7, .binop .add 6 7 8, .mstore b32 8 4, ev .return #[6, 5] #[]],
-    control := .lastOpTerminates },
-  { inputs := #[20, 21], ops := #[.binop .add 20 21 22, .binop .mul 20 21 23],
-    outputs := #[22, 23], control := .iret }]
+def internalCall : Program := initOnly
+  #[{ ops := #[.const 3 1, .const 4 2, .icall 1 #[1, 2] #[3, 4], .const 64 5, .malloc 5 6,
+        .mstore b32 6 3, .const 32 7, .binop .add 6 7 8, .mstore b32 8 4],
+      control := .return 6 5 }]
+  (extra := #[⟨0, .values 2, #[
+    { inputs := #[20, 21], ops := #[.binop .add 20 21 22, .binop .mul 20 21 23],
+      outputs := #[22, 23], control := .iret }]⟩])
 
 def memory : Program := initOnly #[
   { ops := #[
@@ -47,44 +47,42 @@ def memory : Program := initOnly #[
       ev .sstore #[23, 8] #[],
       ev .log2 #[2, 13, 20, 21] #[],
       .const 0x10 30, .mstore b8 30 20],
-    control := .lastOpTerminates }]
+    control := .stop }]
 
 def oobRead : Program := initOnly #[
-  { ops := #[.const 4 1, .malloc 1 2, .mload b32 2 3, ev .stop #[] #[]],
-    control := .lastOpTerminates }]
+  { ops := #[.const 4 1, .malloc 1 2, .mload b32 2 3],
+    control := .stop }]
 
 /-- Writes the first byte of a `mallocany`, reads it, then reads one unwritten byte too. -/
 def uninitRead : Program := initOnly #[
   { ops := #[.const 32 1, .mallocany 1 2, .const 0xFF 3, .mstore b8 2 3, .mload b8 2 4,
-      .const 0 5, ev .sstore #[5, 4] #[], .mload b16 2 6, ev .stop #[] #[]],
-    control := .lastOpTerminates }]
+      .const 0 5, ev .sstore #[5, 4] #[], .mload b16 2 6],
+    control := .stop }]
 
 /-- Copying unwritten bytes is fine; the copy is unwritten too. -/
 def uninitCopy : Program := initOnly #[
   { ops := #[.const 32 1, .mallocany 1 2, .malloc 1 3, ev .mcopy #[3, 2, 1] #[],
-      .const 0 4, ev .sstore #[4, 4] #[], .mload b8 3 5, ev .stop #[] #[]],
-    control := .lastOpTerminates }]
+      .const 0 4, ev .sstore #[4, 4] #[], .mload b8 3 5],
+    control := .stop }]
 
 def uninitReturn : Program := initOnly #[
-  { ops := #[.const 4 1, .mallocany 1 2, ev .return #[2, 1] #[]], control := .lastOpTerminates }]
+  { ops := #[.const 4 1, .mallocany 1 2], control := .return 2 1 }]
 
 def outOfMemory : Program := initOnly #[
-  { ops := #[.const 32 1, .malloc 1 2, .const (BitVec.allOnes 256) 3, .malloc 3 4,
-      ev .stop #[] #[]],
-    control := .lastOpTerminates }]
+  { ops := #[.const 32 1, .malloc 1 2, .const (BitVec.allOnes 256) 3, .malloc 3 4],
+    control := .stop }]
 
 def revert : Program := initOnly #[
-  { ops := #[.const 2 1, .malloc 1 2, .const 0xDEAD 3, .mstore b16 2 3, ev .revert #[2, 1] #[]],
-    control := .lastOpTerminates }]
+  { ops := #[.const 2 1, .malloc 1 2, .const 0xDEAD 3, .mstore b16 2 3],
+    control := .revert 2 1 }]
 
 def spin : Program := initOnly #[{ control := .continuesTo 0 }]
 
 def spinStoring : Program := initOnly #[
   { ops := #[.const 5 1, ev .sstore #[1, 1] #[]], control := .continuesTo 0 }]
 
-def spinInCallee : Program := initOnly (extra := #[⟨1, .values 0⟩]) #[
-  { ops := #[.icall 1 #[] #[], ev .stop #[] #[]], control := .lastOpTerminates },
-  { control := .continuesTo 1 }]
+def spinInCallee : Program := initOnly #[{ ops := #[.icall 1 #[] #[]], control := .stop }]
+  (extra := #[⟨0, .values 0, #[{ control := .continuesTo 0 }]⟩])
 
 def immLayout (refs : List Nat) : Layout := { noLayout with immutableRefs := fun _ => refs }
 
@@ -92,19 +90,19 @@ def immLayout (refs : List Nat) : Layout := { noLayout with immutableRefs := fun
 def immutables : Program where
   init := 0
   main := some 1
-  functions := #[⟨0, .never⟩, ⟨1, .never⟩]
+  functions := #[
+    ⟨0, .never, #[
+      { ops := #[.runtimeLength 1, .malloc 1 2, .const 0xABCD 3, .setImmutable 0 2 3],
+        control := .return 2 1 }]⟩,
+    ⟨0, .never, #[
+      { ops := #[.getImmutable 0 4, .const 0 5, ev .sstore #[5, 4] #[], .getImmutable 0 6,
+          .const 1 7, ev .sstore #[7, 6] #[]],
+        control := .stop }]⟩]
   immutables := #[b16]
-  blocks := #[
-    { ops := #[.runtimeLength 1, .malloc 1 2, .const 0xABCD 3, .setImmutable 0 2 3,
-        ev .return #[2, 1] #[]],
-      control := .lastOpTerminates },
-    { ops := #[.getImmutable 0 4, .const 0 5, ev .sstore #[5, 4] #[], .getImmutable 0 6,
-        .const 1 7, ev .sstore #[7, 6] #[], ev .stop #[] #[]],
-      control := .lastOpTerminates }]
 
 def getImmutableInInit : Program :=
-  let entry : Block := { ops := #[.getImmutable 0 4, ev .stop #[] #[]], control := .lastOpTerminates }
-  { immutables with blocks := immutables.blocks.set! 0 entry }
+  let init : Function := ⟨0, .never, #[{ ops := #[.getImmutable 0 4], control := .stop }]⟩
+  { immutables with functions := immutables.functions.set! 0 init }
 
 def calls : Program := initOnly #[
   { ops := #[
@@ -113,13 +111,13 @@ def calls : Program := initOnly #[
       .const 1 21, .const 2 22,
       ev .sstore #[12, 3] #[], ev .sstore #[21, 4] #[], ev .sstore #[22, 5] #[],
       ev .returndatacopy #[2, 13, 13] #[]],
-    control := .lastOpTerminates }]
+    control := .stop }]
 
 /-- Allocates 4 bytes at `ptr` (var 2), sets var 14 := `ptr + 3`, var 15 := 2, then runs `ops`. -/
 def withBuffer (ops : Array Operation) : Program := initOnly #[
   { ops := #[.const 4 1, .malloc 1 2, .const 100 10, .const 0xBEEF 11, .const 0 12, .const 3 13,
-      .binop .add 2 13 14, .const 2 15] ++ ops ++ #[ev .stop #[] #[]],
-    control := .lastOpTerminates }]
+      .binop .add 2 13 14, .const 2 15] ++ ops,
+    control := .stop }]
 
 def callOutputPastAlloc : Program := withBuffer #[ev .call #[10, 11, 12, 2, 12, 14, 15] #[3]]
 
@@ -134,8 +132,8 @@ def returnDataCopyPastBoth : Program :=
 
 def switchOn (v : Word) : Program := initOnly #[
   { ops := #[.const v 1], control := .switch 1 #[(1, 1), (7, 2)] none },
-  { ops := #[.const 1 2, ev .sstore #[2, 2] #[], ev .stop #[] #[]], control := .lastOpTerminates },
-  { ops := #[.const 2 3, ev .sstore #[3, 3] #[], ev .stop #[] #[]], control := .lastOpTerminates }]
+  { ops := #[.const 1 2, ev .sstore #[2, 2] #[]], control := .stop },
+  { ops := #[.const 2 3, ev .sstore #[3, 3] #[]], control := .stop }]
 
 def environment : Program := { initOnly #[
   { ops := #[
@@ -143,21 +141,27 @@ def environment : Program := { initOnly #[
       .const 0 5, ev .create2 #[5, 5, 5, 1] #[6], ev .caller #[] #[7],
       .const 1 11, .const 2 12, .const 3 13, .const 4 14,
       ev .sstore #[5, 2] #[], ev .sstore #[11, 3] #[], ev .sstore #[12, 4] #[],
-      ev .sstore #[13, 6] #[], ev .sstore #[14, 7] #[], ev .selfdestruct #[7] #[]],
-    control := .lastOpTerminates }] with data := #[⟨#[9]⟩] }
+      ev .sstore #[13, 6] #[], ev .sstore #[14, 7] #[]],
+    control := .selfdestruct 7 }] with data := #[⟨#[9]⟩] }
 
 def undefinedVar : Program := initOnly #[
-  { ops := #[ev .sstore #[1, 2] #[]], control := .lastOpTerminates }]
+  { ops := #[ev .sstore #[1, 2] #[]], control := .stop }]
 
 /-- `sub`, `shl` and `addmod` take their first input as the EVM top of stack. -/
 def pureOps : Program := initOnly #[
   { ops := #[.const 10 1, .const 3 2, .const 0 3, .const 4 4,
       .binop .sub 1 2 5, .binop .shl 2 1 6, .ternop .addmod 1 2 4 7, .unop .iszero 3 8,
-      ev .sstore #[3, 5] #[], ev .sstore #[2, 6] #[], ev .sstore #[4, 7] #[], ev .sstore #[8, 8] #[],
-      ev .stop #[] #[]],
-    control := .lastOpTerminates }]
+      ev .sstore #[3, 5] #[], ev .sstore #[2, 6] #[], ev .sstore #[4, 7] #[], ev .sstore #[8, 8] #[]],
+    control := .stop }]
 
-def fallsThrough : Program := initOnly #[{ control := .lastOpTerminates }]
+/-- Block ids are local: function 0 has one block, so block 1 is out of range even though
+function 1 has a block 1. -/
+def foreignBlock : Program :=
+  initOnly #[{ control := .continuesTo 1 }]
+    (extra := #[⟨0, .never, #[{ control := .stop }, { control := .stop }]⟩])
+
+def neverCallee (returns : ReturnKind) (callee : Control) : Program :=
+  initOnly #[{ control := .icallNever 1 #[] }] (extra := #[⟨0, returns, #[{ control := callee }]⟩])
 
 def entryReturns : Program := initOnly #[{ control := .iret }]
 
@@ -229,7 +233,10 @@ def checks : List (String × Bool) :=
     ("environment", env.1 == .selfdestruct 0xC0 && storage env ==
       ([(0, (0x0203 : Word) <<< 240), (1, 3), (2, 0x1000), (3, 0xC2), (4, 0xC0)] : List (Word × Word))),
     ("undefined variable faults", (run undefinedVar).1 == malformed (.undefinedVariable 1)),
-    ("falling through a terminating block faults", (run fallsThrough).1 == malformed (.fellThrough 0)),
+    ("blocks are local to their function", (run foreignBlock).1 == malformed (.invalidBlock 0 1)),
+    ("icall_never: the callee halts", (run (neverCallee .never .stop)).1 == .stop),
+    ("icall_never: the callee returning faults",
+      (run (neverCallee (.values 0) .iret)).1 == malformed (.neverReturned 1)),
     ("returning from an entry faults",
       (run entryReturns).1 == malformed (.returnKindMismatch 0)),
     ("missing main faults", (run loopSum .main).1 == malformed .noMain) ]

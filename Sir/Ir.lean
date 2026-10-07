@@ -1,7 +1,9 @@
 import Sir.Word
 
-/-! The SIR AST, mirroring plankc's `sir-data` (`EthIRProgram`) minus static allocation and
-`freeptr`. Blocks and functions live in program-wide arrays indexed by their ids, as in plankc. -/
+/-! The SIR AST: plankc's `sir-data` (`EthIRProgram`) minus static allocation and `freeptr`, with
+two structural changes. Each function owns its blocks, so a jump can only target a block of the
+same function. Halting is a block's `Control`, so a block cannot halt mid-way or fall off its
+end. -/
 
 namespace Sir
 
@@ -54,8 +56,8 @@ inductive TernOp
   | addmod | mulmod
   deriving DecidableEq, Repr
 
-/-- The remaining operations plankc lowers to a single EVM opcode (`as_literal_evm_op`): those
-touching memory, the environment or the host. Operands are in EVM stack order: the first input
+/-- The remaining non-halting operations plankc lowers to a single EVM opcode
+(`as_literal_evm_op`): those touching memory, the environment or the host. Operands are in EVM stack order: the first input
 is the top of the stack. -/
 inductive EvmOp
   | keccak256
@@ -68,7 +70,6 @@ inductive EvmOp
   | mcopy
   | log0 | log1 | log2 | log3 | log4
   | create | create2 | call | callcode | delegatecall | staticcall
-  | «return» | stop | revert | invalid | selfdestruct
   deriving DecidableEq, Repr
 
 inductive Operation
@@ -86,19 +87,24 @@ inductive Operation
   | dataOffset (data : DataId) (out : VarId)
   | noop
   | icall (function : FunctionId) (ins outs : Array VarId)
-  | icallNever (function : FunctionId) (ins : Array VarId)
   | runtimeStartOffset (out : VarId)
   | initEndOffset (out : VarId)
   | runtimeLength (out : VarId)
   | getImmutable (immutable : ImmutableId) (out : VarId)
   | setImmutable (immutable : ImmutableId) (runtimePtr value : VarId)
 
+/-- How a block ends. Block ids are local to the enclosing function. -/
 inductive Control
-  | lastOpTerminates
   | iret
   | continuesTo (target : BlockId)
   | branches (condition : VarId) (nonZero zero : BlockId)
   | switch (condition : VarId) (cases : Array (Word × BlockId)) (fallback : Option BlockId)
+  | stop
+  | «return» (offset length : VarId)
+  | revert (offset length : VarId)
+  | invalid
+  | selfdestruct (beneficiary : VarId)
+  | icallNever (function : FunctionId) (ins : Array VarId)
 
 structure Block where
   inputs : Array VarId := #[]
@@ -113,12 +119,12 @@ inductive ReturnKind
 structure Function where
   entry : BlockId
   returns : ReturnKind
+  blocks : Array Block
 
 structure Program where
   init : FunctionId
   main : Option FunctionId
   functions : Array Function
-  blocks : Array Block
   data : Array ByteArray := #[]
   immutables : Array ByteSize := #[]
 

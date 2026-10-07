@@ -13,12 +13,11 @@ namespace Sir
 inductive Malformed
   | undefinedVariable (var : VarId)
   | invalidFunction (function : FunctionId)
-  | invalidBlock (block : BlockId)
+  | invalidBlock (function : FunctionId) (block : BlockId)
   | invalidData (data : DataId)
   | invalidImmutable (immutable : ImmutableId)
   | arity (expected actual : Nat)
   | badOperands (op : EvmOp) (count : Nat)
-  | fellThrough (block : BlockId)
   | returnKindMismatch (function : FunctionId)
   | neverReturned (function : FunctionId)
   | entryReturned
