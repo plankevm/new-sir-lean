@@ -75,33 +75,39 @@ def halt {α : Type} (op : HostOp) (h : HostOp.Resp op = Empty) : CoFree EvalE �
   let e ← host op
   Empty.elim (h ▸ e)
 
+def UnOp.eval : UnOp → Word → Word
+  | .iszero, a => Word.iszero a
+  | .not, a => ~~~a
+  | .clz, a => Word.clz a
+
+def BinOp.eval : BinOp → Word → Word → Word
+  | .add, a, b => a + b
+  | .mul, a, b => a * b
+  | .sub, a, b => a - b
+  | .div, a, b => Word.div a b
+  | .sdiv, a, b => Word.sdiv a b
+  | .mod, a, b => Word.mod a b
+  | .smod, a, b => Word.smod a b
+  | .exp, a, b => Word.exp a b
+  | .signextend, b, x => Word.signextend b x
+  | .lt, a, b => Word.lt a b
+  | .gt, a, b => Word.gt a b
+  | .slt, a, b => Word.slt a b
+  | .sgt, a, b => Word.sgt a b
+  | .eq, a, b => Word.eq a b
+  | .and, a, b => a &&& b
+  | .or, a, b => a ||| b
+  | .xor, a, b => a ^^^ b
+  | .byte, i, x => Word.byte i x
+  | .shl, s, x => Word.shl s x
+  | .shr, s, x => Word.shr s x
+  | .sar, s, x => Word.sar s x
+
+def TernOp.eval : TernOp → Word → Word → Word → Word
+  | .addmod, a, b, n => Word.addmod a b n
+  | .mulmod, a, b, n => Word.mulmod a b n
+
 def execEvm : EvmOp → List Word → CoFree EvalE (List Word)
-  | .add, [a, b] => pure [a + b]
-  | .mul, [a, b] => pure [a * b]
-  | .sub, [a, b] => pure [a - b]
-  | .div, [a, b] => pure [Word.div a b]
-  | .sdiv, [a, b] => pure [Word.sdiv a b]
-  | .mod, [a, b] => pure [Word.mod a b]
-  | .smod, [a, b] => pure [Word.smod a b]
-  | .addmod, [a, b, n] => pure [Word.addmod a b n]
-  | .mulmod, [a, b, n] => pure [Word.mulmod a b n]
-  | .exp, [a, b] => pure [Word.exp a b]
-  | .signextend, [b, x] => pure [Word.signextend b x]
-  | .lt, [a, b] => pure [Word.lt a b]
-  | .gt, [a, b] => pure [Word.gt a b]
-  | .slt, [a, b] => pure [Word.slt a b]
-  | .sgt, [a, b] => pure [Word.sgt a b]
-  | .eq, [a, b] => pure [Word.eq a b]
-  | .iszero, [a] => pure [Word.iszero a]
-  | .and, [a, b] => pure [a &&& b]
-  | .or, [a, b] => pure [a ||| b]
-  | .xor, [a, b] => pure [a ^^^ b]
-  | .not, [a] => pure [~~~a]
-  | .byte, [i, x] => pure [Word.byte i x]
-  | .shl, [s, x] => pure [Word.shl s x]
-  | .shr, [s, x] => pure [Word.shr s x]
-  | .sar, [s, x] => pure [Word.sar s x]
-  | .clz, [x] => pure [Word.clz x]
   | .keccak256, [off, len] => do pure [Word.keccak256 (← read off len)]
   | .address, [] => do pure [← query .address]
   | .balance, [a] => do pure [← query (.balance a)]
@@ -159,6 +165,10 @@ def execEvm : EvmOp → List Word → CoFree EvalE (List Word)
 
 def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals) :
     Operation → CoFree EvalE Locals
+  | .unop op a out => do pure (l.insert out (op.eval (← lookup l a)))
+  | .binop op a b out => do pure (l.insert out (op.eval (← lookup l a) (← lookup l b)))
+  | .ternop op a b c out => do
+    pure (l.insert out (op.eval (← lookup l a) (← lookup l b) (← lookup l c)))
   | .evm op ins outs => do assignAll l outs (← execEvm op (← lookupAll l ins))
   | .malloc size out => do pure (l.insert out (← mem (.alloc true (← lookup l size).toNat)))
   | .mallocany size out => do pure (l.insert out (← mem (.alloc false (← lookup l size).toNat)))

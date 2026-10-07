@@ -17,9 +17,9 @@ below.
 |---|---|
 | `Sir/Word.lean` | `Word := BitVec 256`, pure EVM arithmetic (`Word.div`, `sdiv`, `signextend`, `byte`, `sar`, `clz`, …), big-endian byte conversion, `ByteArray.slicePad`. |
 | `Sir/Keccak.lean` | Keccak-256 in pure Lean, `Word.keccak256`. |
-| `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `EvmOp`), `Immutables`, `Entry`, `Layout`, `Layout.Consistent`. |
+| `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `UnOp`, `BinOp`, `TernOp`, `EvmOp`), `Immutables`, `Entry`, `Layout`, `Layout.Consistent`. |
 | `Sir/Effect.lean` | Effects: `Mem`, `Host`, `SirE := Mem ⊕ₑ Host`; `Fault` (`Malformed`, `UB`), `Query`, `CallKind`, `Placement`. |
-| `Sir/Eval.lean` | Evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
+| `Sir/Eval.lean` | `UnOp.eval`, `BinOp.eval`, `TernOp.eval`; evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
 | `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Host Empty`. |
 | `Sir/Memory/Proofs.lean` | `placeable_iff`: the allocation check is exact. |
 | `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, axiom audit. |
@@ -32,9 +32,23 @@ and a `ReturnKind` (`never` or `values n`). A `Block` has `inputs`, `outputs`, `
 `Control`: `lastOpTerminates`, `iret`, `continuesTo`, `branches cond nonZero zero`, or
 `switch cond cases fallback?`. Locals (`VarId`) hold `Word`s.
 
-`Operation` has one constructor per non-EVM plankc operation, plus `evm op ins outs` for every
-operation plankc lowers to one EVM opcode (`EvmOp`). EVM operands are in stack order: the first
-input is the top of the stack (`emit_simple_operation` pushes inputs in reverse).
+`Operation` has one constructor per non-EVM plankc operation. Operations plankc lowers to one
+EVM opcode come in two forms:
+
+- Pure word operations (words in, one word out, no memory, environment or host access) have
+  exact arity: `unop (op : UnOp) a out`, `binop (op : BinOp) a b out`,
+  `ternop (op : TernOp) a b c out`. Their meaning is the pure total `UnOp.eval`, `BinOp.eval`,
+  `TernOp.eval`, and executing one only binds `out`.
+  - `UnOp`: `iszero` `not` `clz`
+  - `BinOp`: `add` `mul` `sub` `div` `sdiv` `mod` `smod` `exp` `signextend` `lt` `gt` `slt`
+    `sgt` `eq` `and` `or` `xor` `byte` `shl` `shr` `sar`
+  - `TernOp`: `addmod` `mulmod`
+- Every other such operation is `evm (op : EvmOp) ins outs` with operand arrays.
+
+Operands are in EVM stack order, as in plankc's `ins`: the first input is the top of the stack
+(`emit_simple_operation` pushes inputs in reverse). So `binop .sub a b` is `a - b`,
+`binop .shl s x` is `x << s`, `binop .byte i x` and `binop .signextend b x` take the index
+first, and `ternop .addmod a b n` is `(a + b) % n`.
 
 ## Effects
 
@@ -151,8 +165,8 @@ from that point. The split exists for the well-formedness theorem below.
 | `invalidBlock b` | malformed | jump to / entry block is a nonexistent block | block ids in range |
 | `invalidData d` | malformed | `data_offset` of a nonexistent segment | data ids in range |
 | `invalidImmutable i` | malformed | `get`/`setimmutable` of a nonexistent immutable | immutable ids in range |
-| `arity expected actual` | malformed | input/output count mismatch at a jump, a call or a call's results | arities agree |
-| `badOperands op n` | malformed | EVM op with the wrong number of inputs or outputs | per-op arity |
+| `arity expected actual` | malformed | input/output count mismatch at a jump, a call, a call's results or an `evm` op's outputs | arities agree |
+| `badOperands op n` | malformed | `evm` op with the wrong number of inputs | per-op arity (`unop`/`binop`/`ternop` have exact arity and cannot reach this) |
 | `fellThrough b` | malformed | end of a `lastOpTerminates` block reached | its last op terminates (halting EVM op or `icall_never`) |
 | `returnKindMismatch f` | malformed | `iret` in a `never` function, or with the wrong count | `iret` only in `values n` functions, with `n` outputs |
 | `neverReturned f` | malformed | the callee of `icall_never` returned | `icall_never` targets `never` functions |
@@ -199,8 +213,10 @@ terminating last ops, and entry-restricted ops reachable only from their entry.
 
 | plankc `OperationKind` | Status |
 |---|---|
-| `Add` `Mul` `Sub` `Div` `SDiv` `Mod` `SMod` `AddMod` `MulMod` `Exp` `SignExtend` | modeled: `evm`, pure |
-| `Lt` `Gt` `SLt` `SGt` `Eq` `IsZero` `And` `Or` `Xor` `Not` `Byte` `Shl` `Shr` `Sar` `Clz` | modeled: `evm`, pure |
+| `IsZero` `Not` `Clz` | modeled: `unop`, pure |
+| `Add` `Mul` `Sub` `Div` `SDiv` `Mod` `SMod` `Exp` `SignExtend` | modeled: `binop`, pure |
+| `Lt` `Gt` `SLt` `SGt` `Eq` `And` `Or` `Xor` `Byte` `Shl` `Shr` `Sar` | modeled: `binop`, pure |
+| `AddMod` `MulMod` | modeled: `ternop`, pure |
 | `Keccak256` | modeled: `evm`, memory read + pure Keccak |
 | `Address` `Balance` `Origin` `Caller` `CallValue` `GasPrice` `ExtCodeHash` `Gas` | modeled: `evm`, host query |
 | `CallDataLoad` `CallDataSize` `CallDataCopy` | modeled: `evm`, host `calldata` |

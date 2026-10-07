@@ -21,7 +21,7 @@ def initOnly (blocks : Array Block) (extra : Array Function := #[]) : Program wh
 def loopSum : Program := initOnly #[
   { ops := #[.const 0 1, .const 0 2], outputs := #[1, 2], control := .continuesTo 1 },
   { inputs := #[3, 4],
-    ops := #[ev .add #[4, 3] #[5], .const 1 6, ev .add #[3, 6] #[7], .const 10 8, ev .lt #[7, 8] #[9]],
+    ops := #[.binop .add 4 3 5, .const 1 6, .binop .add 3 6 7, .const 10 8, .binop .lt 7 8 9],
     outputs := #[7, 5], control := .branches 9 1 2 },
   { inputs := #[10, 11], ops := #[.const 0 12, ev .sstore #[12, 11] #[], ev .stop #[] #[]],
     control := .lastOpTerminates }]
@@ -29,16 +29,16 @@ def loopSum : Program := initOnly #[
 /-- An internal call returning two values, whose results are returned as ABI words. -/
 def internalCall : Program := initOnly (extra := #[⟨1, .values 2⟩]) #[
   { ops := #[.const 3 1, .const 4 2, .icall 1 #[1, 2] #[3, 4], .const 64 5, .malloc 5 6,
-      .mstore b32 6 3, .const 32 7, ev .add #[6, 7] #[8], .mstore b32 8 4, ev .return #[6, 5] #[]],
+      .mstore b32 6 3, .const 32 7, .binop .add 6 7 8, .mstore b32 8 4, ev .return #[6, 5] #[]],
     control := .lastOpTerminates },
-  { inputs := #[20, 21], ops := #[ev .add #[20, 21] #[22], ev .mul #[20, 21] #[23]],
+  { inputs := #[20, 21], ops := #[.binop .add 20 21 22, .binop .mul 20 21 23],
     outputs := #[22, 23], control := .iret }]
 
 def memory : Program := initOnly #[
   { ops := #[
       .const 32 1, .malloc 1 2, .const ((0xAB : Word) <<< 248) 3, .mstore b32 2 3,
       .mload b8 2 4,
-      .const 1 10, ev .add #[2, 10] #[11], .const 0xBEEF 12, .mstore b16 11 12,
+      .const 1 10, .binop .add 2 10 11, .const 0xBEEF 12, .mstore b16 11 12,
       .mload b32 2 5,
       ev .keccak256 #[2, 1] #[6],
       .const 4 13, .mallocany 1 7, ev .mcopy #[7, 2, 13] #[], .mload b32bit 7 8,
@@ -118,7 +118,7 @@ def calls : Program := initOnly #[
 /-- Allocates 4 bytes at `ptr` (var 2), sets var 14 := `ptr + 3`, var 15 := 2, then runs `ops`. -/
 def withBuffer (ops : Array Operation) : Program := initOnly #[
   { ops := #[.const 4 1, .malloc 1 2, .const 100 10, .const 0xBEEF 11, .const 0 12, .const 3 13,
-      ev .add #[2, 13] #[14], .const 2 15] ++ ops ++ #[ev .stop #[] #[]],
+      .binop .add 2 13 14, .const 2 15] ++ ops ++ #[ev .stop #[] #[]],
     control := .lastOpTerminates }]
 
 def callOutputPastAlloc : Program := withBuffer #[ev .call #[10, 11, 12, 2, 12, 14, 15] #[3]]
@@ -149,6 +149,14 @@ def environment : Program := { initOnly #[
 def undefinedVar : Program := initOnly #[
   { ops := #[ev .sstore #[1, 2] #[]], control := .lastOpTerminates }]
 
+/-- `sub`, `shl` and `addmod` take their first input as the EVM top of stack. -/
+def pureOps : Program := initOnly #[
+  { ops := #[.const 10 1, .const 3 2, .const 0 3, .const 4 4,
+      .binop .sub 1 2 5, .binop .shl 2 1 6, .ternop .addmod 1 2 4 7, .unop .iszero 3 8,
+      ev .sstore #[3, 5] #[], ev .sstore #[2, 6] #[], ev .sstore #[4, 7] #[], ev .sstore #[8, 8] #[],
+      ev .stop #[] #[]],
+    control := .lastOpTerminates }]
+
 def fallsThrough : Program := initOnly #[{ control := .lastOpTerminates }]
 
 def entryReturns : Program := initOnly #[{ control := .iret }]
@@ -173,6 +181,8 @@ def checks : List (String × Bool) :=
   let spun := run spinStoring (fuel := 1000)
   let env := run environment (world := { calldata := ⟨#[1, 2, 3]⟩ })
   [ ("loop sums 0..9", (run loopSum).1 == .stop && storage (run loopSum) == [(0, 45)]),
+    ("pure ops in stack order", (run pureOps).1 == .stop &&
+      storage (run pureOps) == [(0, 7), (3, 80), (4, 1), (1, 1)]),
     ("icall returns (7, 12)", (run internalCall).1 == .ret (wordBytes 7 ++ wordBytes 12)),
     ("UB: out-of-allocation write", mem.1 == undef (.memoryOutOfBounds 0x10 1)),
     ("memory: mload8, partial mstore16, keccak, mcopy into mallocany",

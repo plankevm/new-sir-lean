@@ -37,11 +37,27 @@ structure ByteSize where
   valid : 1 ≤ val ∧ val ≤ 32 := by decide
   deriving DecidableEq
 
-/-- The operations plankc lowers to a single EVM opcode (`as_literal_evm_op`). Operands are in
-EVM stack order: the first input is the top of the stack. -/
+/-- Pure EVM operations with one input. -/
+inductive UnOp
+  | iszero | not | clz
+  deriving DecidableEq, Repr
+
+/-- Pure EVM operations with two inputs, `a` being the top of the EVM stack: `sub a b` is
+`a - b`, `signextend b x`, `byte i x`, `shl shift x`. -/
+inductive BinOp
+  | add | mul | sub | div | sdiv | mod | smod | exp | signextend
+  | lt | gt | slt | sgt | eq | and | or | xor | byte | shl | shr | sar
+  deriving DecidableEq, Repr
+
+/-- Pure EVM operations with three inputs, `a` being the top of the EVM stack: `addmod a b n`. -/
+inductive TernOp
+  | addmod | mulmod
+  deriving DecidableEq, Repr
+
+/-- The remaining operations plankc lowers to a single EVM opcode (`as_literal_evm_op`): those
+touching memory, the environment or the host. Operands are in EVM stack order: the first input
+is the top of the stack. -/
 inductive EvmOp
-  | add | mul | sub | div | sdiv | mod | smod | addmod | mulmod | exp | signextend
-  | lt | gt | slt | sgt | eq | iszero | and | or | xor | not | byte | shl | shr | sar | clz
   | keccak256
   | address | balance | origin | caller | callvalue | calldataload | calldatasize | calldatacopy
   | codesize | codecopy | gasprice | extcodesize | extcodecopy | returndatasize | returndatacopy
@@ -56,6 +72,9 @@ inductive EvmOp
   deriving DecidableEq, Repr
 
 inductive Operation
+  | unop (op : UnOp) (a out : VarId)
+  | binop (op : BinOp) (a b out : VarId)
+  | ternop (op : TernOp) (a b c out : VarId)
   | evm (op : EvmOp) (ins outs : Array VarId)
   | malloc (size out : VarId)
   | mallocany (size out : VarId)
