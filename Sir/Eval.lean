@@ -29,17 +29,19 @@ def fault {α : Type} (f : Fault) : CoFree EvalE α := do
   let e ← host (.fault f)
   Empty.elim e
 
+def malformed {α : Type} (m : Malformed) : CoFree EvalE α := fault (.malformed m)
+
 def lookup (l : Locals) (v : VarId) : CoFree EvalE Word :=
   match l[v]? with
   | some w => pure w
-  | none => fault (.undefinedVariable v)
+  | none => malformed (.undefinedVariable v)
 
 def lookupAll (l : Locals) (vs : Array VarId) : CoFree EvalE (List Word) :=
   vs.toList.mapM (lookup l)
 
 def assignAll (l : Locals) (vs : Array VarId) (ws : List Word) : CoFree EvalE Locals :=
   if vs.size = ws.length then pure ((vs.toList.zip ws).foldl (fun l (v, w) => l.insert v w) l)
-  else fault (.arity vs.size ws.length)
+  else malformed (.arity vs.size ws.length)
 
 def read (offset length : Word) : CoFree EvalE ByteArray :=
   mem (.read offset.toNat length.toNat)
@@ -153,7 +155,7 @@ def execEvm : EvmOp → List Word → CoFree EvalE (List Word)
   | .revert, [off, len] => do halt (.revert (← read off len)) rfl
   | .invalid, [] => halt .invalid rfl
   | .selfdestruct, [a] => halt (.selfdestruct a) rfl
-  | op, args => fault (.badOperands op args.length)
+  | op, args => malformed (.badOperands op args.length)
 
 def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals) :
     Operation → CoFree EvalE Locals
@@ -169,27 +171,27 @@ def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals)
   | .const value out => pure (l.insert out value)
   | .dataOffset d out =>
     if d.id < ctx.program.data.size then pure (l.insert out (ctx.layout.dataOffset ctx.entry d))
-    else fault (.invalidData d)
+    else malformed (.invalidData d)
   | .noop => pure l
   | .icall f ins outs => do
     let rs ← call (f, (← lookupAll l ins).toArray)
     assignAll l outs rs.toList
   | .icallNever f ins => do
     let _ ← call (f, (← lookupAll l ins).toArray)
-    fault (.neverReturned f)
+    malformed (.neverReturned f)
   | .runtimeStartOffset out =>
-    if ctx.entry = .init then pure (l.insert out ctx.layout.runtimeStartOffset) else fault .wrongEntry
+    if ctx.entry = .init then pure (l.insert out ctx.layout.runtimeStartOffset) else malformed .wrongEntry
   | .initEndOffset out =>
-    if ctx.entry = .init then pure (l.insert out ctx.layout.initEndOffset) else fault .wrongEntry
+    if ctx.entry = .init then pure (l.insert out ctx.layout.initEndOffset) else malformed .wrongEntry
   | .runtimeLength out => pure (l.insert out ctx.layout.runtimeLength)
   | .getImmutable i out => do
-    unless ctx.entry = .main do fault .wrongEntry
-    let some v := ctx.immutables.values[i.id]? | fault (.invalidImmutable i)
+    unless ctx.entry = .main do malformed .wrongEntry
+    let some v := ctx.immutables.values[i.id]? | malformed (.invalidImmutable i)
     pure (l.insert out v)
   | .setImmutable i ptr value => do
-    unless ctx.entry = .init do fault .wrongEntry
-    unless ctx.program.main.isSome do fault .noMain
-    let some size := ctx.program.immutables[i.id]? | fault (.invalidImmutable i)
+    unless ctx.entry = .init do malformed .wrongEntry
+    unless ctx.program.main.isSome do malformed .noMain
+    let some size := ctx.program.immutables[i.id]? | malformed (.invalidImmutable i)
     let p ← lookup l ptr
     let bytes := Word.toBytes size.val (← lookup l value)
     for r in ctx.layout.immutableRefs i do
@@ -199,7 +201,7 @@ def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals)
 def block (ctx : Ctx) (b : BlockId) : CoFree EvalE Block :=
   match ctx.program.blocks[b.id]? with
   | some blk => pure blk
-  | none => fault (.invalidBlock b)
+  | none => malformed (.invalidBlock b)
 
 /-- Control transfer: the source block's outputs become the target block's inputs. -/
 def jump (ctx : Ctx) (l : Locals) (src : Block) (target : BlockId) :
@@ -210,7 +212,7 @@ def jump (ctx : Ctx) (l : Locals) (src : Block) (target : BlockId) :
 
 def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
   CoFree.fix fun call (f, args) => do
-    let some fn := ctx.program.functions[f.id]? | fault (.invalidFunction f)
+    let some fn := ctx.program.functions[f.id]? | malformed (.invalidFunction f)
     let l ← assignAll ∅ (← block ctx fn.entry).inputs args.toList
     CoFree.iter (fn.entry, l) fun (b, l) => do
       let blk ← block ctx b
@@ -218,12 +220,12 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
       for op in blk.ops do
         l ← execOp ctx call l op
       match blk.control with
-      | .lastOpTerminates => fault (.fellThrough b)
+      | .lastOpTerminates => malformed (.fellThrough b)
       | .iret => match fn.returns with
-        | .never => fault (.returnKindMismatch f)
+        | .never => malformed (.returnKindMismatch f)
         | .values n => do
           let rs ← lookupAll l blk.outputs
-          if rs.length = n then pure (.exit rs.toArray) else fault (.returnKindMismatch f)
+          if rs.length = n then pure (.exit rs.toArray) else malformed (.returnKindMismatch f)
       | .continuesTo t => jump ctx l blk t
       | .branches c nonZero zero => do jump ctx l blk (if (← lookup l c) ≠ 0 then nonZero else zero)
       | .switch c cases fallback => do
@@ -231,10 +233,10 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
         match cases.find? (·.1 == v), fallback with
         | some (_, t), _ => jump ctx l blk t
         | none, some t => jump ctx l blk t
-        | none, none => fault .switchNoMatch
+        | none, none => fault (.ub .switchNoMatch)
 
-def faultTop {α : Type} (f : Fault) : CoFree SirE α := do
-  let e ← perform (E := SirE) (.inr (.fault f))
+def malformedTop {α : Type} (m : Malformed) : CoFree SirE α := do
+  let e ← perform (E := SirE) (.inr (.fault (.malformed m)))
   Empty.elim e
 
 /-- An entry point runs until a terminating operation; entry functions take no inputs and
@@ -245,7 +247,7 @@ def runEntry (p : Program) (layout : Layout) (imm : Immutables p) (e : Entry) :
     | .init => some p.init
     | .main => p.main
   match f? with
-  | none => faultTop .noMain
-  | some f => (evalFunction ⟨p, layout, e, imm⟩ (f, #[])).bind fun _ => faultTop .entryReturned
+  | none => malformedTop .noMain
+  | some f => (evalFunction ⟨p, layout, e, imm⟩ (f, #[])).bind fun _ => malformedTop .entryReturned
 
 end Sir

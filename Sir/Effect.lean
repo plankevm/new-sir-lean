@@ -9,8 +9,8 @@ abstract: the EVM, the world and the bytecode an entry point runs as. -/
 
 namespace Sir
 
-/-- Why a run is stuck: the program is malformed, or it hit undefined behavior. -/
-inductive Fault
+/-- A run of a malformed program got stuck. A well-formed program never reaches any of these. -/
+inductive Malformed
   | undefinedVariable (var : VarId)
   | invalidFunction (function : FunctionId)
   | invalidBlock (block : BlockId)
@@ -24,10 +24,20 @@ inductive Fault
   | entryReturned
   | noMain
   | wrongEntry
+  deriving DecidableEq, Repr
+
+/-- Undefined behavior: well-formed programs can reach these, depending on the values they compute. -/
+inductive UB
   | switchNoMatch
   | memoryOutOfBounds (offset length : Nat)
   | uninitializedRead (offset length : Nat)
   | outOfMemory (size : Nat)
+  deriving DecidableEq, Repr
+
+/-- Why a run is stuck. -/
+inductive Fault
+  | malformed (m : Malformed)
+  | ub (u : UB)
   deriving DecidableEq, Repr
 
 /-- Word-valued reads of the environment, the world and the deployed code. -/

@@ -115,6 +115,23 @@ def calls : Program := initOnly #[
       ev .returndatacopy #[2, 13, 13] #[]],
     control := .lastOpTerminates }]
 
+/-- Allocates 4 bytes at `ptr` (var 2), sets var 14 := `ptr + 3`, var 15 := 2, then runs `ops`. -/
+def withBuffer (ops : Array Operation) : Program := initOnly #[
+  { ops := #[.const 4 1, .malloc 1 2, .const 100 10, .const 0xBEEF 11, .const 0 12, .const 3 13,
+      ev .add #[2, 13] #[14], .const 2 15] ++ ops ++ #[ev .stop #[] #[]],
+    control := .lastOpTerminates }]
+
+def callOutputPastAlloc : Program := withBuffer #[ev .call #[10, 11, 12, 2, 12, 14, 15] #[3]]
+
+def callShortOutput : Program :=
+  withBuffer #[.const 64 16, ev .call #[10, 11, 12, 2, 12, 2, 16] #[3]]
+
+def returnDataCopyPastAlloc : Program :=
+  withBuffer #[ev .call #[10, 11, 12, 2, 12, 2, 12] #[3], ev .returndatacopy #[14, 12, 15] #[]]
+
+def returnDataCopyPastBoth : Program :=
+  withBuffer #[ev .call #[10, 11, 12, 2, 12, 2, 12] #[3], ev .returndatacopy #[14, 15, 15] #[]]
+
 def switchOn (v : Word) : Program := initOnly #[
   { ops := #[.const v 1], control := .switch 1 #[(1, 1), (7, 2)] none },
   { ops := #[.const 1 2, ev .sstore #[2, 2] #[], ev .stop #[] #[]], control := .lastOpTerminates },
@@ -136,9 +153,15 @@ def fallsThrough : Program := initOnly #[{ control := .lastOpTerminates }]
 
 def entryReturns : Program := initOnly #[{ control := .iret }]
 
+def undef (u : UB) : Outcome := .fault (.ub u)
+
+def malformed (m : Malformed) : Outcome := .fault (.malformed m)
+
 def run (p : Program) (e : Entry := .init) (world : World := {}) (layout : Layout := noLayout)
     (imm : Array Word := #[]) (fuel : Nat := 100000) : Outcome × World :=
   runWith world p layout (.ofWords p imm) e fuel
+
+def runOut (p : Program) : Outcome × World := run p (world := { callResult := (true, ⟨#[1, 2, 3]⟩) })
 
 def storage (r : Outcome × World) : List (Word × Word) := r.2.storage.reverse
 
@@ -151,19 +174,19 @@ def checks : List (String × Bool) :=
   let env := run environment (world := { calldata := ⟨#[1, 2, 3]⟩ })
   [ ("loop sums 0..9", (run loopSum).1 == .stop && storage (run loopSum) == [(0, 45)]),
     ("icall returns (7, 12)", (run internalCall).1 == .ret (wordBytes 7 ++ wordBytes 12)),
-    ("UB: out-of-allocation write", mem.1 == .fault (.memoryOutOfBounds 0x10 1)),
+    ("UB: out-of-allocation write", mem.1 == undef (.memoryOutOfBounds 0x10 1)),
     ("memory: mload8, partial mstore16, keccak, mcopy into mallocany",
       storage mem == ([(0, 0xAB), (1, (0xABBEEF : Word) <<< 232),
        (2, 0x3e889ef1ce94d5e823a41b0e65c5e971dcd08e9d92a3dff1038a5eeefc54f39d),
        (3, 0xABBEEF00)] : List (Word × Word))),
-    ("UB: out-of-allocation read", (run oobRead).1 == .fault (.memoryOutOfBounds 0x80 32)),
+    ("UB: out-of-allocation read", (run oobRead).1 == undef (.memoryOutOfBounds 0x80 32)),
     ("UB: reading an unwritten mallocany byte",
-      (run uninitRead).1 == .fault (.uninitializedRead 0x80 2) && storage (run uninitRead) == [(0, 0xFF)]),
+      (run uninitRead).1 == undef (.uninitializedRead 0x80 2) && storage (run uninitRead) == [(0, 0xFF)]),
     ("UB: mcopy keeps bytes unwritten, reading the copy is UB",
-      (run uninitCopy).1 == .fault (.uninitializedRead 0xA0 1) && storage (run uninitCopy) == [(0, 0)]),
-    ("UB: returning unwritten bytes", (run uninitReturn).1 == .fault (.uninitializedRead 0x80 4)),
+      (run uninitCopy).1 == undef (.uninitializedRead 0xA0 1) && storage (run uninitCopy) == [(0, 0)]),
+    ("UB: returning unwritten bytes", (run uninitReturn).1 == undef (.uninitializedRead 0x80 4)),
     ("UB: no placement for an allocation",
-      (run outOfMemory).1 == .fault (.outOfMemory (2 ^ 256 - 1))),
+      (run outOfMemory).1 == undef (.outOfMemory (2 ^ 256 - 1))),
     ("memory: log2", mem.2.logs.toList == [([0, 1], [0xAB, 0xBE, 0xEF, 0])]),
     ("revert with data", (run revert).1 == .revert [0xDE, 0xAD]),
     ("divergence: out of fuel", (run spin (fuel := 1000)).1 == .outOfFuel),
@@ -172,26 +195,34 @@ def checks : List (String × Bool) :=
     ("setimmutable patches every placeholder",
       (run immutables (layout := immLayout [1, 5])).1 == .ret [0, 0xAB, 0xCD, 0, 0, 0xAB, 0xCD, 0]),
     ("setimmutable outside the runtime copy is UB",
-      (run immutables (layout := immLayout [7])).1 == .fault (.memoryOutOfBounds 0x87 2)),
+      (run immutables (layout := immLayout [7])).1 == undef (.memoryOutOfBounds 0x87 2)),
     ("getimmutable: the run's fixed value, the same on every read, without host queries",
       let r := run immutables .main (imm := #[0x2345])
       r.1 == .stop && storage r == [(0, 0x2345), (1, 0x2345)] && r.2.queries == 0),
     ("Immutables.ofWords keeps the low size bytes",
       (Immutables.ofWords immutables #[0x12345]).values == #[0x2345]),
-    ("getimmutable in init faults", (run getImmutableInInit).1 == .fault .wrongEntry),
+    ("getimmutable in init faults", (run getImmutableInInit).1 == malformed .wrongEntry),
     ("call: success, returndatasize, truncated return copy",
       storage call == [(0, 1), (1, 3), (2, 0x0102)]),
     ("call: request", call.2.calls.toList == [(.call 0, 0xBEEF, [])]),
     ("returndatacopy out of bounds is invalid", call.1 == .invalid),
+    ("UB: call output written past the allocation",
+      (runOut callOutputPastAlloc).1 == undef (.memoryOutOfBounds 0x83 2)),
+    ("call writes only the bytes returned, not the whole requested range",
+      (runOut callShortOutput).1 == .stop),
+    ("UB: returndatacopy destination past the allocation",
+      (runOut returnDataCopyPastAlloc).1 == undef (.memoryOutOfBounds 0x83 2)),
+    ("returndatacopy source past the return data is invalid even if the destination is too",
+      (runOut returnDataCopyPastBoth).1 == .invalid),
     ("switch takes the matching case", storage (run (switchOn 7)) == [(2, 2)]),
-    ("switch without match or fallback faults", (run (switchOn 9)).1 == .fault .switchNoMatch),
+    ("switch without match or fallback faults", (run (switchOn 9)).1 == undef .switchNoMatch),
     ("environment", env.1 == .selfdestruct 0xC0 && storage env ==
       ([(0, (0x0203 : Word) <<< 240), (1, 3), (2, 0x1000), (3, 0xC2), (4, 0xC0)] : List (Word × Word))),
-    ("undefined variable faults", (run undefinedVar).1 == .fault (.undefinedVariable 1)),
-    ("falling through a terminating block faults", (run fallsThrough).1 == .fault (.fellThrough 0)),
+    ("undefined variable faults", (run undefinedVar).1 == malformed (.undefinedVariable 1)),
+    ("falling through a terminating block faults", (run fallsThrough).1 == malformed (.fellThrough 0)),
     ("returning from an entry faults",
-      (run entryReturns).1 == .fault (.returnKindMismatch 0)),
-    ("missing main faults", (run loopSum .main).1 == .fault .noMain) ]
+      (run entryReturns).1 == malformed (.returnKindMismatch 0)),
+    ("missing main faults", (run loopSum .main).1 == malformed .noMain) ]
 
 #eval show IO Unit from do
   let failed := checks.filter (!·.2)

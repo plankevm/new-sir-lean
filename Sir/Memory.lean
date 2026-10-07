@@ -48,8 +48,8 @@ candidates fits, no placement exists. -/
 def placeable (live : List (Nat × Nat)) (size : Nat) : Bool :=
   (0 :: live.map fun a => a.1 + a.2).any fun s => decide (Placement live size s)
 
-def ub {α : Type} (f : Fault) : CoFree Host α := do
-  let e ← perform (E := Host) (.fault f)
+def ub {α : Type} (u : UB) : CoFree Host α := do
+  let e ← perform (E := Host) (.fault (.ub u))
   Empty.elim e
 
 def handleMem : FrameMem → (op : SirE.Op) → CoFree Host (FrameMem × SirE.Resp op)
