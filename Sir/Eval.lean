@@ -159,37 +159,33 @@ def execEvm : EvmOp → List Word → CoFree EvalE (List Word)
   | op, args => malformed (.badOperands op args.length)
 
 def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals) :
-    Operation → CoFree EvalE Locals
-  | .unop op a out => do return (l.insert out (op.eval (← lookup l a)))
-  | .binop op a b out => do pure (l.insert out (op.eval (← lookup l a) (← lookup l b)))
-  | .ternop op a b c out => do
-    pure (l.insert out (op.eval (← lookup l a) (← lookup l b) (← lookup l c)))
-  | .evm op ins outs => do assignAll l outs (← execEvm op (← lookupAll l ins))
-  | .malloc size out => do pure (l.insert out (← mem (.alloc true (← lookup l size).toNat)))
-  | .mallocany size out => do pure (l.insert out (← mem (.alloc false (← lookup l size).toNat)))
-  | .mload size ptr out => do
-    pure (l.insert out (Word.ofBytes (← mem (.read (← lookup l ptr).toNat size.val))))
+    Operation → CoFree EvalE (List Word)
+  | .unop op a _ => do pure [op.eval (← lookup l a)]
+  | .binop op a b _ => do pure [op.eval (← lookup l a) (← lookup l b)]
+  | .ternop op a b c _ => do pure [op.eval (← lookup l a) (← lookup l b) (← lookup l c)]
+  | .evm op ins _ => do execEvm op (← lookupAll l ins)
+  | .malloc size _ => do pure [← mem (.alloc true (← lookup l size).toNat)]
+  | .mallocany size _ => do pure [← mem (.alloc false (← lookup l size).toNat)]
+  | .mload size ptr _ => do pure [Word.ofBytes (← mem (.read (← lookup l ptr).toNat size.val))]
   | .mstore size ptr value => do
     write (← lookup l ptr) (Word.toBytes size.val (← lookup l value))
-    pure l
-  | .copy src out => do pure (l.insert out (← lookup l src))
-  | .const value out => pure (l.insert out value)
-  | .dataOffset d out =>
-    if d.id < ctx.program.data.size then pure (l.insert out (ctx.layout.dataOffset ctx.entry d))
+    pure []
+  | .copy src _ => do pure [← lookup l src]
+  | .const value _ => pure [value]
+  | .dataOffset d _ =>
+    if d.id < ctx.program.data.size then pure [ctx.layout.dataOffset ctx.entry d]
     else malformed (.invalidData d)
-  | .noop => pure l
-  | .icall f ins outs => do
-    let rs ← call (f, (← lookupAll l ins).toArray)
-    assignAll l outs rs.toList
-  | .runtimeStartOffset out =>
-    if ctx.entry = .init then pure (l.insert out ctx.layout.runtimeStartOffset) else malformed .wrongEntry
-  | .initEndOffset out =>
-    if ctx.entry = .init then pure (l.insert out ctx.layout.initEndOffset) else malformed .wrongEntry
-  | .runtimeLength out => pure (l.insert out ctx.layout.runtimeLength)
-  | .getImmutable i out => do
+  | .noop => pure []
+  | .icall f ins _ => do pure (← call (f, (← lookupAll l ins).toArray)).toList
+  | .runtimeStartOffset _ =>
+    if ctx.entry = .init then pure [ctx.layout.runtimeStartOffset] else malformed .wrongEntry
+  | .initEndOffset _ =>
+    if ctx.entry = .init then pure [ctx.layout.initEndOffset] else malformed .wrongEntry
+  | .runtimeLength _ => pure [ctx.layout.runtimeLength]
+  | .getImmutable i _ => do
     unless ctx.entry = .main do malformed .wrongEntry
     let some v := ctx.immutables[i]? | malformed (.invalidImmutable i)
-    pure (l.insert out v)
+    pure [v]
   | .setImmutable i ptr value => do
     unless ctx.entry = .init do malformed .wrongEntry
     unless ctx.program.main.isSome do malformed .noMain
@@ -198,7 +194,7 @@ def execOp (ctx : Ctx) (call : CallI → CoFree EvalE (Array Word)) (l : Locals)
     let bytes := Word.toBytes size.val (← lookup l value)
     for r in ctx.layout.immutableRefs i do
       mem (.write (p.toNat + r) bytes)
-    pure l
+    pure []
 
 def block (f : FunctionId) (fn : Function) (b : BlockId) : CoFree EvalE Block :=
   match fn.blocks[b.id]? with
@@ -220,7 +216,7 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
       let blk ← block f fn b
       let mut l := l
       for op in blk.ops do
-        l ← execOp ctx call l op
+        l ← assignAll l op.defs (← execOp ctx call l op)
       match blk.control with
       | .iret => match fn.returns with
         | .never => malformed (.returnKindMismatch f)

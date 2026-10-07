@@ -214,7 +214,7 @@ def checks : List (String × Bool) :=
       let r := run immutables .main (imm := #[0x2345])
       r.1 == .stop && storage r == [(0, 0x2345), (1, 0x2345)] && r.2.queries == 0),
     ("Immutables.ofWords keeps the low size bytes",
-      (Immutables.ofWords immutables #[0x12345]).values == #[0x2345]),
+      (Immutables.ofWords immutables #[0x12345])[(0 : ImmutableId)]? == some 0x2345),
     ("getimmutable in init faults", (run getImmutableInInit).1 == malformed .wrongEntry),
     ("call: success, returndatasize, truncated return copy",
       storage call == [(0, 1), (1, 3), (2, 0x0102)]),

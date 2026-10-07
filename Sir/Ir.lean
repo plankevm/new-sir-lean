@@ -87,6 +87,14 @@ inductive Operation
   | getImmutable (immutable : ImmutableId) (out : VarId)
   | setImmutable (immutable : ImmutableId) (runtimePtr value : VarId)
 
+def Operation.defs : Operation → Array VarId
+  | .unop _ _ out | .binop _ _ _ out | .ternop _ _ _ _ out => #[out]
+  | .evm _ _ outs | .icall _ _ outs => outs
+  | .malloc _ out | .mallocany _ out | .mload _ _ out | .copy _ out | .const _ out
+  | .dataOffset _ out | .runtimeStartOffset out | .initEndOffset out | .runtimeLength out
+  | .getImmutable _ out => #[out]
+  | .mstore .. | .noop | .setImmutable .. => #[]
+
 /-- How a block ends. Block ids are local to the enclosing function. -/
 inductive Control
   | iret
