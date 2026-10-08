@@ -9,21 +9,6 @@ abstract: the EVM, the world and the bytecode an entry point runs as. -/
 
 namespace Sir
 
-/-- A run of a malformed program got stuck. A well-formed program never reaches any of these. -/
-inductive Malformed
-  | undefinedVariable (var : VarId)
-  | invalidFunction (function : FunctionId)
-  | invalidBlock (function : FunctionId) (block : BlockId)
-  | invalidData (data : DataId)
-  | invalidImmutable (immutable : ImmutableId)
-  | arity (expected actual : Nat)
-  | returnKindMismatch (function : FunctionId)
-  /-- A function that must not return did: the callee of an `icallNever`, or an entry. -/
-  | neverReturned (function : FunctionId)
-  | noMain
-  | wrongEntry
-  deriving DecidableEq, Repr
-
 /-- Undefined behavior: well-formed programs can reach these, depending on the values they compute. -/
 inductive UB
   | switchNoMatch
@@ -34,7 +19,7 @@ inductive UB
 
 /-- Why a run is stuck. -/
 inductive Fault
-  | malformed (m : Malformed)
+  | malformed
   | ub (u : UB)
   deriving DecidableEq, Repr
 

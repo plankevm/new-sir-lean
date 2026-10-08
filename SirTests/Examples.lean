@@ -171,7 +171,7 @@ def entryReturnsValues : Program :=
 
 def undef (u : UB) : Outcome := .fault (.ub u)
 
-def malformed (m : Malformed) : Outcome := .fault (.malformed m)
+def malformed : Outcome := .fault .malformed
 
 def run (p : Program) (e : Entry := .init) (world : World := {}) (layout : Layout := noLayout)
     (imm : Array Word := #[]) (fuel : Nat := 100000) : Outcome × World :=
@@ -219,7 +219,7 @@ def checks : List (String × Bool) :=
       r.1 == .stop && storage r == [(0, 0x2345), (1, 0x2345)] && r.2.queries == 0),
     ("Immutables.ofWords keeps the low size bytes",
       (Immutables.ofWords immutables #[0x12345])[(0 : ImmutableId)]? == some 0x2345),
-    ("getimmutable in init faults", (run getImmutableInInit).1 == malformed .wrongEntry),
+    ("getimmutable in init faults", (run getImmutableInInit).1 == malformed),
     ("call: success, returndatasize, truncated return copy",
       storage call == [(0, 1), (1, 3), (2, 0x0102)]),
     ("call: request", call.2.calls.toList == [(.call 0, 0xBEEF, [])]),
@@ -236,16 +236,16 @@ def checks : List (String × Bool) :=
     ("switch without match or fallback faults", (run (switchOn 9)).1 == undef .switchNoMatch),
     ("environment", env.1 == .selfdestruct 0xC0 && storage env ==
       ([(0, (0x0203 : Word) <<< 240), (1, 3), (2, 0x1000), (3, 0xC2), (4, 0xC0)] : List (Word × Word))),
-    ("undefined variable faults", (run undefinedVar).1 == malformed (.undefinedVariable 1)),
-    ("blocks are local to their function", (run foreignBlock).1 == malformed (.invalidBlock 0 1)),
+    ("undefined variable faults", (run undefinedVar).1 == malformed),
+    ("blocks are local to their function", (run foreignBlock).1 == malformed),
     ("icall_never: the callee halts", (run (neverCallee .never .stop)).1 == .stop),
     ("icall_never: the callee returning faults",
-      (run (neverCallee (.values 0) .iret)).1 == malformed (.neverReturned 1)),
+      (run (neverCallee (.values 0) .iret)).1 == malformed),
     ("returning from an entry faults",
-      (run entryReturns).1 == malformed (.returnKindMismatch 0)),
+      (run entryReturns).1 == malformed),
     ("an entry function declared to return values faults when it returns",
-      (run entryReturnsValues).1 == malformed (.neverReturned 0)),
-    ("missing main faults", (run loopSum .main).1 == malformed .noMain) ]
+      (run entryReturnsValues).1 == malformed),
+    ("missing main faults", (run loopSum .main).1 == malformed) ]
 
 #eval show IO Unit from do
   let failed := checks.filter (!·.2)

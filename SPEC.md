@@ -20,7 +20,7 @@ below.
 | `Sir/Word.lean` | `Word := BitVec 256`, pure EVM arithmetic (`Word.div`, `sdiv`, `signextend`, `byte`, `sar`, `clz`, …), big-endian byte conversion, `ByteArray.slicePad`. |
 | `Sir/Keccak.lean` | Keccak-256 in pure Lean, `Word.keccak256`. |
 | `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `Expr`, `Stmt`, `Query`, `UnOp`, `BinOp`, `TernOp`, with hand-written `resolve` over operands), `Immutables`, `Entry`, `Layout`, `Layout.Consistent`. |
-| `Sir/Effect.lean` | Effects: `Mem`, `Host`, `SirE := Mem ⊕ₑ Host`; `Fault` (`Malformed`, `UB`), `CallKind`, `Placement`. |
+| `Sir/Effect.lean` | Effects: `Mem`, `Host`, `SirE := Mem ⊕ₑ Host`; `Fault` (`malformed`, `UB`), `CallKind`, `Placement`. |
 | `Sir/Eval.lean` | `UnOp.eval`, `BinOp.eval`, `TernOp.eval`, `Expr.eval`, `Stmt.exec`; evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
 | `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Host Empty`. |
 | `Sir/Memory/Proofs.lean` | `placeable_iff`: the allocation check is exact. |
@@ -141,7 +141,7 @@ handler may end the run instead of answering any operation.
 
 ## Semantics
 
-`runEntry p layout e` runs `init` or `main` (no `main` ⇒ malformed `noMain`). Internal calls are
+`runEntry p layout e` runs `init` or `main` (no `main` ⇒ malformed). Internal calls are
 `CoFree.fix` over `(FunctionId × Array Word) → Array Word`; a function body is `CoFree.iter` over
 `(BlockId × Locals)`, block ids resolved in the running function, with
 `Locals := Std.HashMap VarId Word` per activation. A block runs its operations in order, then
@@ -151,15 +151,15 @@ its control:
   `branches` takes `nonZero` iff the condition is not 0. `switch` takes the first case equal to the
   condition, else the fallback, else UB `switchNoMatch` (plankc emits UB there).
 - `iret`: returns the block's outputs; the count must match `values n`, and `never` functions
-  must not return (malformed `returnKindMismatch`). An entry function that returns (possible
-  only if it is declared `values n`) is malformed `neverReturned f`.
+  must not return (malformed). An entry function that returns (possible
+  only if it is declared `values n`) is malformed.
 - `stop`, `invalid`: the terminal host operation of the same name. `return off len` and
   `revert off len` read `len` bytes of memory at `off` (a read, see Memory) and end with
   `ret`/`revert`; `selfdestruct a` ends with `selfdestruct a`.
-- `icallNever f args`: runs `f` like `icall`; if it returns, malformed `neverReturned`.
+- `icallNever f args`: runs `f` like `icall`; if it returns, malformed.
 
 Operations (all operands of an operation are looked up before any of its effects, so an
-undefined operand faults `undefinedVariable` before anything else the operation would do):
+undefined operand faults `malformed` before anything else the operation would do):
 
 - Pure EVM operations compute in `Word`, with EVM conventions (division by zero is 0, shifts of
   256 or more saturate, `sdiv intMin (-1) = intMin`, `clz 0 = 256`).
@@ -174,8 +174,8 @@ undefined operand faults `undefinedVariable` before anything else the operation 
   only operation that can halt, and only conditionally.
 - `const`, `copy`, `noop` are local. `data_offset`, `runtime_start_offset`, `init_end_offset`,
   `runtime_length` read the `Layout` (a parameter, fixed by the compiler, not an effect);
-  `runtime_start_offset` and `init_end_offset` are malformed (`wrongEntry`) outside `init`.
-- `getimmutable i` (main only, else malformed `wrongEntry`) returns `imm.values[i]`, where
+  `runtime_start_offset` and `init_end_offset` are malformed outside `init`.
+- `getimmutable i` (main only, else malformed) returns `imm.values[i]`, where
   `imm : Immutables p` is a parameter of the run, like `Layout`: chosen once before the run
   starts, so every read in a run sees the same value, and by construction each value fits the
   immutable's declared size (`Immutables.fits`; `Immutables.ofWords` builds one by keeping low
@@ -221,40 +221,41 @@ for compiler proofs, not checked at run time.
 
 There is one mechanism: the terminal host operation `fault f`, whose response type is `Empty`,
 so no continuation exists and the run is stuck with no defined result. `f : Fault` is either
-`.malformed m` or `.ub u`:
+`.malformed` or `.ub u`:
 
 ```lean
 inductive Fault
-  | malformed (m : Malformed)   -- a well-formed program never reaches these
-  | ub (u : UB)                 -- undefined behavior, reachable by well-formed programs
+  | malformed     -- a well-formed program never reaches this
+  | ub (u : UB)   -- undefined behavior, reachable by well-formed programs
 ```
 
 A refinement statement treats a source run reaching any `fault` as allowing any target behavior
-from that point. The split exists for the well-formedness theorem below.
+from that point. The split exists for the well-formedness theorem below. `malformed` carries no
+reason: the cases below are listed only to derive `Program.WF`.
 
-| `Fault` | Kind | When | Static condition that excludes it |
+| Case | `Fault` | When | Static condition that excludes it |
 |---|---|---|---|
-| `undefinedVariable v` | malformed | a use of `v` with no value in the activation | every use is defined on every path to it |
-| `invalidFunction f` | malformed | `icall`/`icall_never`/entry to a nonexistent function | function ids in range |
-| `invalidBlock f b` | malformed | jump to / entry block is a nonexistent block of `f` | block ids in range of their function's blocks |
-| `invalidData d` | malformed | `data_offset` of a nonexistent segment | data ids in range |
-| `invalidImmutable i` | malformed | `get`/`setimmutable` of a nonexistent immutable | immutable ids in range |
-| `arity expected actual` | malformed | input/output count mismatch at a jump, an internal call's arguments or its results | arities agree (other operations have exact arity and cannot reach this) |
-| `returnKindMismatch f` | malformed | `iret` in a `never` function, or with the wrong count | `iret` only in `values n` functions, with `n` outputs |
-| `neverReturned f` | malformed | a function that must not return returned: the callee of `icall_never`, or the entry function `f` | `icall_never` targets `never` functions; `init`/`main` are `never` |
-| `noMain` | malformed | running `.main`, or `setimmutable`, without a `main` | `setimmutable` needs a `main`; the theorem only runs entries that exist |
-| `wrongEntry` | malformed | `runtime_start_offset`/`init_end_offset`/`setimmutable` reachable from `main`, `getimmutable` from `init` | these ops are only in functions reachable from the allowed entry |
+| undefined variable | `malformed` | a use of `v` with no value in the activation | every use is defined on every path to it |
+| invalid function | `malformed` | `icall`/`icall_never`/entry to a nonexistent function | function ids in range |
+| invalid block | `malformed` | jump to / entry block is a nonexistent block of `f` | block ids in range of their function's blocks |
+| invalid data | `malformed` | `data_offset` of a nonexistent segment | data ids in range |
+| invalid immutable | `malformed` | `get`/`setimmutable` of a nonexistent immutable | immutable ids in range |
+| arity | `malformed` | input/output count mismatch at a jump, an internal call's arguments or its results | arities agree (other operations have exact arity and cannot reach this) |
+| return kind mismatch | `malformed` | `iret` in a `never` function, or with the wrong count | `iret` only in `values n` functions, with `n` outputs |
+| never-returning function returned | `malformed` | a function that must not return returned: the callee of `icall_never`, or an entry function | `icall_never` targets `never` functions; `init`/`main` are `never` |
+| no `main` | `malformed` | running `.main`, or `setimmutable`, without a `main` | `setimmutable` needs a `main`; the theorem only runs entries that exist |
+| wrong entry | `malformed` | `runtime_start_offset`/`init_end_offset`/`setimmutable` reachable from `main`, `getimmutable` from `init` | these ops are only in functions reachable from the allowed entry |
 | `switchNoMatch` | UB | `switch` value matches no case, no fallback | (none: depends on the value) |
 | `memoryOutOfBounds off len` | UB | read or write of a byte outside every allocation | (none) |
 | `uninitializedRead off len` | UB | read of an unwritten `mallocany` byte | (none) |
 | `outOfMemory size` | UB | no placement exists for an allocation | (none) |
 
 Ambiguous cases, and the choice made: `switchNoMatch` is UB, not malformed, because whether a
-case matches depends on a run-time value and plankc lowers it to UB. `noMain` for `.main` is
-malformed rather than "the empty runtime" because SIR does not say what code a program without
-`main` deploys; the intended theorem excludes it by hypothesis. `neverReturned` is malformed
-because the static condition in the last column excludes it even though the callee itself may
-diverge or fault.
+case matches depends on a run-time value and plankc lowers it to UB. Running `.main` without a
+`main` is malformed rather than "the empty runtime" because SIR does not say what code a program
+without `main` deploys; the intended theorem excludes it by hypothesis. A function that must not
+return returning is malformed because the static condition in the last column excludes it even
+though the callee itself may diverge or fault.
 
 Cases removed by the structural deviations: plankc-style programs could fall off the end of a
 `LastOpTerminates` block (`fellThrough`), halt mid-block, or jump into another function's
@@ -273,7 +274,7 @@ does not depend on their values; it propagates `none`, and a later read of the c
 ```lean
 theorem wf_not_malformed (p : Program) (hp : p.WF) (layout : Layout) (imm : Immutables p)
     (e : Entry) (he : e = .init ∨ p.main.isSome) :
-    ¬ (exec p layout imm e).Reaches fun op => ∃ m, op = .fault (.malformed m)
+    ¬ (exec p layout imm e).Reaches fun op => op = .fault .malformed
 ```
 
 where `Reaches P t` (to be defined) holds if, for some sequence of host answers, `t` reaches an

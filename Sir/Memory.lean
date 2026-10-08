@@ -53,27 +53,25 @@ def ub {α : Type} (u : UB) : CoFree Host α := do
   Empty.elim e
 
 def handleMem : FrameMem → (op : SirE.Op) → CoFree Host (FrameMem × SirE.Resp op)
-  | m, .inr op => (perform (E := Host) op).bind fun r => pure (m, r)
-  | m, .inl (.alloc zeroed size) =>
-    if placeable m.live size then do
-      let ⟨start, _⟩ ← perform (E := Host) (.alloc size m.live)
-      let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
-      pure ({ m with allocs := m.allocs.push a }, BitVec.ofNat 256 start)
-    else ub (.outOfMemory size)
-  | m, .inl (.read offset length) =>
-    match m.states? offset length with
-    | none => ub (.memoryOutOfBounds offset length)
-    | some bs => match bs.mapM id with
-      | some bs => pure (m, ⟨bs⟩)
-      | none => ub (.uninitializedRead offset length)
-  | m, .inl (.write offset bytes) =>
-    if (m.states? offset bytes.size).isSome then pure (m.write offset (bytes.data.map some), ())
-    else ub (.memoryOutOfBounds offset bytes.size)
-  | m, .inl (.copy dst src length) =>
-    match m.states? src length, m.states? dst length with
-    | some bs, some _ => pure (m.write dst bs, ())
-    | none, _ => ub (.memoryOutOfBounds src length)
-    | _, none => ub (.memoryOutOfBounds dst length)
+  | m, .inr op => do
+    let r ← perform (E := Host) op
+    pure (m, r)
+  | m, .inl (.alloc zeroed size) => do
+    unless placeable m.live size do ub (.outOfMemory size)
+    let ⟨start, _⟩ ← perform (E := Host) (.alloc size m.live)
+    let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
+    pure ({ m with allocs := m.allocs.push a }, BitVec.ofNat 256 start)
+  | m, .inl (.read offset length) => do
+    let some states := m.states? offset length | ub (.memoryOutOfBounds offset length)
+    let some bs := states.mapM id | ub (.uninitializedRead offset length)
+    pure (m, ⟨bs⟩)
+  | m, .inl (.write offset bytes) => do
+    unless (m.states? offset bytes.size).isSome do ub (.memoryOutOfBounds offset bytes.size)
+    pure (m.write offset (bytes.data.map some), ())
+  | m, .inl (.copy dst src length) => do
+    let some bs := m.states? src length | ub (.memoryOutOfBounds src length)
+    unless (m.states? dst length).isSome do ub (.memoryOutOfBounds dst length)
+    pure (m.write dst bs, ())
   | m, .inl .returnData => pure (m, m.returnData)
   | m, .inl (.setReturnData bytes) => pure ({ m with returnData := bytes }, ())
 
