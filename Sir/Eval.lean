@@ -68,12 +68,14 @@ def externalCall (kind : CallKind) (gas account argsOffset argsLength retOffset 
   pure (Word.ofBool ok)
 
 def createContract (value offset length : Word) (salt : Option Word) : CoFree EvalE Word := do
-  let (account, out) : Word × ByteArray ← host (.create value salt (← read offset length))
+  let input ← read offset length
+  let (account, out) : Word × ByteArray ← host (.create value salt input)
   mem (.setReturnData out)
   pure account
 
 def log (offset length : Word) (topics : Array Word) : CoFree EvalE Unit := do
-  host (.log topics (← read offset length))
+  let data ← read offset length
+  host (.log topics data)
 
 def UnOp.eval : UnOp → Word → Word
   | .iszero, a => Word.iszero a
@@ -120,15 +122,29 @@ def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE Word
   | .blobhash i => host (.blobhash i)
   | .sload k => host (.sload k)
   | .tload k => host (.tload k)
-  | .calldataload offset => do pure (Word.ofBytes ((← host .calldata).slicePad offset.toNat 32))
-  | .calldatasize => do pure (lengthOf (← host .calldata))
-  | .codesize => do pure (lengthOf (← host .code))
-  | .extcodesize a => do pure (lengthOf (← host (.extcode a)))
-  | .returndatasize => do pure (lengthOf (← mem .returnData))
-  | .keccak256 offset length => do pure (Word.keccak256 (← read offset length))
+  | .calldataload offset => do
+    let data ← host .calldata
+    pure (Word.ofBytes (data.slicePad offset.toNat 32))
+  | .calldatasize => do
+    let data ← host .calldata
+    pure (lengthOf data)
+  | .codesize => do
+    let code ← host .code
+    pure (lengthOf code)
+  | .extcodesize a => do
+    let code ← host (.extcode a)
+    pure (lengthOf code)
+  | .returndatasize => do
+    let data ← mem .returnData
+    pure (lengthOf data)
+  | .keccak256 offset length => do
+    let data ← read offset length
+    pure (Word.keccak256 data)
   | .malloc size => mem (.alloc true size.toNat)
   | .mallocany size => mem (.alloc false size.toNat)
-  | .mload size ptr => do pure (Word.ofBytes (← mem (.read ptr.toNat size.val)))
+  | .mload size ptr => do
+    let bytes ← mem (.read ptr.toNat size.val)
+    pure (Word.ofBytes bytes)
   | .create v offset length => createContract v offset length none
   | .create2 v offset length salt => createContract v offset length (some salt)
   | .call g a v ao an ro rn => externalCall (.call v) g a ao an ro rn
@@ -151,9 +167,15 @@ def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE Unit
   | .mcopy dst src length => mem (.copy dst.toNat src.toNat length.toNat)
   | .sstore k v => host (.sstore k v)
   | .tstore k v => host (.tstore k v)
-  | .calldatacopy dst offset length => do copyIn (← host .calldata) dst offset length
-  | .codecopy dst offset length => do copyIn (← host .code) dst offset length
-  | .extcodecopy a dst offset length => do copyIn (← host (.extcode a)) dst offset length
+  | .calldatacopy dst offset length => do
+    let data ← host .calldata
+    copyIn data dst offset length
+  | .codecopy dst offset length => do
+    let code ← host .code
+    copyIn code dst offset length
+  | .extcodecopy a dst offset length => do
+    let code ← host (.extcode a)
+    copyIn code dst offset length
   | .returndatacopy dst offset length => do
     let data ← mem .returnData
     unless offset.toNat + length.toNat ≤ data.size do halt .invalid
@@ -175,11 +197,16 @@ abbrev Call := FunctionId → Array Word → CoFree EvalE (Array Word)
 
 def execOp (ctx : Ctx) (call : Call) (l : Locals) : Operation → CoFree EvalE Locals
   | .«let» x e => do
-    let w ← (← e.mapM (lookup l)).eval ctx
+    let e ← e.resolve (lookup l)
+    let w ← e.eval ctx
     pure (l.insert x w)
-  | .icall f ins outs => do assignAll l outs (← call f (← lookupAll l ins))
+  | .icall f ins outs => do
+    let args ← lookupAll l ins
+    let results ← call f args
+    assignAll l outs results
   | .stmt s => do
-    (← s.mapM (lookup l)).exec ctx
+    let s ← s.resolve (lookup l)
+    s.exec ctx
     pure l
 
 def block (f : FunctionId) (fn : Function) (b : BlockId) : CoFree EvalE Block :=
@@ -191,13 +218,15 @@ def block (f : FunctionId) (fn : Function) (b : BlockId) : CoFree EvalE Block :=
 def jumpTo (f : FunctionId) (fn : Function) (l : Locals) (src : Block) (target : BlockId) :
     CoFree EvalE (IterStep (BlockId × Locals) (Array Word)) := do
   let dst ← block f fn target
-  let l ← assignAll l dst.inputs (← lookupAll l src.outputs)
+  let values ← lookupAll l src.outputs
+  let l ← assignAll l dst.inputs values
   pure (.repeat (target, l))
 
 def execControl (call : Call) (f : FunctionId) (fn : Function) (l : Locals) (blk : Block) :
     CoFree EvalE (IterStep (BlockId × Locals) (Array Word)) := do
   let jump := jumpTo f fn l blk
-  match ← blk.control.mapM (lookup l) with
+  let control ← blk.control.resolve (lookup l)
+  match control with
   | .iret => match fn.returns with
     | .never => malformed (.returnKindMismatch f)
     | .values n => do
@@ -210,8 +239,12 @@ def execControl (call : Call) (f : FunctionId) (fn : Function) (l : Locals) (blk
     | some t => jump t
     | none => fault (.ub .switchNoMatch)
   | .stop => halt .stop
-  | .return offset length => do halt (.ret (← read offset length))
-  | .revert offset length => do halt (.revert (← read offset length))
+  | .return offset length => do
+    let data ← read offset length
+    halt (.ret data)
+  | .revert offset length => do
+    let data ← read offset length
+    halt (.revert data)
   | .invalid => halt .invalid
   | .selfdestruct a => halt (.selfdestruct a)
   | .icallNever g args => do
@@ -222,7 +255,8 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
   CoFree.fix fun callI (f, args) => do
     let call : Call := fun g args => callI (g, args)
     let some fn := ctx.program.functions[f.id]? | malformed (.invalidFunction f)
-    let l ← assignAll ∅ (← block f fn fn.entry).inputs args
+    let entry ← block f fn fn.entry
+    let l ← assignAll ∅ entry.inputs args
     CoFree.iter (fn.entry, l) fun (b, l) => do
       let blk ← block f fn b
       let mut l := l

@@ -49,17 +49,26 @@ def countQuery (v : Word) : HostM Word := do
 def answer : (op : HostOp) → HostM (HostOp.Resp op)
   | .query q => countQuery (queryAnswer q)
   | .balance _ | .extcodehash _ | .blockhash _ | .blobhash _ => countQuery 7
-  | .sload k => do countQuery ((← get).sload k)
-  | .tload k => do countQuery ((← get).tload k)
+  | .sload k => do
+    let w ← get
+    countQuery (w.sload k)
+  | .tload k => do
+    let w ← get
+    countQuery (w.tload k)
   | .sstore k v => modify fun w => { w with storage := (k, v) :: w.storage }
   | .tstore k v => modify fun w => { w with transient := (k, v) :: w.transient }
-  | .calldata => do pure (← get).calldata
-  | .code => do pure (← get).code
+  | .calldata => do
+    let w ← get
+    pure w.calldata
+  | .code => do
+    let w ← get
+    pure w.code
   | .extcode _ => pure (⟨#[1, 2, 3]⟩ : ByteArray)
   | .log topics data => modify fun w => { w with logs := w.logs.push (topics.toList, data.toList) }
   | .call kind _ account input => do
     modify fun w => { w with calls := w.calls.push (kind, account, input.toList) }
-    pure (← get).callResult
+    let w ← get
+    pure w.callResult
   | .create _ salt _ => pure ((if salt.isSome then 0xC2 else 0xC1 : Word), ByteArray.empty)
   | .alloc size live => do
     let start := live.foldl (fun s a => max s (a.1 + a.2)) 0x80

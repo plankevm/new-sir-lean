@@ -131,77 +131,78 @@ inductive Control (α : Type)
   | selfdestruct (beneficiary : α)
   | icallNever (function : FunctionId) (ins : Array α)
 
-section mapM
+section resolve
 universe u
-variable {m : Type → Type u} [Monad m] {α β : Type} (f : α → m β)
+variable {m : Type → Type u} [Monad m] (l : VarId → m Word)
 
-def Expr.mapM : Expr α → m (Expr β)
-  | .unop op a => .unop op <$> f a
-  | .binop op a b => .binop op <$> f a <*> f b
-  | .ternop op a b c => .ternop op <$> f a <*> f b <*> f c
+def Expr.resolve : Expr VarId → m (Expr Word)
+  | .unop op a => do return .unop op (← l a)
+  | .binop op a b => do return .binop op (← l a) (← l b)
+  | .ternop op a b c => do return .ternop op (← l a) (← l b) (← l c)
   | .const v => pure (.const v)
-  | .copy x => .copy <$> f x
+  | .copy x => do return .copy (← l x)
   | .query q => pure (.query q)
-  | .balance a => .balance <$> f a
-  | .extcodehash a => .extcodehash <$> f a
-  | .blockhash n => .blockhash <$> f n
-  | .blobhash i => .blobhash <$> f i
-  | .sload k => .sload <$> f k
-  | .tload k => .tload <$> f k
-  | .calldataload o => .calldataload <$> f o
+  | .balance a => do return .balance (← l a)
+  | .extcodehash a => do return .extcodehash (← l a)
+  | .blockhash n => do return .blockhash (← l n)
+  | .blobhash i => do return .blobhash (← l i)
+  | .sload k => do return .sload (← l k)
+  | .tload k => do return .tload (← l k)
+  | .calldataload o => do return .calldataload (← l o)
   | .calldatasize => pure .calldatasize
   | .codesize => pure .codesize
-  | .extcodesize a => .extcodesize <$> f a
+  | .extcodesize a => do return .extcodesize (← l a)
   | .returndatasize => pure .returndatasize
-  | .keccak256 o n => .keccak256 <$> f o <*> f n
-  | .malloc n => .malloc <$> f n
-  | .mallocany n => .mallocany <$> f n
-  | .mload size p => .mload size <$> f p
-  | .create v o n => .create <$> f v <*> f o <*> f n
-  | .create2 v o n s => .create2 <$> f v <*> f o <*> f n <*> f s
-  | .call g a v ao an ro rn => .call <$> f g <*> f a <*> f v <*> f ao <*> f an <*> f ro <*> f rn
+  | .keccak256 o n => do return .keccak256 (← l o) (← l n)
+  | .malloc n => do return .malloc (← l n)
+  | .mallocany n => do return .mallocany (← l n)
+  | .mload size p => do return .mload size (← l p)
+  | .create v o n => do return .create (← l v) (← l o) (← l n)
+  | .create2 v o n s => do return .create2 (← l v) (← l o) (← l n) (← l s)
+  | .call g a v ao an ro rn =>
+    do return .call (← l g) (← l a) (← l v) (← l ao) (← l an) (← l ro) (← l rn)
   | .callcode g a v ao an ro rn =>
-    .callcode <$> f g <*> f a <*> f v <*> f ao <*> f an <*> f ro <*> f rn
+    do return .callcode (← l g) (← l a) (← l v) (← l ao) (← l an) (← l ro) (← l rn)
   | .delegatecall g a ao an ro rn =>
-    .delegatecall <$> f g <*> f a <*> f ao <*> f an <*> f ro <*> f rn
+    do return .delegatecall (← l g) (← l a) (← l ao) (← l an) (← l ro) (← l rn)
   | .staticcall g a ao an ro rn =>
-    .staticcall <$> f g <*> f a <*> f ao <*> f an <*> f ro <*> f rn
+    do return .staticcall (← l g) (← l a) (← l ao) (← l an) (← l ro) (← l rn)
   | .dataOffset d => pure (.dataOffset d)
   | .runtimeStartOffset => pure .runtimeStartOffset
   | .initEndOffset => pure .initEndOffset
   | .runtimeLength => pure .runtimeLength
   | .getImmutable i => pure (.getImmutable i)
 
-def Stmt.mapM : Stmt α → m (Stmt β)
-  | .mstore size p v => .mstore size <$> f p <*> f v
-  | .mcopy d s n => .mcopy <$> f d <*> f s <*> f n
-  | .sstore k v => .sstore <$> f k <*> f v
-  | .tstore k v => .tstore <$> f k <*> f v
-  | .calldatacopy d o n => .calldatacopy <$> f d <*> f o <*> f n
-  | .codecopy d o n => .codecopy <$> f d <*> f o <*> f n
-  | .extcodecopy a d o n => .extcodecopy <$> f a <*> f d <*> f o <*> f n
-  | .returndatacopy d o n => .returndatacopy <$> f d <*> f o <*> f n
-  | .log0 o n => .log0 <$> f o <*> f n
-  | .log1 o n t0 => .log1 <$> f o <*> f n <*> f t0
-  | .log2 o n t0 t1 => .log2 <$> f o <*> f n <*> f t0 <*> f t1
-  | .log3 o n t0 t1 t2 => .log3 <$> f o <*> f n <*> f t0 <*> f t1 <*> f t2
-  | .log4 o n t0 t1 t2 t3 => .log4 <$> f o <*> f n <*> f t0 <*> f t1 <*> f t2 <*> f t3
-  | .setImmutable i p v => .setImmutable i <$> f p <*> f v
+def Stmt.resolve : Stmt VarId → m (Stmt Word)
+  | .mstore size p v => do return .mstore size (← l p) (← l v)
+  | .mcopy d s n => do return .mcopy (← l d) (← l s) (← l n)
+  | .sstore k v => do return .sstore (← l k) (← l v)
+  | .tstore k v => do return .tstore (← l k) (← l v)
+  | .calldatacopy d o n => do return .calldatacopy (← l d) (← l o) (← l n)
+  | .codecopy d o n => do return .codecopy (← l d) (← l o) (← l n)
+  | .extcodecopy a d o n => do return .extcodecopy (← l a) (← l d) (← l o) (← l n)
+  | .returndatacopy d o n => do return .returndatacopy (← l d) (← l o) (← l n)
+  | .log0 o n => do return .log0 (← l o) (← l n)
+  | .log1 o n t0 => do return .log1 (← l o) (← l n) (← l t0)
+  | .log2 o n t0 t1 => do return .log2 (← l o) (← l n) (← l t0) (← l t1)
+  | .log3 o n t0 t1 t2 => do return .log3 (← l o) (← l n) (← l t0) (← l t1) (← l t2)
+  | .log4 o n t0 t1 t2 t3 => do return .log4 (← l o) (← l n) (← l t0) (← l t1) (← l t2) (← l t3)
+  | .setImmutable i p v => do return .setImmutable i (← l p) (← l v)
   | .noop => pure .noop
 
-def Control.mapM : Control α → m (Control β)
+def Control.resolve : Control VarId → m (Control Word)
   | .iret => pure .iret
   | .continuesTo t => pure (.continuesTo t)
-  | .branches c nonZero zero => (.branches · nonZero zero) <$> f c
-  | .switch c cases fallback => (.switch · cases fallback) <$> f c
+  | .branches c nonZero zero => do return .branches (← l c) nonZero zero
+  | .switch c cases fallback => do return .switch (← l c) cases fallback
   | .stop => pure .stop
-  | .return o n => .return <$> f o <*> f n
-  | .revert o n => .revert <$> f o <*> f n
+  | .return o n => do return .return (← l o) (← l n)
+  | .revert o n => do return .revert (← l o) (← l n)
   | .invalid => pure .invalid
-  | .selfdestruct a => .selfdestruct <$> f a
-  | .icallNever g ins => .icallNever g <$> ins.mapM f
+  | .selfdestruct a => do return .selfdestruct (← l a)
+  | .icallNever g ins => do return .icallNever g (← ins.mapM l)
 
-end mapM
+end resolve
 
 structure Block where
   inputs : Array VarId := #[]

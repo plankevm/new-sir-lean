@@ -19,7 +19,7 @@ below.
 |---|---|
 | `Sir/Word.lean` | `Word := BitVec 256`, pure EVM arithmetic (`Word.div`, `sdiv`, `signextend`, `byte`, `sar`, `clz`, …), big-endian byte conversion, `ByteArray.slicePad`. |
 | `Sir/Keccak.lean` | Keccak-256 in pure Lean, `Word.keccak256`. |
-| `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `Expr`, `Stmt`, `Query`, `UnOp`, `BinOp`, `TernOp`, with hand-written `mapM` over operands), `Immutables`, `Entry`, `Layout`, `Layout.Consistent`. |
+| `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `Expr`, `Stmt`, `Query`, `UnOp`, `BinOp`, `TernOp`, with hand-written `resolve` over operands), `Immutables`, `Entry`, `Layout`, `Layout.Consistent`. |
 | `Sir/Effect.lean` | Effects: `Mem`, `Host`, `SirE := Mem ⊕ₑ Host`; `Fault` (`Malformed`, `UB`), `CallKind`, `Placement`. |
 | `Sir/Eval.lean` | `UnOp.eval`, `BinOp.eval`, `TernOp.eval`, `Expr.eval`, `Stmt.exec`; evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
 | `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Host Empty`. |
@@ -54,8 +54,9 @@ inductive Operation
 `Expr α` and `Stmt α` are parametric in their operands and have one constructor per plankc
 operation with exact arity (no operand arrays), except that the environment reads with no input
 and one word of output share `Expr.query (q : Query)`. `Control α` is parametric the same way.
-Each has a `mapM` over its operands; the evaluator resolves all operands of an operation once
-(`e.mapM (lookup l)`) and then evaluates an `Expr Word` / executes a `Stmt Word`.
+Each has a `resolve` that takes a variable lookup `l : VarId → m Word` and replaces every operand
+by its value, left to right; the evaluator resolves all operands of an operation once
+(`e.resolve (lookup l)`) and then evaluates an `Expr Word` / executes a `Stmt Word`.
 
 - `Expr`: pure word operations `unop (op : UnOp) a`, `binop (op : BinOp) a b`,
   `ternop (op : TernOp) a b c` (meaning: the pure total `UnOp.eval`, `BinOp.eval`,
