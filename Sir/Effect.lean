@@ -17,10 +17,9 @@ inductive Malformed
   | invalidData (data : DataId)
   | invalidImmutable (immutable : ImmutableId)
   | arity (expected actual : Nat)
-  | badOperands (op : EvmOp) (count : Nat)
   | returnKindMismatch (function : FunctionId)
+  /-- A function that must not return did: the callee of an `icallNever`, or an entry. -/
   | neverReturned (function : FunctionId)
-  | entryReturned
   | noMain
   | wrongEntry
   deriving DecidableEq, Repr
@@ -37,15 +36,6 @@ inductive UB
 inductive Fault
   | malformed (m : Malformed)
   | ub (u : UB)
-  deriving DecidableEq, Repr
-
-/-- Word-valued reads of the environment, the world and the deployed code. -/
-inductive Query
-  | address | balance (account : Word) | origin | caller | callvalue | gasprice
-  | extcodehash (account : Word) | gas
-  | blockhash (number : Word) | coinbase | timestamp | number | prevrandao | gaslimit | chainid
-  | selfbalance | basefee | blobhash (index : Word) | blobbasefee
-  | sload (key : Word) | tload (key : Word)
   deriving DecidableEq, Repr
 
 inductive CallKind
@@ -65,12 +55,18 @@ instance (live : List (Nat × Nat)) (size start : Nat) : Decidable (Placement li
 
 inductive HostOp
   | query (q : Query)
+  | balance (account : Word)
+  | extcodehash (account : Word)
+  | blockhash (number : Word)
+  | blobhash (index : Word)
+  | sload (key : Word)
+  | tload (key : Word)
   | sstore (key value : Word)
   | tstore (key value : Word)
   | calldata
   | code
   | extcode (account : Word)
-  | log (topics : List Word) (data : ByteArray)
+  | log (topics : Array Word) (data : ByteArray)
   | call (kind : CallKind) (gas account : Word) (input : ByteArray)
   | create (value : Word) (salt : Option Word) (initcode : ByteArray)
   | alloc (size : Nat) (live : List (Nat × Nat))
@@ -82,7 +78,8 @@ inductive HostOp
   | fault (fault : Fault)
 
 def HostOp.Resp : HostOp → Type
-  | .query _ => Word
+  | .query _ | .balance _ | .extcodehash _ | .blockhash _ | .blobhash _ => Word
+  | .sload _ | .tload _ => Word
   | .sstore .. => Unit
   | .tstore .. => Unit
   | .calldata => ByteArray

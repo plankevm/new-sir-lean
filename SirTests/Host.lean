@@ -35,25 +35,28 @@ def World.tload (w : World) (k : Word) : Word := ((w.transient.find? (·.1 == k)
 
 abbrev HostM := ExceptT Outcome (StateM World)
 
-def queryAnswer (w : World) : Query → Word
-  | .sload k => w.sload k
-  | .tload k => w.tload k
+def queryAnswer : Query → Word
   | .address => 0xA0
   | .caller => 0xC0
   | .gas => 1000000
   | .chainid => 1
   | _ => 7
 
+def countQuery (v : Word) : HostM Word := do
+  modify fun w => { w with queries := w.queries + 1 }
+  pure v
+
 def answer : (op : HostOp) → HostM (HostOp.Resp op)
-  | .query q => do
-    modify fun w => { w with queries := w.queries + 1 }
-    pure (queryAnswer (← get) q)
+  | .query q => countQuery (queryAnswer q)
+  | .balance _ | .extcodehash _ | .blockhash _ | .blobhash _ => countQuery 7
+  | .sload k => do countQuery ((← get).sload k)
+  | .tload k => do countQuery ((← get).tload k)
   | .sstore k v => modify fun w => { w with storage := (k, v) :: w.storage }
   | .tstore k v => modify fun w => { w with transient := (k, v) :: w.transient }
   | .calldata => do pure (← get).calldata
   | .code => do pure (← get).code
   | .extcode _ => pure (⟨#[1, 2, 3]⟩ : ByteArray)
-  | .log topics data => modify fun w => { w with logs := w.logs.push (topics, data.toList) }
+  | .log topics data => modify fun w => { w with logs := w.logs.push (topics.toList, data.toList) }
   | .call kind _ account input => do
     modify fun w => { w with calls := w.calls.push (kind, account, input.toList) }
     pure (← get).callResult
