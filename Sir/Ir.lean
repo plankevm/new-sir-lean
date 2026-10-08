@@ -133,9 +133,9 @@ inductive Control (α : Type)
 
 section resolve
 universe u
-variable {m : Type → Type u} [Monad m] (l : VarId → m Word)
+variable {m : Type → Type u} [Monad m]
 
-def Expr.resolve : Expr VarId → m (Expr Word)
+def Expr.resolve (l : VarId → m Word) : Expr VarId → m (Expr Word)
   | .unop op a => do return .unop op (← l a)
   | .binop op a b => do return .binop op (← l a) (← l b)
   | .ternop op a b c => do return .ternop op (← l a) (← l b) (← l c)
@@ -173,7 +173,7 @@ def Expr.resolve : Expr VarId → m (Expr Word)
   | .runtimeLength => pure .runtimeLength
   | .getImmutable i => pure (.getImmutable i)
 
-def Stmt.resolve : Stmt VarId → m (Stmt Word)
+def Stmt.resolve (l : VarId → m Word) : Stmt VarId → m (Stmt Word)
   | .mstore size p v => do return .mstore size (← l p) (← l v)
   | .mcopy d s n => do return .mcopy (← l d) (← l s) (← l n)
   | .sstore k v => do return .sstore (← l k) (← l v)
@@ -190,7 +190,7 @@ def Stmt.resolve : Stmt VarId → m (Stmt Word)
   | .setImmutable i p v => do return .setImmutable i (← l p) (← l v)
   | .noop => pure .noop
 
-def Control.resolve : Control VarId → m (Control Word)
+def Control.resolve (l : VarId → m Word) : Control VarId → m (Control Word)
   | .iret => pure .iret
   | .continuesTo t => pure (.continuesTo t)
   | .branches c nonZero zero => do return .branches (← l c) nonZero zero
