@@ -24,7 +24,8 @@ below.
 | `Sir/Eval.lean` | `UnOp.eval`, `BinOp.eval`, `TernOp.eval`, `Expr.eval`, `Stmt.exec`; evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
 | `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Host Empty`. |
 | `Sir/Memory/Proofs.lean` | `placeable_iff`: the allocation check is exact. |
-| `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, axiom audit. |
+| `Sir/Same.lean`, `Sir/Same/Proofs.lean` | `Same RR t₁ t₂` and `Deterministic t` on `exec` runs (see "Equivalence of runs"), and their lemmas. |
+| `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, `Same` proofs on example programs (`kernel_rfl` computes runs in the kernel), axiom audit. |
 
 ## AST
 
@@ -230,8 +231,9 @@ inductive Fault
   | ub (u : UB)   -- undefined behavior, reachable by well-formed programs
 ```
 
-A refinement statement treats a source run reaching any `fault` as allowing any target behavior
-from that point. The split exists for the well-formedness theorem below. `malformed` carries no
+`Same` (below) relates undefined behavior only to undefined behavior, of any kind, and treats
+`malformed` as an ordinary visible operation. The split exists for the well-formedness theorem
+below. `malformed` carries no
 reason: the cases below are listed only to derive `Program.WF`.
 
 | Case | `Fault` | When | Static condition that excludes it |
@@ -332,6 +334,23 @@ constructors; `LastOpTerminates` is replaced by the terminator constructors (see
 from plankc"). Program parts: functions with `ReturnKind`, blocks (owned by functions), data
 segments, immutables: all modeled.
 
+## Equivalence of runs
+
+`CoFree.Same hidden ub RR` (in `ITree/Same.lean`) is a weak bisimulation, the greatest fixed
+point of a one-step relation `SameF` with cases: both sides take a silent step (`R` must hold
+for every pair of successors); both perform the same visible operation (`R` for every answer);
+both return (`RR`); both perform an operation satisfying `ub`; and, inductively, one side alone
+takes a silent step (for every successor), so only finitely many in a row and divergence is
+preserved. A silent step is a `silent` node or an operation satisfying `hidden` that has at least
+one answer. `Eutt RR` is the case with no hidden operations and no `ub`.
+
+`Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Host _`, `Mem` already handled):
+`hidden` is `alloc`, so every allocation is a silent step answered with every valid placement
+(`HostOp.Resp (.alloc size live)` contains only valid ones), independently on each side; `ub`
+is `fault (.ub _)`. `Same` is a partial equivalence (symmetric and transitive), not an
+equivalence: a run whose visible behavior depends on a placement (e.g. it stores a pointer) is
+not related to itself. `Deterministic t := Same Eq t t` says that a run doesn't depend on placements.
+
 ## Gates (`lake build`)
 
 - `SirTests.Ops`: pure operations and Keccak-256 (vectors including one- and two-block inputs).
@@ -346,5 +365,8 @@ segments, immutables: all modeled.
   allocation; and the defined cases: a call writing only its returned bytes of a larger `retLen`,
   `returndatacopy` source past the return data is `invalid` even with an out-of-bounds
   destination).
-- `SirTests.Audit`: every `Sir` declaration uses only `propext`, `Quot.sound`,
-  `Classical.choice` (no `sorry`).
+- `SirTests.Same`: proved `Same`/not `Same` on example programs: allocations of different
+  sizes, or on one side only, with the pointer unused; an extra jump; two kinds of UB; different
+  stores; UB against `stop`; a program storing its pointer is not `Deterministic`.
+- `SirTests.Audit`: every declaration of `Sir` and `SirTests.Same` uses only `propext`,
+  `Quot.sound`, `Classical.choice` (no `sorry`). `ITreeTests.Audit` does the same for `ITree`.
