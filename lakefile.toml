@@ -8,7 +8,7 @@ warningAsError = true
 
 [[require]]
 name = "itree"
-git = "git@github.com:Philogy/itree.git"
+git = "https://github.com/Philogy/itree.git"
 rev = "93dcc9e87a68927ee11c3f41982aa665b85059ae"
 
 [[lean_lib]]
