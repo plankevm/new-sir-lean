@@ -144,8 +144,9 @@ handler may end the run instead of answering any operation.
 `runEntry p layout e` runs `init` or `main` (no `main` ⇒ malformed). Internal calls are
 `CoFree.fix` over `(FunctionId × Array Word) → Array Word`; a function body is `CoFree.iter` over
 `(BlockId × Locals)`, block ids resolved in the running function, with
-`Locals := Std.HashMap VarId Word` per activation. A block runs its operations in order, then
-its control:
+`Locals := Std.TreeMap VarId Word` per activation (not a `HashMap`: its bucket index is a
+`USize`, whose size the kernel cannot compute, so no concrete program would reduce in proofs).
+A block runs its operations in order, then its control:
 
 - `continuesTo`/`branches`/`switch`: the block's outputs are bound to the target's inputs.
   `branches` takes `nonZero` iff the condition is not 0. `switch` takes the first case equal to the

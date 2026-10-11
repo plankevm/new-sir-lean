@@ -1,4 +1,4 @@
-import Std.Data.HashMap
+import Std.Data.TreeMap
 import Sir.Effect
 import Sir.Keccak
 
@@ -11,7 +11,7 @@ open CoFree (perform)
 
 abbrev CallI := FunctionId × Array Word
 abbrev EvalE := Effect.Rec CallI (Array Word) SirE
-abbrev Locals := Std.HashMap VarId Word
+abbrev Locals := Std.TreeMap VarId Word
 
 structure Ctx where
   program : Program

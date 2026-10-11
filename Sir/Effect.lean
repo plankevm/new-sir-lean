@@ -61,6 +61,7 @@ inductive HostOp
   | invalid
   | selfdestruct (beneficiary : Word)
   | fault (fault : Fault)
+  deriving DecidableEq
 
 def HostOp.Resp : HostOp → Type
   | .query _ | .balance _ | .extcodehash _ | .blockhash _ | .blobhash _ => Word

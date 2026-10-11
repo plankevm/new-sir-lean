@@ -10,7 +10,7 @@ namespace Sir
 
 structure VarId where
   id : Nat
-  deriving DecidableEq, Hashable, Repr
+  deriving DecidableEq, Ord, Repr
 
 structure BlockId where
   id : Nat
