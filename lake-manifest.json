@@ -1,16 +1,6 @@
 {"version": "1.2.0",
  "packagesDir": ".lake/packages",
- "packages":
- [{"url": "https://github.com/Philogy/itree.git",
-   "type": "git",
-   "subDir": null,
-   "scope": "",
-   "rev": "93dcc9e87a68927ee11c3f41982aa665b85059ae",
-   "name": "itree",
-   "manifestFile": "lake-manifest.json",
-   "inputRev": "93dcc9e87a68927ee11c3f41982aa665b85059ae",
-   "inherited": false,
-   "configFile": "lakefile.toml"}],
+ "packages": [],
  "name": "sir",
  "lakeDir": ".lake",
  "fixedToolchain": false}
