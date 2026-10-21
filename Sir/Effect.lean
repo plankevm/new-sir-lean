@@ -62,7 +62,6 @@ structure Env where
 
 inductive HostOp
   | gas
-  /-- Not in `Env`: calls and self-destructs change it during the frame. -/
   | selfbalance
   | balance (account : Word)
   | extcodehash (account : Word)
@@ -86,18 +85,13 @@ inductive HostOp
 def HostOp.Resp : HostOp → Type
   | .gas | .selfbalance | .balance _ | .extcodehash _ => Word
   | .sload _ | .tload _ => Word
-  | .sstore .. => Unit
-  | .tstore .. => Unit
+  | .sstore .. | .tstore .. => Unit
   | .extcode _ => ByteArray
   | .log .. => Unit
   | .call .. => Bool × ByteArray
   | .create .. => Word × ByteArray
   | .alloc size live => { start : Nat // Placement live size start }
-  | .stop => Empty
-  | .ret _ => Empty
-  | .revert _ => Empty
-  | .invalid => Empty
-  | .selfdestruct _ => Empty
+  | .stop | .ret _ | .revert _ | .invalid | .selfdestruct _ => Empty
   | .fault _ => Empty
 
 abbrev Host : Effect := ⟨HostOp, HostOp.Resp⟩
