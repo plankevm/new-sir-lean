@@ -1,0 +1,46 @@
+import Sir.Memory
+
+/-! `Same` for SIR runs, written out in one place, without the generic `CoFree.Same`.
+
+A run (`exec`, after `Mem` is handled) never returns: it ends with an operation that has no
+answer (`stop`, `ret`, `revert`, `invalid`, `selfdestruct`, `fault`). So there is no return
+relation, and only three things can happen next:
+
+* a silent step (`Tau`): a `silent` node, or an `alloc`, answered with any valid placement;
+* a visible operation, any other `HostOp`, which both runs must perform identically;
+* undefined behavior (`fault (.ub _)`), which is terminal and relates to undefined behavior of
+  any kind, and to nothing else.
+
+`Same2 t₁ t₂` is the greatest relation that is closed under `Same2F`: finitely many silent steps
+on one side (`tauL`, `tauR`, inductive), then one step of progress (`tau`, `visible`, `ub`).
+Answers to silent steps are universally quantified on each side independently, so a run whose
+behavior depends on where something was placed is not related even to itself.
+`Sir.Same2.Proofs.same2_iff_same` proves `Same2 ↔ Same Eq`. -/
+
+namespace Sir
+
+abbrev Run := CoFree Host Empty
+
+/-- `t` takes a silent step to `t'`. -/
+inductive Tau (t : Run) : Run → Prop
+  | silent {t'} : t.observe = .silent t' → Tau t t'
+  | alloc {size live k} (r : HostOp.Resp (.alloc size live)) :
+      t.observe = .impure (.alloc size live) k → Tau t (k r)
+
+/-- One layer of `Same2`, with `R` for the pairs still to be checked. An allocation with no
+valid placement takes no silent step, so it relates to nothing. -/
+inductive Same2F (R : Run → Run → Prop) : Run → Run → Prop
+  | tau {t₁ t₂} : (∃ t', Tau t₁ t') → (∃ t', Tau t₂ t') →
+      (∀ t₁' t₂', Tau t₁ t₁' → Tau t₂ t₂' → R t₁' t₂') → Same2F R t₁ t₂
+  | tauL {t₁ t₂} : (∃ t', Tau t₁ t') → (∀ t₁', Tau t₁ t₁' → Same2F R t₁' t₂) → Same2F R t₁ t₂
+  | tauR {t₁ t₂} : (∃ t', Tau t₂ t') → (∀ t₂', Tau t₂ t₂' → Same2F R t₁ t₂') → Same2F R t₁ t₂
+  | visible {t₁ t₂} (op : HostOp) {k₁ k₂} : t₁.observe = .impure op k₁ →
+      t₂.observe = .impure op k₂ → (∀ size live, op ≠ .alloc size live) →
+      (∀ r, R (k₁ r) (k₂ r)) → Same2F R t₁ t₂
+  | ub {t₁ t₂} (u₁ u₂ : UB) {k₁ k₂} : t₁.observe = .impure (.fault (.ub u₁)) k₁ →
+      t₂.observe = .impure (.fault (.ub u₂)) k₂ → Same2F R t₁ t₂
+
+def Same2 (t₁ t₂ : Run) : Prop :=
+  ∃ R, (∀ t₁ t₂, R t₁ t₂ → Same2F R t₁ t₂) ∧ R t₁ t₂
+
+end Sir
