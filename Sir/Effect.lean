@@ -3,9 +3,11 @@ import Sir.Ir
 
 /-! The effects of a SIR run.
 
-The evaluator emits `SirE = Mem ⊕ₑ Host`. `Mem` (allocation, byte reads/writes, the return
-data buffer) is frame-local and handled by `Sir.Memory`; `Host` is everything else and stays
-abstract: the EVM, the world and the bytecode an entry point runs as. -/
+The evaluator reads `Env` and emits `SirE = Mem ⊕ₑ Host`. `Env` holds what stays fixed for the
+whole frame, so reading it is pure: equivalence can ignore, reorder or drop those reads. `Mem`
+(allocation, byte reads/writes, the return data buffer) is frame-local and handled by
+`Sir.Memory`; `Host` is everything that can change during the frame and stays abstract: gas,
+balances, other accounts, storage, calls and logs. -/
 
 namespace Sir
 
@@ -38,18 +40,36 @@ def Placement (live : List (Nat × Nat)) (size start : Nat) : Prop :=
 instance (live : List (Nat × Nat)) (size start : Nat) : Decidable (Placement live size start) := by
   unfold Placement; infer_instance
 
+/-- The frame's constants: the transaction, the block, and the code being run. -/
+structure Env where
+  address : Word
+  origin : Word
+  caller : Word
+  callvalue : Word
+  gasprice : Word
+  chainid : Word
+  coinbase : Word
+  timestamp : Word
+  number : Word
+  prevrandao : Word
+  gaslimit : Word
+  basefee : Word
+  blobbasefee : Word
+  blockhash : Word → Word
+  blobhash : Word → Word
+  calldata : ByteArray
+  code : ByteArray
+
 inductive HostOp
-  | query (q : Query)
+  | gas
+  /-- Not in `Env`: calls and self-destructs change it during the frame. -/
+  | selfbalance
   | balance (account : Word)
   | extcodehash (account : Word)
-  | blockhash (number : Word)
-  | blobhash (index : Word)
   | sload (key : Word)
   | tload (key : Word)
   | sstore (key value : Word)
   | tstore (key value : Word)
-  | calldata
-  | code
   | extcode (account : Word)
   | log (topics : Array Word) (data : ByteArray)
   | call (kind : CallKind) (gas account : Word) (input : ByteArray)
@@ -64,12 +84,10 @@ inductive HostOp
   deriving DecidableEq
 
 def HostOp.Resp : HostOp → Type
-  | .query _ | .balance _ | .extcodehash _ | .blockhash _ | .blobhash _ => Word
+  | .gas | .selfbalance | .balance _ | .extcodehash _ => Word
   | .sload _ | .tload _ => Word
   | .sstore .. => Unit
   | .tstore .. => Unit
-  | .calldata => ByteArray
-  | .code => ByteArray
   | .extcode _ => ByteArray
   | .log .. => Unit
   | .call .. => Bool × ByteArray

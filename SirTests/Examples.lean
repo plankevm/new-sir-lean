@@ -173,9 +173,10 @@ def undef (u : UB) : Outcome := .fault (.ub u)
 
 def malformed : Outcome := .fault .malformed
 
-def run (p : Program) (e : Entry := .init) (world : World := {}) (layout : Layout := noLayout)
-    (imm : Array Word := #[]) (fuel : Nat := 100000) : Outcome × World :=
-  runWith world p layout (.ofWords p imm) e fuel
+def run (p : Program) (e : Entry := .init) (env : Env := testEnv) (world : World := {})
+    (layout : Layout := noLayout) (imm : Array Word := #[]) (fuel : Nat := 100000) :
+    Outcome × World :=
+  runWith env world p layout (.ofWords p imm) e fuel
 
 def runOut (p : Program) : Outcome × World := run p (world := { callResult := (true, ⟨#[1, 2, 3]⟩) })
 
@@ -187,7 +188,7 @@ def checks : List (String × Bool) :=
   let mem := run memory
   let call := run calls (world := { callResult := (true, ⟨#[1, 2, 3]⟩) })
   let spun := run spinStoring (fuel := 1000)
-  let env := run environment (world := { calldata := ⟨#[1, 2, 3]⟩ })
+  let env := run environment (env := { testEnv with calldata := ⟨#[1, 2, 3]⟩ })
   [ ("loop sums 0..9", (run loopSum).1 == .stop && storage (run loopSum) == [(0, 45)]),
     ("pure ops in stack order", (run pureOps).1 == .stop &&
       storage (run pureOps) == [(0, 7), (3, 80), (4, 1), (1, 1)]),

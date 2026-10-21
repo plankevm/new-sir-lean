@@ -87,7 +87,7 @@ def prog (blocks : Array Block) : Program :=
   { init := 0, main := none, functions := #[⟨0, .never, blocks⟩] }
 
 def run (p : Program) : CoFree Host Empty :=
-  exec p noLayout (Immutables.ofWords p #[]) .init
+  exec p noLayout (Immutables.ofWords p #[]) testEnv .init
 
 def stops : Program := prog #[{ control := .stop }]
 
@@ -105,6 +105,11 @@ def stores (v : Word) : Program := prog #[
 def jumpsThenStores : Program := prog #[
   { control := .continuesTo 1 },
   { ops := #[.let 1 (.const 0), .let 2 (.const 1), .stmt (.sstore 1 2)], control := .stop }]
+
+/-- `stores 1` after reading the environment, which is not a host operation. -/
+def readsEnvThenStores : Program := prog #[
+  { ops := #[.let 1 (.const 0), .let 2 (.const 1), .let 3 (.query .caller),
+      .let 4 (.calldataload 1), .let 5 (.blockhash 1), .stmt (.sstore 1 2)], control := .stop }]
 
 /-- Stores the pointer it allocated. -/
 def leaks : Program := prog #[
@@ -144,6 +149,14 @@ theorem mallocs_deterministic : Deterministic (run mallocs) :=
   (Deterministic.of_same mallocs_same_stops).1
 
 theorem stores_same_jumpsThenStores : Same Eq (run (stores 1)) (run jumpsThenStores) := by
+  apply same_skipL 100; apply same_skipR 100
+  refine Same.visible (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
+    (observe_of_headOp (by kernel_rfl)) rfl fun r => ?_
+  apply same_skipL 100; apply same_skipR 100
+  exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
+    (observe_of_headOp (by kernel_rfl)) rfl fun r => Empty.elim r
+
+theorem stores_same_readsEnvThenStores : Same Eq (run (stores 1)) (run readsEnvThenStores) := by
   apply same_skipL 100; apply same_skipR 100
   refine Same.visible (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) rfl fun r => ?_

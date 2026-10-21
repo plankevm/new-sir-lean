@@ -1,7 +1,7 @@
 import Sir
 
-/-! A concrete test host: answers `Host` operations from a small world, with deterministic
-placement (bump from `0x80`). Terminal operations end the run with an
+/-! A concrete test host: a fixed `Env`, and `Host` operations answered from a small world, with
+deterministic placement (bump from `0x80`). Terminal operations end the run with an
 `Outcome`; the world survives because the state sits under the exception. -/
 
 namespace SirTests
@@ -24,8 +24,6 @@ structure World where
   transient : List (Word × Word) := []
   logs : Array (List Word × List UInt8) := #[]
   calls : Array (CallKind × Word × List UInt8) := #[]
-  calldata : ByteArray := .empty
-  code : ByteArray := .empty
   callResult : Bool × ByteArray := (true, .empty)
   queries : Nat := 0
 
@@ -35,20 +33,32 @@ def World.tload (w : World) (k : Word) : Word := ((w.transient.find? (·.1 == k)
 
 abbrev HostM := ExceptT Outcome (StateM World)
 
-def queryAnswer : Query → Word
-  | .address => 0xA0
-  | .caller => 0xC0
-  | .gas => 1000000
-  | .chainid => 1
-  | _ => 7
+def testEnv : Env where
+  address := 0xA0
+  origin := 7
+  caller := 0xC0
+  callvalue := 7
+  gasprice := 7
+  chainid := 1
+  coinbase := 7
+  timestamp := 7
+  number := 7
+  prevrandao := 7
+  gaslimit := 7
+  basefee := 7
+  blobbasefee := 7
+  blockhash _ := 7
+  blobhash _ := 7
+  calldata := .empty
+  code := .empty
 
 def countQuery (v : Word) : HostM Word := do
   modify fun w => { w with queries := w.queries + 1 }
   pure v
 
 def answer : (op : HostOp) → HostM (HostOp.Resp op)
-  | .query q => countQuery (queryAnswer q)
-  | .balance _ | .extcodehash _ | .blockhash _ | .blobhash _ => countQuery 7
+  | .gas => countQuery 1000000
+  | .selfbalance | .balance _ | .extcodehash _ => countQuery 7
   | .sload k => do
     let w ← get
     countQuery (w.sload k)
@@ -57,12 +67,6 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
     countQuery (w.tload k)
   | .sstore k v => modify fun w => { w with storage := (k, v) :: w.storage }
   | .tstore k v => modify fun w => { w with transient := (k, v) :: w.transient }
-  | .calldata => do
-    let w ← get
-    pure w.calldata
-  | .code => do
-    let w ← get
-    pure w.code
   | .extcode _ => pure (⟨#[1, 2, 3]⟩ : ByteArray)
   | .log topics data => modify fun w => { w with logs := w.logs.push (topics.toList, data.toList) }
   | .call kind _ account input => do
@@ -80,9 +84,9 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
   | .selfdestruct a => throw (.selfdestruct a)
   | .fault f => throw (.fault f)
 
-def runWith (world : World) (p : Program) (layout : Layout) (imm : Immutables p) (e : Entry)
-    (fuel : Nat := 100000) : Outcome × World :=
-  match (CoFree.runM answer fuel (exec p layout imm e)).run.run world with
+def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
+    (e : Entry) (fuel : Nat := 100000) : Outcome × World :=
+  match (CoFree.runM answer fuel (exec p layout imm env e)).run.run world with
   | (.ok none, w) => (.outOfFuel, w)
   | (.ok (some x), _) => nomatch x
   | (.error o, w) => (o, w)

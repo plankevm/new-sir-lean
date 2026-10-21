@@ -76,7 +76,9 @@ def handleMem : FrameMem → (op : SirE.Op) → CoFree Host (FrameMem × SirE.Re
   | m, .inl (.setReturnData bytes) => pure ({ m with returnData := bytes }, ())
 
 /-- The semantics of an entry point: every remaining effect is a host interaction. -/
-def exec (p : Program) (layout : Layout) (imm : Immutables p) (e : Entry) : CoFree Host Empty :=
-  (CoFree.interpState handleMem {} (runEntry p layout imm e)).bind fun r => Empty.elim r.2
+def exec (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
+    CoFree Host Empty := do
+  let (_frame', res) ← CoFree.interpState handleMem {} (runEntry p layout imm env e)
+  nomatch res
 
 end Sir

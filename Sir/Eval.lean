@@ -18,6 +18,7 @@ structure Ctx where
   layout : Layout
   entry : Entry
   immutables : Immutables program
+  env : Env
 
 def mem (op : MemOp) : CoFree EvalE (MemOp.Resp op) := perform (E := EvalE) (.inr (.inl op))
 
@@ -108,28 +109,39 @@ def TernOp.eval : TernOp → Word → Word → Word → Word
   | .addmod, a, b, n => Word.addmod a b n
   | .mulmod, a, b, n => Word.mulmod a b n
 
+def Query.eval (env : Env) : Query → CoFree EvalE Word
+  | .gas => host .gas
+  | .selfbalance => host .selfbalance
+  | .address => pure env.address
+  | .origin => pure env.origin
+  | .caller => pure env.caller
+  | .callvalue => pure env.callvalue
+  | .gasprice => pure env.gasprice
+  | .coinbase => pure env.coinbase
+  | .timestamp => pure env.timestamp
+  | .number => pure env.number
+  | .prevrandao => pure env.prevrandao
+  | .gaslimit => pure env.gaslimit
+  | .chainid => pure env.chainid
+  | .basefee => pure env.basefee
+  | .blobbasefee => pure env.blobbasefee
+
 def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE Word
   | .unop op a => pure (op.eval a)
   | .binop op a b => pure (op.eval a b)
   | .ternop op a b c => pure (op.eval a b c)
   | .const v => pure v
   | .copy x => pure x
-  | .query q => host (.query q)
+  | .query q => q.eval ctx.env
   | .balance a => host (.balance a)
   | .extcodehash a => host (.extcodehash a)
-  | .blockhash n => host (.blockhash n)
-  | .blobhash i => host (.blobhash i)
+  | .blockhash n => pure (ctx.env.blockhash n)
+  | .blobhash i => pure (ctx.env.blobhash i)
   | .sload k => host (.sload k)
   | .tload k => host (.tload k)
-  | .calldataload offset => do
-    let data ← host .calldata
-    pure (Word.ofBytes (data.slicePad offset.toNat 32))
-  | .calldatasize => do
-    let data ← host .calldata
-    pure (lengthOf data)
-  | .codesize => do
-    let code ← host .code
-    pure (lengthOf code)
+  | .calldataload offset => pure (Word.ofBytes (ctx.env.calldata.slicePad offset.toNat 32))
+  | .calldatasize => pure (lengthOf ctx.env.calldata)
+  | .codesize => pure (lengthOf ctx.env.code)
   | .extcodesize a => do
     let code ← host (.extcode a)
     pure (lengthOf code)
@@ -166,12 +178,8 @@ def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE Unit
   | .mcopy dst src length => mem (.copy dst.toNat src.toNat length.toNat)
   | .sstore k v => host (.sstore k v)
   | .tstore k v => host (.tstore k v)
-  | .calldatacopy dst offset length => do
-    let data ← host .calldata
-    copyIn data dst offset length
-  | .codecopy dst offset length => do
-    let code ← host .code
-    copyIn code dst offset length
+  | .calldatacopy dst offset length => copyIn ctx.env.calldata dst offset length
+  | .codecopy dst offset length => copyIn ctx.env.code dst offset length
   | .extcodecopy a dst offset length => do
     let code ← host (.extcode a)
     copyIn code dst offset length
@@ -262,18 +270,17 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
       execControl call fn l blk
 
 def malformedTop {α : Type} : CoFree SirE α := do
-  let e ← perform (E := SirE) (.inr (.fault .malformed))
-  Empty.elim e
+  nomatch ← perform (E := SirE) (.inr (.fault .malformed))
 
 /-- An entry point runs until a halting control; entry functions take no inputs and
 must not return. -/
-def runEntry (p : Program) (layout : Layout) (imm : Immutables p) (e : Entry) :
+def runEntry (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
     CoFree SirE Empty := do
   let f? := match e with
     | .init => some p.init
     | .main => p.main
   let some f := f? | malformedTop
-  let _ ← evalFunction ⟨p, layout, e, imm⟩ (f, #[])
+  let _ ← evalFunction ⟨p, layout, e, imm, env⟩ (f, #[])
   malformedTop
 
 end Sir
