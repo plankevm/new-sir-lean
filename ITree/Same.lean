@@ -15,9 +15,8 @@ So `Same` is a partial equivalence, not an equivalence: a program whose visible 
 on a branch or a hidden answer is not related to itself. `Deterministic`-style statements are
 written `Same hidden ub Eq m m`, and say that every branch behaves the same.
 
-A `br` with no responses is vacuously related to every machine, so a semantics must never emit
-one where it means "stuck"; it should emit undefined behavior instead. `Same.trans` needs every
-branch to have a response. A hidden operation without any answer is not a silent step: it is
+Every branch has a response (`Effect.brResp_nonempty`); a branch with none would be vacuously
+related to every machine. A hidden operation without any answer is not a silent step: it is
 stuck and relates to nothing.
 
 Operations satisfying `ub` are terminal: they relate to every other `ub` operation and to
@@ -39,11 +38,10 @@ def Next (hidden : E.Op → Prop) (m n : CoFree E A) : Prop :=
     (∃ op, hidden op ∧ ∃ k : E.Resp op → CoFree E A, m.observe = .impure op k ∧ ∃ r, k r = n) ∨
     ∃ c, ∃ k : E.BrResp c → CoFree E A, m.observe = .br c k ∧ ∃ r, k r = n
 
-/-- `m` takes a silent step. A branch always does, even with no responses, which leaves nothing
-to check after it. A hidden operation without any possible answer does not: it is stuck, so it
-relates to nothing. -/
+/-- `m` takes a silent step. A hidden operation without any possible answer does not: it is
+stuck, so it relates to nothing. -/
 def Silent (hidden : E.Op → Prop) (m : CoFree E A) : Prop :=
-  (∃ n, Next hidden m n) ∨ ∃ c, ∃ k : E.BrResp c → CoFree E A, m.observe = .br c k
+  ∃ n, Next hidden m n
 
 /-- One layer of `Same`. `silent`, `impure` and `ub` progress through `R`; `silentL` and
 `silentR` stay in `SameF`, so they can skip only finitely many silent steps in a row. -/

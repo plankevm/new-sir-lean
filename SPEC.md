@@ -350,9 +350,11 @@ choice nobody handles: `bind`, `iter`, `fixFrom` keep it, and `mapOps`, `interpS
 `interp` pass it through via an `Effect.BrMap E F`; `run`/`runM`/`trace` take a `pick` for it.
 `Bisim` matches it structurally (same `c`, related for every response). `Same` treats it as a
 silent step quantified over every response, on each side independently, so `Deterministic`
-means every branch behaves the same. A `br` with no responses is related to everything: the
-semantics must never emit one for "stuck" (emit UB instead), and `Same.trans` assumes every
-branch has a response, `Same.refl`/`Eutt.refl`/`Eutt.of_bisim` that there are no branches.
+means every branch behaves the same. Every branch has a response (`Effect.brResp_nonempty`,
+discharged automatically for effects without branches or with inhabited responses), since a
+`br` with none would be related to everything; to get stuck, a semantics emits UB instead.
+`Same.trans` holds outright; `Same.refl`/`Eutt.refl`/`Eutt.of_bisim` assume there are no
+branches, because a program that observes a branch's response is not related to itself.
 Nothing in SIR emits `br` yet: `Mem` and `Host` have no branches.
 
 `Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Host _`, `Mem` already handled):

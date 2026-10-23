@@ -23,10 +23,8 @@ theorem next_iff_tau {t t' : Run} : Next Hidden t t' ↔ Tau t t' := by
     · exact .inl h
     · exact .inr (.inl ⟨_, rfl, _, hk, r, rfl⟩)
 
-/-- `Host` has no branches, so a silent step always has somewhere to go. -/
 theorem silent_iff {t : Run} : Silent Hidden t ↔ ∃ t', Tau t t' :=
-  ⟨(fun | .inl ⟨n, h⟩ => ⟨n, next_iff_tau.mp h⟩ | .inr ⟨c, _⟩ => nomatch c),
-   fun ⟨n, h⟩ => .inl ⟨n, next_iff_tau.mpr h⟩⟩
+  ⟨fun ⟨n, h⟩ => ⟨n, next_iff_tau.mp h⟩, fun ⟨n, h⟩ => ⟨n, next_iff_tau.mpr h⟩⟩
 
 theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
     CoFree.SameF Hidden Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by

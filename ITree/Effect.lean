@@ -3,12 +3,18 @@ universe u w
 /-- Operations `Op` with their responses `Resp`, and branches `BrOp` with theirs `BrResp`.
 An operation is answered by whoever runs or handles the program. A branch is a choice the
 program does not control and nobody handles: handlers pass it through, and equivalence
-(`CoFree.Same`) requires every response to behave the same. Without branches by default. -/
+(`CoFree.Same`) requires every response to behave the same. Without branches by default.
+
+Every branch has a response: a branch with none would be a silent step leading nowhere, which
+`CoFree.Same` would relate to every machine. A semantics that gets stuck emits undefined
+behavior instead. -/
 structure Effect : Type (u+1) where
   Op : Type u
   Resp : Op → Type u
   BrOp : Type u := PEmpty
   BrResp : BrOp → Type u := fun _ => PEmpty
+  brResp_nonempty : ∀ c, Nonempty (BrResp c) := by
+    first | exact fun _ => inferInstance | exact nofun
 
 namespace Effect
 
@@ -21,6 +27,9 @@ abbrev sum (E F : Effect.{u}) : Effect.{u} where
   BrResp
     | .inl c => E.BrResp c
     | .inr c => F.BrResp c
+  brResp_nonempty
+    | .inl c => E.brResp_nonempty c
+    | .inr c => F.brResp_nonempty c
 
 infixr:65 " ⊕ₑ " => Effect.sum
 
@@ -29,6 +38,7 @@ abbrev lift (E : Effect.{u}) : Effect.{max u w} where
   Resp op := ULift (E.Resp op.down)
   BrOp := ULift E.BrOp
   BrResp c := ULift (E.BrResp c.down)
+  brResp_nonempty c := let ⟨r⟩ := E.brResp_nonempty c.down; ⟨⟨r⟩⟩
 
 abbrev Call (I O : Type u) : Effect.{u} where
   Op := I

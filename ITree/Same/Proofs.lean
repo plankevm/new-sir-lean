@@ -15,17 +15,15 @@ theorem next_congr {m m' n : CoFree E A} (he : m.observe = m'.observe) :
 
 theorem silent_congr {m m' : CoFree E A} (he : m.observe = m'.observe) :
     Silent hidden m → Silent hidden m'
-  | .inl ⟨n, hn⟩ => .inl ⟨n, next_congr he hn⟩
-  | .inr ⟨c, k, h⟩ => .inr ⟨c, k, he ▸ h⟩
+  | ⟨n, hn⟩ => ⟨n, next_congr he hn⟩
 
 theorem not_silent_pure {m : CoFree E A} {a : A} (h : m.observe = .pure a) :
     ¬Silent hidden m := by
-  rintro (⟨n, hn | ⟨_, _, _, hn, _⟩ | ⟨_, _, hn, _⟩⟩ | ⟨_, _, hn⟩) <;> rw [h] at hn <;> cases hn
+  rintro ⟨n, hn | ⟨_, _, _, hn, _⟩ | ⟨_, _, hn, _⟩⟩ <;> rw [h] at hn <;> cases hn
 
 theorem not_silent_impure {m : CoFree E A} {op : E.Op} {k : E.Resp op → CoFree E A}
     (h : m.observe = .impure op k) (hop : ¬hidden op) : ¬Silent hidden m := by
-  rintro (⟨n, hn | ⟨op', hop', k', hn, _⟩ | ⟨_, _, hn, _⟩⟩ | ⟨_, _, hn⟩) <;> rw [h] at hn <;>
-    cases hn
+  rintro ⟨n, hn | ⟨op', hop', k', hn, _⟩ | ⟨_, _, hn, _⟩⟩ <;> rw [h] at hn <;> cases hn
   exact hop hop'
 
 theorem next_silent_iff {m n n' : CoFree E A} (h : m.observe = .silent n) :
@@ -50,21 +48,16 @@ theorem next_br_iff {m n : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E
   · rintro ⟨r, rfl⟩; exact .inr (.inr ⟨c, k, h, r, rfl⟩)
 
 theorem silent_of_silent {m n : CoFree E A} (h : m.observe = .silent n) : Silent hidden m :=
-  .inl ⟨n, .inl h⟩
+  ⟨n, .inl h⟩
 
 theorem silent_of_hidden {m : CoFree E A} {op : E.Op} {k : E.Resp op → CoFree E A}
     (h : m.observe = .impure op k) (hop : hidden op) (r : E.Resp op) : Silent hidden m :=
-  .inl ⟨k r, .inr (.inl ⟨op, hop, k, h, r, rfl⟩)⟩
+  ⟨k r, .inr (.inl ⟨op, hop, k, h, r, rfl⟩)⟩
 
 theorem silent_of_br {m : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
     (h : m.observe = .br c k) : Silent hidden m :=
-  .inr ⟨c, k, h⟩
-
-/-- When every branch has a response, a silent step has somewhere to go. -/
-theorem exists_next (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c)) {m : CoFree E A} :
-    Silent hidden m → ∃ n, Next hidden m n
-  | .inl h => h
-  | .inr ⟨c, k, h⟩ => let ⟨r⟩ := hbr c; ⟨k r, .inr (.inr ⟨c, k, h, r, rfl⟩)⟩
+  let ⟨r⟩ := E.brResp_nonempty c
+  ⟨k r, .inr (.inr ⟨c, k, h, r, rfl⟩)⟩
 
 /-! ## The fixed point -/
 
@@ -183,9 +176,9 @@ theorem Same.silentL_inv {RR : A → B → Prop} {m₁ n₁ : CoFree E A} {m₂ 
   replace h := Same.unfold h
   induction h generalizing n₁ with
   | silent _ hs₂ h => exact Same.silentR hs₂ fun n₂ hn₂ => h _ _ hn hn₂
-  | impure op h₁ _ hop => exact (not_silent_impure h₁ hop (.inl ⟨_, hn⟩)).elim
-  | ret h₁ => exact (not_silent_pure h₁ (.inl ⟨_, hn⟩)).elim
-  | ub _ _ h₁ _ _ _ hop₁ => exact (not_silent_impure h₁ hop₁ (.inl ⟨_, hn⟩)).elim
+  | impure op h₁ _ hop => exact (not_silent_impure h₁ hop ⟨_, hn⟩).elim
+  | ret h₁ => exact (not_silent_pure h₁ ⟨_, hn⟩).elim
+  | ub _ _ h₁ _ _ _ hop₁ => exact (not_silent_impure h₁ hop₁ ⟨_, hn⟩).elim
   | silentL _ h => exact Same.fold (h _ hn)
   | silentR hs _ ih => exact Same.fold (.silentR hs fun n₂ hn₂ => Same.unfold (ih n₂ hn₂ hn))
 
@@ -194,9 +187,9 @@ theorem Same.silentR_inv {RR : A → B → Prop} {m₁ : CoFree E A} {m₂ n₂ 
   replace h := Same.unfold h
   induction h generalizing n₂ with
   | silent hs₁ _ h => exact Same.silentL hs₁ fun n₁ hn₁ => h _ _ hn₁ hn
-  | impure op _ h₂ hop => exact (not_silent_impure h₂ hop (.inl ⟨_, hn⟩)).elim
-  | ret _ h₂ => exact (not_silent_pure h₂ (.inl ⟨_, hn⟩)).elim
-  | ub _ _ _ h₂ _ _ _ hop₂ => exact (not_silent_impure h₂ hop₂ (.inl ⟨_, hn⟩)).elim
+  | impure op _ h₂ hop => exact (not_silent_impure h₂ hop ⟨_, hn⟩).elim
+  | ret _ h₂ => exact (not_silent_pure h₂ ⟨_, hn⟩).elim
+  | ub _ _ _ h₂ _ _ _ hop₂ => exact (not_silent_impure h₂ hop₂ ⟨_, hn⟩).elim
   | silentL hs _ ih => exact Same.fold (.silentL hs fun n₁ hn₁ => Same.unfold (ih n₁ hn₁ hn))
   | silentR _ h => exact Same.fold (h _ hn)
 
@@ -259,8 +252,8 @@ theorem Same.refl {RR : A → A → Prop} (hhidden : ∀ op, ¬hidden op)
 A step both outer machines take together may correspond to several silent steps of the middle
 machine. `trans_silent` consumes those by induction; once the middle machine shows something
 other than a silent step, `trans_visible` lines the outer machines up. Hidden operations need
-at least one answer to count as silent steps, and branches need one here (`hbr`), exactly so
-that the middle machine can be advanced through them. -/
+at least one answer to count as silent steps, and branches always have one, exactly so that
+the middle machine can be advanced through them. -/
 
 section Trans
 
@@ -328,8 +321,8 @@ theorem trans_visible {x : CoFree E A} {y : CoFree E B} {z : CoFree E C}
   | silentL hs _ ih => intro hy h₂; exact .silentL hs fun n hn => ih n hn hy h₂
   | silentR hs => intro hy; exact (hy hs).elim
 
-theorem trans_silent (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c))
-    {x : CoFree E A} {y : CoFree E B} {z : CoFree E C} (hx : Silent hidden x) (h₂ : SameF hidden ub RB (Same hidden ub RB) y z) :
+theorem trans_silent {x : CoFree E A} {y : CoFree E B} {z : CoFree E C} (hx : Silent hidden x)
+    (h₂ : SameF hidden ub RB (Same hidden ub RB) y z) :
     Silent hidden y →
     (∀ n₁ n₂, Next hidden x n₁ → Next hidden y n₂ → Same hidden ub RA n₁ n₂) →
     SameF hidden ub (fun a c => ∃ b, RA a b ∧ RB b c)
@@ -337,27 +330,27 @@ theorem trans_silent (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c))
   induction h₂ with
   | silent hs₂ hs₃ h =>
     intro _ H
-    obtain ⟨n₂, hn₂⟩ := exists_next hbr hs₂
+    obtain ⟨n₂, hn₂⟩ := hs₂
     exact .silent hx hs₃ fun n₁ n₃ hn₁ hn₃ => ⟨n₂, H n₁ n₂ hn₁ hn₂, h n₂ n₃ hn₂ hn₃⟩
   | impure _ hy _ hop => intro hs; exact (not_silent_impure hy hop hs).elim
   | ret hy => intro hs; exact (not_silent_pure hy hs).elim
   | ub _ _ hy _ _ _ hop => intro hs; exact (not_silent_impure hy hop hs).elim
   | silentL hs h ih =>
     intro _ H
-    obtain ⟨n₂, hn₂⟩ := exists_next hbr hs
+    obtain ⟨n₂, hn₂⟩ := hs
     by_cases hs' : Silent hidden n₂
     · exact ih n₂ hn₂ hs' fun n₁ n₂' hn₁ hn₂' => Same.silentR_inv (H n₁ n₂ hn₁ hn₂) hn₂'
     · exact .silentL hx fun n₁ hn₁ =>
         trans_visible (Same.unfold (H n₁ n₂ hn₁ hn₂)) hs' (h n₂ hn₂)
   | silentR hs _ ih => intro hsy H; exact .silentR hs fun n hn => ih n hn hsy H
 
-theorem trans_step (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c))
-    {x : CoFree E A} {y : CoFree E B} {z : CoFree E C} (h₁ : SameF hidden ub RA (Same hidden ub RA) x y) :
+theorem trans_step {x : CoFree E A} {y : CoFree E B} {z : CoFree E C}
+    (h₁ : SameF hidden ub RA (Same hidden ub RA) x y) :
     Same hidden ub RB y z →
     SameF hidden ub (fun a c => ∃ b, RA a b ∧ RB b c)
       (fun x z => ∃ y, Same hidden ub RA x y ∧ Same hidden ub RB y z) x z := by
   induction h₁ with
-  | silent hs₁ hs₂ h => intro h₂; exact trans_silent hbr hs₁ (Same.unfold h₂) hs₂ h
+  | silent hs₁ hs₂ h => intro h₂; exact trans_silent hs₁ (Same.unfold h₂) hs₂ h
   | impure op hx hy hop hk => intro h₂; exact trans_impure hx hy hop hk (Same.unfold h₂)
   | ret hx hy hab => intro h₂; exact trans_ret hx hy hab (Same.unfold h₂)
   | ub _ _ hx hy hub₁ hub₂ hop₁ hop₂ =>
@@ -365,15 +358,14 @@ theorem trans_step (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c))
   | silentL hs _ ih => intro h₂; exact .silentL hs fun n hn => ih n hn h₂
   | silentR hs _ ih =>
     intro h₂
-    obtain ⟨n, hn⟩ := exists_next hbr hs
+    obtain ⟨n, hn⟩ := hs
     exact ih n hn (Same.silentL_inv h₂ hn)
 
-theorem Same.trans (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c))
-    {x : CoFree E A} {y : CoFree E B} {z : CoFree E C}
+theorem Same.trans {x : CoFree E A} {y : CoFree E B} {z : CoFree E C}
     (h₁ : Same hidden ub RA x y) (h₂ : Same hidden ub RB y z) :
     Same hidden ub (fun a c => ∃ b, RA a b ∧ RB b c) x z :=
   ⟨fun x z => ∃ y, Same hidden ub RA x y ∧ Same hidden ub RB y z,
-   fun _ _ ⟨_, h₁, h₂⟩ => trans_step hbr (Same.unfold h₁) h₂, ⟨_, h₁, h₂⟩⟩
+   fun _ _ ⟨_, h₁, h₂⟩ => trans_step (Same.unfold h₁) h₂, ⟨_, h₁, h₂⟩⟩
 
 end Trans
 
@@ -388,8 +380,7 @@ theorem next_bind {m n : CoFree E A} {f : A → CoFree E B} (h : Next hidden m n
 
 theorem silent_bind {m : CoFree E A} {f : A → CoFree E B} :
     Silent hidden m → Silent hidden (m.bind f)
-  | .inl ⟨_, hn⟩ => .inl ⟨_, next_bind hn⟩
-  | .inr ⟨c, _, hk⟩ => .inr ⟨c, _, by rw [observe_bind, hk]; rfl⟩
+  | ⟨_, hn⟩ => ⟨_, next_bind hn⟩
 
 theorem next_bind_inv {m : CoFree E A} {n' : CoFree E B} {f : A → CoFree E B}
     (hs : Silent hidden m) (h : Next hidden (m.bind f) n') :
