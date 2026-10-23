@@ -54,6 +54,9 @@ theorem observe_silent (m : CoFree E A) : m.silent.observe = .silent m := rfl
 theorem observe_impure (op : E.Op) (k : E.Resp op → CoFree E A) :
     (impure op k).observe = .impure op k := rfl
 
+theorem observe_br (c : E.BrOp) (k : E.BrResp c → CoFree E A) :
+    (br c k).observe = .br c k := rfl
+
 theorem observe_corec {S : Type u} (f : S → Step E A S) (s : S) :
     (corec f s).observe = (f s).map (corec f) := by
   simp only [observe, corec, Step.map_map]
@@ -65,7 +68,7 @@ theorem observe_bind (m : CoFree E A) (g : A → CoFree E B) :
   rw [CoFree.bind.eq_1]
   simp only [observe, bindTrans]
   generalize step s₀ = st
-  rcases st with a | (s | j) | ⟨op, k⟩
+  rcases st with a | (s | j) | ⟨op, k⟩ | ⟨c, k⟩
   · simp only [Step.map_pure, Step.map_map, bindStep]
     rfl
   · simp only [Step.map_silent, bindStep, next, startAt]
@@ -80,14 +83,23 @@ theorem observe_bind (m : CoFree E A) (g : A → CoFree E B) :
       rw [CoFree.bind.eq_1]
       rfl
     · rfl
+  · simp only [Step.map_br, bindStep]
+    congr 1
+    funext r
+    cases k r
+    · simp only [next, startAt]
+      rw [CoFree.bind.eq_1]
+      rfl
+    · rfl
 
 theorem mapStep_map {X : Type w} {Y : Type w'} (f : E.Op → F.Op)
-    (g : (op : E.Op) → F.Resp (f op) → E.Resp op) (h : X → Y) (x : Step E A X) :
-    mapStep f g (x.map h) = (mapStep f g x).map h := by
+    (g : (op : E.Op) → F.Resp (f op) → E.Resp op) (b : Effect.BrMap E F) (h : X → Y)
+    (x : Step E A X) : mapStep f g b (x.map h) = (mapStep f g b x).map h := by
   cases x <;> rfl
 
 theorem observe_mapOps (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
-    (m : CoFree E A) : (m.mapOps f g).observe = (mapStep f g m.observe).map (mapOps f g) := by
+    (b : Effect.BrMap E F) (m : CoFree E A) :
+    (m.mapOps f g b).observe = (mapStep f g b m.observe).map (mapOps f g b) := by
   obtain ⟨S, J, s₀, step, target⟩ := m
   simp only [observe, mapOps, mapStep_map, Step.map_map]
   refine Step.map_congr (fun x => ?_) _
@@ -100,47 +112,55 @@ theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E (IterStep 
       | .pure (.repeat i') => .silent (iter i' g)
       | .pure (.exit a) => .pure a
       | .silent p' => .silent ((iter s g).startAt ⟨i, p'⟩)
-      | .impure op k => .impure op fun r => (iter s g).startAt ⟨i, k r⟩ := by
+      | .impure op k => .impure op fun r => (iter s g).startAt ⟨i, k r⟩
+      | .br c k => .br c fun r => (iter s g).startAt ⟨i, k r⟩ := by
   simp only [observe, iter, startAt]
   generalize (g i).stepAt p = st
-  rcases st with (i' | a) | p' | ⟨op, k⟩ <;> rfl
+  rcases st with (i' | a) | p' | ⟨op, k⟩ | ⟨c, k⟩ <;> rfl
 
 section Interp
 
 variable {σ : Type u}
 
 theorem observe_interpAt_handler (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op))
-    (m : CoFree E A) (op : E.Op) (k : E.Resp op → m.State ⊕ m.Jump) (s : σ)
+    (b : Effect.BrMap E F) (m : CoFree E A) (op : E.Op) (k : E.Resp op → m.State ⊕ m.Jump) (s : σ)
     (p : (h s op).Pos) :
-    (interpAt h m (.handler op k s p)).observe =
+    (interpAt h b m (.handler op k s p)).observe =
       match (h s op).stepAt p with
-      | .pure (s', r) => .silent (interpState h s' (m.next (k r)))
-      | .silent p' => .silent (interpAt h m (.handler op k s p'))
-      | .impure op' k' => .impure op' fun r => interpAt h m (.handler op k s (k' r)) := by
+      | .pure (s', r) => .silent (interpState h b s' (m.next (k r)))
+      | .silent p' => .silent (interpAt h b m (.handler op k s p'))
+      | .impure op' k' => .impure op' fun r => interpAt h b m (.handler op k s (k' r))
+      | .br c k' => .br c fun r => interpAt h b m (.handler op k s (k' r)) := by
   obtain ⟨S, J, s₀, step, target⟩ := m
   simp only [interpAt, observe, interpHandle]
   generalize (h s op).stepAt p = st
-  rcases st with ⟨s', r⟩ | p' | ⟨op', k'⟩
+  rcases st with ⟨s', r⟩ | p' | ⟨op', k'⟩ | ⟨c, k'⟩
   · simp only [Step.map]
     cases k r <;> rfl
   · rfl
   · rfl
+  · rfl
 
-theorem observe_interpState (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op)) (s : σ)
-    (m : CoFree E A) :
-    (interpState h s m).observe =
+theorem observe_interpState (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op))
+    (b : Effect.BrMap E F) (s : σ) (m : CoFree E A) :
+    (interpState h b s m).observe =
       match m.step m.initial with
       | .pure a => .pure (s, a)
-      | .silent y => .silent (interpState h s (m.next y))
-      | .impure op k => (interpAt h m (.handler op k s (h s op).initPos)).observe := by
+      | .silent y => .silent (interpState h b s (m.next y))
+      | .impure op k => (interpAt h b m (.handler op k s (h s op).initPos)).observe
+      | .br c k => .br (b.op c) fun r => interpState h b s (m.next (k (b.resp c r))) := by
   obtain ⟨S, J, s₀, step, target⟩ := m
   simp only [interpState, interpAt, observe]
   generalize step s₀ = st
-  rcases st with a | (x | j) | ⟨op, k⟩
+  rcases st with a | (x | j) | ⟨op, k⟩ | ⟨c, k⟩
   · rfl
   · rfl
   · rfl
   · exact Step.map_congr (fun x => by cases x <;> rfl) _
+  · simp only [Step.map_br]
+    congr 1
+    funext r
+    cases k (b.resp c r) <;> rfl
 
 end Interp
 
@@ -154,13 +174,17 @@ theorem observe_fixFrom_startAt {I O : Type u} (body : I → CoFree (Effect.Call
       | .silent p', stack => .silent ((fixFrom body t).startAt ⟨c, p', stack⟩)
       | .impure (.inl i) k, stack =>
         .silent ((fixFrom body t).startAt ⟨some i, (body i).initPos, ⟨c, k⟩ :: stack⟩)
-      | .impure (.inr op) k, stack => .impure op fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩ := by
+      | .impure (.inr op) k, stack => .impure op fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩
+      | .br (.inl b) _, _ => nomatch b
+      | .br (.inr b) k, stack => .br b fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩ := by
   simp only [observe, fixFrom, startAt]
   generalize (fixCode body t c).stepAt p = st
-  rcases st with o | p' | ⟨op | op, k⟩
+  rcases st with o | p' | ⟨op | op, k⟩ | ⟨b | b, k⟩
   · cases stack <;> rfl
   · rfl
   · rfl
+  · rfl
+  · exact nomatch b
   · rfl
 
 end CoFree.Proofs

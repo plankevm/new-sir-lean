@@ -38,6 +38,10 @@ theorem Bisim.trans {m₁ m₂ m₃ : CoFree E A} : Bisim m₁ m₂ → Bisim m�
     (impure op k).observe = .impure op k :=
   Proofs.observe_impure op k
 
+@[simp] theorem observe_br (c : E.BrOp) (k : E.BrResp c → CoFree E A) :
+    (br c k).observe = .br c k :=
+  Proofs.observe_br c k
+
 theorem observe_corec {S : Type u} (f : S → Step E A S) (s : S) :
     (corec f s).observe = (f s).map (corec f) :=
   Proofs.observe_corec f s
@@ -47,13 +51,14 @@ theorem observe_bind (m : CoFree E A) (g : A → CoFree E B) :
   Proofs.observe_bind m g
 
 theorem mapStep_map {X : Type w} {Y : Type w'} (f : E.Op → F.Op)
-    (g : (op : E.Op) → F.Resp (f op) → E.Resp op) (h : X → Y) (x : Step E A X) :
-    mapStep f g (x.map h) = (mapStep f g x).map h :=
-  Proofs.mapStep_map f g h x
+    (g : (op : E.Op) → F.Resp (f op) → E.Resp op) (b : Effect.BrMap E F) (h : X → Y)
+    (x : Step E A X) : mapStep f g b (x.map h) = (mapStep f g b x).map h :=
+  Proofs.mapStep_map f g b h x
 
 theorem observe_mapOps (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
-    (m : CoFree E A) : (m.mapOps f g).observe = (mapStep f g m.observe).map (mapOps f g) :=
-  Proofs.observe_mapOps f g m
+    (b : Effect.BrMap E F) (m : CoFree E A) :
+    (m.mapOps f g b).observe = (mapStep f g b m.observe).map (mapOps f g b) :=
+  Proofs.observe_mapOps f g b m
 
 theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E (IterStep S A)) (i : S)
     (p : (g i).Pos) :
@@ -62,7 +67,8 @@ theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E (IterStep 
       | .pure (.repeat i') => .silent (iter i' g)
       | .pure (.exit a) => .pure a
       | .silent p' => .silent ((iter s g).startAt ⟨i, p'⟩)
-      | .impure op k => .impure op fun r => (iter s g).startAt ⟨i, k r⟩ :=
+      | .impure op k => .impure op fun r => (iter s g).startAt ⟨i, k r⟩
+      | .br c k => .br c fun r => (iter s g).startAt ⟨i, k r⟩ :=
   Proofs.observe_iter_startAt s g i p
 
 section Interp
@@ -70,23 +76,25 @@ section Interp
 variable {σ : Type u}
 
 theorem observe_interpAt_handler (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op))
-    (m : CoFree E A) (op : E.Op) (k : E.Resp op → m.State ⊕ m.Jump) (s : σ)
+    (b : Effect.BrMap E F) (m : CoFree E A) (op : E.Op) (k : E.Resp op → m.State ⊕ m.Jump) (s : σ)
     (p : (h s op).Pos) :
-    (interpAt h m (.handler op k s p)).observe =
+    (interpAt h b m (.handler op k s p)).observe =
       match (h s op).stepAt p with
-      | .pure (s', r) => .silent (interpState h s' (m.next (k r)))
-      | .silent p' => .silent (interpAt h m (.handler op k s p'))
-      | .impure op' k' => .impure op' fun r => interpAt h m (.handler op k s (k' r)) :=
-  Proofs.observe_interpAt_handler h m op k s p
+      | .pure (s', r) => .silent (interpState h b s' (m.next (k r)))
+      | .silent p' => .silent (interpAt h b m (.handler op k s p'))
+      | .impure op' k' => .impure op' fun r => interpAt h b m (.handler op k s (k' r))
+      | .br c k' => .br c fun r => interpAt h b m (.handler op k s (k' r)) :=
+  Proofs.observe_interpAt_handler h b m op k s p
 
-theorem observe_interpState (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op)) (s : σ)
-    (m : CoFree E A) :
-    (interpState h s m).observe =
+theorem observe_interpState (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op))
+    (b : Effect.BrMap E F) (s : σ) (m : CoFree E A) :
+    (interpState h b s m).observe =
       match m.step m.initial with
       | .pure a => .pure (s, a)
-      | .silent y => .silent (interpState h s (m.next y))
-      | .impure op k => (interpAt h m (.handler op k s (h s op).initPos)).observe :=
-  Proofs.observe_interpState h s m
+      | .silent y => .silent (interpState h b s (m.next y))
+      | .impure op k => (interpAt h b m (.handler op k s (h s op).initPos)).observe
+      | .br c k => .br (b.op c) fun r => interpState h b s (m.next (k (b.resp c r))) :=
+  Proofs.observe_interpState h b s m
 
 end Interp
 
@@ -100,7 +108,9 @@ theorem observe_fixFrom_startAt {I O : Type u} (body : I → CoFree (Effect.Call
       | .silent p', stack => .silent ((fixFrom body t).startAt ⟨c, p', stack⟩)
       | .impure (.inl i) k, stack =>
         .silent ((fixFrom body t).startAt ⟨some i, (body i).initPos, ⟨c, k⟩ :: stack⟩)
-      | .impure (.inr op) k, stack => .impure op fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩ :=
+      | .impure (.inr op) k, stack => .impure op fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩
+      | .br (.inl b) _, _ => nomatch b
+      | .br (.inr b) k, stack => .br b fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩ :=
   Proofs.observe_fixFrom_startAt body t c p stack
 
 end CoFree

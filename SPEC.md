@@ -341,8 +341,19 @@ point of a one-step relation `SameF` with cases: both sides take a silent step (
 for every pair of successors); both perform the same visible operation (`R` for every answer);
 both return (`RR`); both perform an operation satisfying `ub`; and, inductively, one side alone
 takes a silent step (for every successor), so only finitely many in a row and divergence is
-preserved. A silent step is a `silent` node or an operation satisfying `hidden` that has at least
-one answer. `Eutt RR` is the case with no hidden operations and no `ub`.
+preserved. A silent step is a `silent` node, a `br` node, or an operation satisfying `hidden`
+that has at least one answer. `Eutt RR` is the case with no hidden operations and no `ub`.
+
+Branches: `Effect` has, besides `Op`/`Resp`, branch ops `BrOp`/`BrResp` (none by default;
+`⊕ₑ` sums both parts), and `Step`/`CoFree` have a `br c k` node next to `impure`. A branch is a
+choice nobody handles: `bind`, `iter`, `fixFrom` keep it, and `mapOps`, `interpState` and
+`interp` pass it through via an `Effect.BrMap E F`; `run`/`runM`/`trace` take a `pick` for it.
+`Bisim` matches it structurally (same `c`, related for every response). `Same` treats it as a
+silent step quantified over every response, on each side independently, so `Deterministic`
+means every branch behaves the same. A `br` with no responses is related to everything: the
+semantics must never emit one for "stuck" (emit UB instead), and `Same.trans` assumes every
+branch has a response, `Same.refl`/`Eutt.refl`/`Eutt.of_bisim` that there are no branches.
+Nothing in SIR emits `br` yet: `Mem` and `Host` have no branches.
 
 `Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Host _`, `Mem` already handled):
 `hidden` is `alloc`, so every allocation is a silent step answered with every valid placement

@@ -94,7 +94,7 @@ def HostOp.Resp : HostOp → Type
   | .stop | .ret _ | .revert _ | .invalid | .selfdestruct _ => Empty
   | .fault _ => Empty
 
-abbrev Host : Effect := ⟨HostOp, HostOp.Resp⟩
+abbrev Host : Effect := { Op := HostOp, Resp := HostOp.Resp }
 
 inductive MemOp
   | alloc (zeroed : Bool) (size : Nat)
@@ -112,7 +112,7 @@ def MemOp.Resp : MemOp → Type
   | .returnData => ByteArray
   | .setReturnData _ => Unit
 
-abbrev Mem : Effect := ⟨MemOp, MemOp.Resp⟩
+abbrev Mem : Effect := { Op := MemOp, Resp := MemOp.Resp }
 
 abbrev SirE : Effect := Mem ⊕ₑ Host
 

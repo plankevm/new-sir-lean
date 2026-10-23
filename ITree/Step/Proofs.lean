@@ -16,6 +16,10 @@ theorem map_impure {S : Type w₁} {T : Type w₂} (f : S → T) (op : E.Op)
     (k : E.Resp op → S) : (Step.impure op k : Step E A S).map f = .impure op fun r => f (k r) :=
   rfl
 
+theorem map_br {S : Type w₁} {T : Type w₂} (f : S → T) (c : E.BrOp)
+    (k : E.BrResp c → S) : (Step.br c k : Step E A S).map f = .br c fun r => f (k r) :=
+  rfl
+
 theorem map_map {S : Type w₁} {T : Type w₂} {U : Type w₃} (f : S → T) (g : T → U)
     (x : Step E A S) : (x.map f).map g = x.map fun s => g (f s) := by
   cases x <;> rfl
@@ -29,6 +33,7 @@ theorem Rel.refl {S : Type w₁} {R : S → S → Prop} (hR : ∀ s, R s s) :
   | .pure a => .pure a
   | .silent s => .silent (hR s)
   | .impure op k => .impure op fun r => hR (k r)
+  | .br c k => .br c fun r => hR (k r)
 
 theorem Rel.symm {S : Type w₁} {T : Type w₂} {R : S → T → Prop}
     {x : Step E A S} {y : Step E A T} (h : Rel R x y) : Rel (fun t s => R s t) y x := by
@@ -36,6 +41,7 @@ theorem Rel.symm {S : Type w₁} {T : Type w₂} {R : S → T → Prop}
   | pure a => exact .pure a
   | silent h => exact .silent h
   | impure op h => exact .impure op h
+  | br c h => exact .br c h
 
 theorem Rel.trans {S : Type w₁} {T : Type w₂} {U : Type w₃}
     {R₁ : S → T → Prop} {R₂ : T → U → Prop}
@@ -48,6 +54,8 @@ theorem Rel.trans {S : Type w₁} {T : Type w₂} {U : Type w₃}
     | silent h₂ => exact .silent ⟨_, h₁, h₂⟩
   | impure op h₁ => cases h₂ with
     | impure _ h₂ => exact .impure op fun r => ⟨_, h₁ r, h₂ r⟩
+  | br c h₁ => cases h₂ with
+    | br _ h₂ => exact .br c fun r => ⟨_, h₁ r, h₂ r⟩
 
 theorem Rel.mono {S : Type w₁} {T : Type w₂} {R R' : S → T → Prop}
     {x : Step E A S} {y : Step E A T}
@@ -56,6 +64,7 @@ theorem Rel.mono {S : Type w₁} {T : Type w₂} {R R' : S → T → Prop}
   | pure a => exact .pure a
   | silent h => exact .silent (hR _ _ h)
   | impure op h => exact .impure op fun r => hR _ _ (h r)
+  | br c h => exact .br c fun r => hR _ _ (h r)
 
 theorem Rel.map {S : Type w₁} {T : Type w₂} {S' : Type w₃} {T' : Type w₄}
     {R : S → T → Prop} {R' : S' → T' → Prop} {f : S → S'} {g : T → T'}
@@ -66,6 +75,7 @@ theorem Rel.map {S : Type w₁} {T : Type w₂} {S' : Type w₃} {T' : Type w₄
   | pure a => exact .pure a
   | silent h => exact .silent (hfg _ _ h)
   | impure op h => exact .impure op fun r => hfg _ _ (h r)
+  | br c h => exact .br c fun r => hfg _ _ (h r)
 
 theorem Rel.of_map {S : Type w₁} {T : Type w₂} {S' : Type w₃} {T' : Type w₄}
     {R : S' → T' → Prop} {f : S → S'} {g : T → T'} {x : Step E A S} {y : Step E A T}
@@ -74,6 +84,7 @@ theorem Rel.of_map {S : Type w₁} {T : Type w₂} {S' : Type w₃} {T' : Type w
   · exact .pure _
   · exact .silent ‹_›
   · exact .impure _ ‹_›
+  · exact .br _ ‹_›
 
 theorem Rel.map_eq {S : Type w₁} {T : Type w₂} {V : Type w₃}
     {R : S → T → Prop} {f : S → V} {g : T → V}
@@ -84,21 +95,26 @@ theorem Rel.map_eq {S : Type w₁} {T : Type w₂} {V : Type w₃}
   | pure a => rfl
   | silent h => exact congrArg Step.silent (hfg _ _ h)
   | impure op h => exact congrArg (Step.impure op) (funext fun r => hfg _ _ (h r))
+  | br c h => exact congrArg (Step.br c) (funext fun r => hfg _ _ (h r))
 
 theorem Rel.of_map_eq {S : Type w₁} {T : Type w₂} {V : Type w₃}
     {f : S → V} {g : T → V} {x : Step E A S} {y : Step E A T}
     (h : x.map f = y.map g) : Rel (fun s t => f s = g t) x y := by
   cases x <;> cases y <;>
-    simp only [Step.map, Step.pure.injEq, Step.silent.injEq, Step.impure.injEq, reduceCtorEq] at h
+    simp only [Step.map, Step.pure.injEq, Step.silent.injEq, Step.impure.injEq, Step.br.injEq,
+      reduceCtorEq] at h
   · subst h; exact .pure _
   · exact .silent h
   · obtain ⟨rfl, hk⟩ := h
     exact .impure _ fun r => congrFun (eq_of_heq hk) r
+  · obtain ⟨rfl, hk⟩ := h
+    exact .br _ fun r => congrFun (eq_of_heq hk) r
 
 theorem Rel.eq {S : Type w₁} {x y : Step E A S} (h : Rel Eq x y) : x = y := by
   cases h with
   | pure a => rfl
   | silent h => subst h; rfl
   | impure op h => exact congrArg (Step.impure op) (funext h)
+  | br c h => exact congrArg (Step.br c) (funext h)
 
 end Step.Proofs

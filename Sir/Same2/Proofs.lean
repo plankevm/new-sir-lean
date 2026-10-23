@@ -14,16 +14,19 @@ theorem isUB_iff {op : HostOp} : op.isUB = true ↔ ∃ u, op = .fault (.ub u) :
 
 theorem next_iff_tau {t t' : Run} : Next Hidden t t' ↔ Tau t t' := by
   constructor
-  · rintro (h | ⟨op, hop, k, hk, r, rfl⟩)
+  · rintro (h | ⟨op, hop, k, hk, r, rfl⟩ | ⟨c, _⟩)
     · exact .silent h
     · obtain ⟨size, live, rfl⟩ := isAlloc_iff.mp hop
       exact .alloc r hk
+    · exact nomatch c
   · rintro (h | ⟨r, hk⟩)
     · exact .inl h
-    · exact .inr ⟨_, rfl, _, hk, r, rfl⟩
+    · exact .inr (.inl ⟨_, rfl, _, hk, r, rfl⟩)
 
+/-- `Host` has no branches, so a silent step always has somewhere to go. -/
 theorem silent_iff {t : Run} : Silent Hidden t ↔ ∃ t', Tau t t' :=
-  ⟨fun ⟨n, h⟩ => ⟨n, next_iff_tau.mp h⟩, fun ⟨n, h⟩ => ⟨n, next_iff_tau.mpr h⟩⟩
+  ⟨(fun | .inl ⟨n, h⟩ => ⟨n, next_iff_tau.mp h⟩ | .inr ⟨c, _⟩ => nomatch c),
+   fun ⟨n, h⟩ => .inl ⟨n, next_iff_tau.mpr h⟩⟩
 
 theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
     CoFree.SameF Hidden Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by

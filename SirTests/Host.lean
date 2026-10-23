@@ -86,7 +86,7 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
 
 def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
     (e : Entry) (fuel : Nat := 100000) : Outcome × World :=
-  match (CoFree.runM answer fuel (exec p layout imm env e)).run.run world with
+  match (CoFree.runM (E := Host) answer nofun fuel (exec p layout imm env e)).run.run world with
   | (.ok none, w) => (.outOfFuel, w)
   | (.ok (some x), _) => nomatch x
   | (.error o, w) => (o, w)

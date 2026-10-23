@@ -78,7 +78,7 @@ def handleMem : FrameMem → (op : SirE.Op) → CoFree Host (FrameMem × SirE.Re
 /-- The semantics of an entry point: every remaining effect is a host interaction. -/
 def exec (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
     CoFree Host Empty := do
-  let (_frame', res) ← CoFree.interpState handleMem {} (runEntry p layout imm env e)
+  let (_frame', res) ← CoFree.interpState handleMem (.sum (.empty nofun) .id) {} (runEntry p layout imm env e)
   nomatch res
 
 end Sir

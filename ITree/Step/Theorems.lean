@@ -18,6 +18,10 @@ variable {E : Effect.{u}} {A : Type u}
     (k : E.Resp op → S) : (Step.impure op k : Step E A S).map f = .impure op fun r => f (k r) :=
   Proofs.map_impure f op k
 
+@[simp] theorem map_br {S : Type w₁} {T : Type w₂} (f : S → T) (c : E.BrOp)
+    (k : E.BrResp c → S) : (Step.br c k : Step E A S).map f = .br c fun r => f (k r) :=
+  Proofs.map_br f c k
+
 theorem map_map {S : Type w₁} {T : Type w₂} {U : Type w₃} (f : S → T) (g : T → U)
     (x : Step E A S) : (x.map f).map g = x.map fun s => g (f s) :=
   Proofs.map_map f g x

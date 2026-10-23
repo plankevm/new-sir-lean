@@ -10,13 +10,13 @@ inductive StoreOp
   | sload (k : Nat)
   | sstore (k v : Nat)
 
-abbrev Store : Effect := ⟨StoreOp, fun | .sload _ => Nat | .sstore _ _ => Unit⟩
+abbrev Store : Effect := { Op := StoreOp, Resp := fun | .sload _ => Nat | .sstore _ _ => Unit }
 
 inductive LogOp
   | emit (n : Nat)
   deriving BEq, Repr
 
-abbrev Log : Effect := ⟨LogOp, fun | .emit _ => Unit⟩
+abbrev Log : Effect := { Op := LogOp, Resp := fun | .emit _ => Unit }
 
 def emit (n : Nat) := perform (E := Log) (.emit n)
 
@@ -66,26 +66,29 @@ def replay (t : CoFree.{0} Log Nat) : CoFree.{1} (Effect.lift.{0, 1} Log) (ULift
     | .silent t' => pure (.repeat t')
     | .impure op k => (perform (E := Effect.lift.{0, 1} Log) ⟨op⟩).bind fun r =>
       pure (.repeat (k r.down))
+    | .br c _ => nomatch c
 
 def emitted {A : Type} (t : CoFree Log A) : Array Nat × Option A :=
-  let (events, result) := trace (fun _ => ()) 10000 t
-  (events.filterMap fun | .op (.emit n) => some n | .silent => none, result)
+  let (events, result) := trace (E := Log) (fun _ => ()) nofun 10000 t
+  (events.filterMap fun | .op (.emit n) => some n | _ => none, result)
 
-def silents {E : Effect.{0}} {A : Type} (answer : (op : E.Op) → E.Resp op) (t : CoFree E A) : Nat :=
-  ((trace answer 10000 t).1.filter fun | .silent => true | .op _ => false).size
+def silents {E : Effect.{0}} {A : Type} (answer : (op : E.Op) → E.Resp op)
+    (pick : (c : E.BrOp) → E.BrResp c) (t : CoFree E A) : Nat :=
+  ((trace answer pick 10000 t).1.filter fun | .silent => true | _ => false).size
 
 def checks : List (String × Bool) :=
-  let handled := interpState storeInMap (fun _ => 0) bump
+  let handled := interpState storeInMap (.sum (.empty nofun) .id) (fun _ => 0) bump
   let (bumpEvents, bumpResult) := emitted handled
   [ ("bump emits the stored value", bumpEvents == #[0]),
     ("bump increments slot 0", bumpResult.map (·.1 0) == some 1),
-    ("bump: one silent step per handled op", silents (fun _ => ()) handled == 3),
+    ("bump: one silent step per handled op", silents (E := Log) (fun _ => ()) nofun handled == 3),
     ("fib 10", emitted (fib 10) == (#[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55], some 55)),
     ("fib' 10", emitted (fib' 10) == (#[0, 1, 1, 2, 3, 5, 8, 13, 21, 34], some 55)),
     ("countTo 4", emitted (countTo 4) == (#[0, 1, 2, 3], some 4)),
     ("fact 5", emitted (fact 5) == (#[1, 1, 2, 6, 24], some 120)),
     ("replay fib 10",
-      (run (E := Effect.lift.{0, 1} Log) (fun _ => ⟨()⟩) 10000 (replay (fib 10))).map ULift.down
+      (run (E := Effect.lift.{0, 1} Log) (fun _ => ⟨()⟩) (fun ⟨c⟩ => nomatch c) 10000
+        (replay (fib 10))).map ULift.down
         == some 55) ]
 
 #eval show IO Unit from do

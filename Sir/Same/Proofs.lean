@@ -12,7 +12,7 @@ theorem Same.symm {t₁ t₂ : CoFree Host A} (h : Same Eq t₁ t₂) : Same Eq 
 
 theorem Same.trans {t₁ t₂ t₃ : CoFree Host A} (h₁ : Same Eq t₁ t₂) (h₂ : Same Eq t₂ t₃) :
     Same Eq t₁ t₃ :=
-  (CoFree.Same.trans h₁ h₂).mono fun _ _ ⟨_, h₁, h₂⟩ => h₁.trans h₂
+  (CoFree.Same.trans (E := Host) nofun h₁ h₂).mono fun _ _ ⟨_, h₁, h₂⟩ => h₁.trans h₂
 
 /-- Only deterministic runs are related to anything. -/
 theorem Deterministic.of_same {t₁ t₂ : CoFree Host A} (h : Same Eq t₁ t₂) :

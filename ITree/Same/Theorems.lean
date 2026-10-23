@@ -30,12 +30,25 @@ theorem next_hidden_iff {m n : CoFree E A} {op : E.Op} {k : E.Resp op → CoFree
     (h : m.observe = .impure op k) (hop : hidden op) : Next hidden m n ↔ ∃ r, k r = n :=
   Proofs.next_hidden_iff h hop
 
+theorem next_br_iff {m n : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
+    (h : m.observe = .br c k) : Next hidden m n ↔ ∃ r, k r = n :=
+  Proofs.next_br_iff h
+
 theorem silent_of_silent {m n : CoFree E A} (h : m.observe = .silent n) : Silent hidden m :=
   Proofs.silent_of_silent h
 
 theorem silent_of_hidden {m : CoFree E A} {op : E.Op} {k : E.Resp op → CoFree E A}
     (h : m.observe = .impure op k) (hop : hidden op) (r : E.Resp op) : Silent hidden m :=
   Proofs.silent_of_hidden h hop r
+
+theorem silent_of_br {m : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
+    (h : m.observe = .br c k) : Silent hidden m :=
+  Proofs.silent_of_br h
+
+/-- When every branch has a response, a silent step has somewhere to go. -/
+theorem exists_next (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c)) {m : CoFree E A} :
+    Silent hidden m → ∃ n, Next hidden m n :=
+  Proofs.exists_next hbr
 
 theorem SameF.mono {RR : A → B → Prop} {R R' : CoFree E A → CoFree E B → Prop}
     (hR : ∀ x y, R x y → R' x y) {m₁ : CoFree E A} {m₂ : CoFree E B}
@@ -105,6 +118,18 @@ theorem Same.silentR {RR : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree 
     Same hidden ub RR m₁ m₂ :=
   Proofs.Same.silentR hs h
 
+/-- A branch on the left: every response must be related. With no responses, it is related to
+everything. -/
+theorem Same.brL {RR : A → B → Prop} (c : E.BrOp) {k : E.BrResp c → CoFree E A}
+    {m₂ : CoFree E B} (h : ∀ r, Same hidden ub RR (k r) m₂) :
+    Same hidden ub RR (CoFree.br c k) m₂ :=
+  Proofs.Same.brL c h
+
+theorem Same.brR {RR : A → B → Prop} {m₁ : CoFree E A} (c : E.BrOp)
+    {k : E.BrResp c → CoFree E B} (h : ∀ r, Same hidden ub RR m₁ (k r)) :
+    Same hidden ub RR m₁ (CoFree.br c k) :=
+  Proofs.Same.brR c h
+
 theorem Same.silentL_inv {RR : A → B → Prop} {m₁ n₁ : CoFree E A} {m₂ : CoFree E B}
     (h : Same hidden ub RR m₁ m₂) (hn : Next hidden m₁ n₁) : Same hidden ub RR n₁ m₂ :=
   Proofs.Same.silentL_inv h hn
@@ -130,14 +155,16 @@ theorem Same.mono {RR RR' : A → B → Prop} (hRR : ∀ a b, RR a b → RR' a b
     Same hidden ub RR' m₁ m₂ :=
   Proofs.Same.mono hRR h
 
-theorem Same.refl {RR : A → A → Prop} (hhidden : ∀ op, ¬hidden op) (hRR : ∀ a, RR a a)
-    (m : CoFree E A) : Same hidden ub RR m m :=
-  Proofs.Same.refl hhidden hRR m
+theorem Same.refl {RR : A → A → Prop} (hhidden : ∀ op, ¬hidden op)
+    (hbr : E.BrOp → False) (hRR : ∀ a, RR a a) (m : CoFree E A) : Same hidden ub RR m m :=
+  Proofs.Same.refl hhidden hbr hRR m
 
-theorem Same.trans {RA : A → B → Prop} {RB : B → C → Prop} {x : CoFree E A} {y : CoFree E B} {z : CoFree E C}
-    (h₁ : Same hidden ub RA x y) (h₂ : Same hidden ub RB y z) :
+/-- Needs every branch to have a response: a branch with none is related to everything. -/
+theorem Same.trans {RA : A → B → Prop} {RB : B → C → Prop}
+    (hbr : ∀ c : E.BrOp, Nonempty (E.BrResp c)) {x : CoFree E A} {y : CoFree E B}
+    {z : CoFree E C} (h₁ : Same hidden ub RA x y) (h₂ : Same hidden ub RB y z) :
     Same hidden ub (fun a c => ∃ b, RA a b ∧ RB b c) x z :=
-  Proofs.Same.trans h₁ h₂
+  Proofs.Same.trans hbr h₁ h₂
 
 theorem next_bind {m n : CoFree E A} {f : A → CoFree E B} (h : Next hidden m n) :
     Next hidden (m.bind f) (n.bind f) :=
@@ -158,10 +185,12 @@ theorem Same.bind {RR : A → B → Prop} {RR' : C → D → Prop} {m₁ : CoFre
     Same hidden ub RR' (m₁.bind f) (m₂.bind g) :=
   Proofs.Same.bind h hfg
 
-theorem Eutt.refl {RR : A → A → Prop} (hRR : ∀ a, RR a a) (m : CoFree E A) : Eutt RR m m :=
-  Proofs.Eutt.refl hRR m
+theorem Eutt.refl {RR : A → A → Prop} (hbr : E.BrOp → False) (hRR : ∀ a, RR a a)
+    (m : CoFree E A) : Eutt RR m m :=
+  Proofs.Eutt.refl hbr hRR m
 
-theorem Eutt.of_bisim {m₁ m₂ : CoFree E A} (h : Bisim m₁ m₂) : Eutt Eq m₁ m₂ :=
-  Proofs.Eutt.of_bisim h
+theorem Eutt.of_bisim (hbr : E.BrOp → False) {m₁ m₂ : CoFree E A} (h : Bisim m₁ m₂) :
+    Eutt Eq m₁ m₂ :=
+  Proofs.Eutt.of_bisim hbr h
 
 end CoFree
