@@ -22,9 +22,8 @@ def HostOp.isUB : HostOp → Bool
 
 abbrev Undefined (op : HostOp) : Prop := op.isUB = true
 
-/-- No host operation is hidden: the only silent steps are `silent` nodes and branches. -/
 abbrev Same {A B : Type} (RR : A → B → Prop) (t₁ : CoFree Exec A) (t₂ : CoFree Exec B) : Prop :=
-  CoFree.Same (fun _ => False) Undefined RR t₁ t₂
+  CoFree.Same Undefined RR t₁ t₂
 
 def Deterministic {A : Type} (t : CoFree Exec A) : Prop :=
   Same Eq t t

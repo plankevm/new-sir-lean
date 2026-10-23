@@ -338,13 +338,13 @@ segments, immutables: all modeled.
 
 ## Equivalence of runs
 
-`CoFree.Same hidden ub RR` (in `ITree/Same.lean`) is a weak bisimulation, the greatest fixed
+`CoFree.Same ub RR` (in `ITree/Same.lean`) is a weak bisimulation, the greatest fixed
 point of a one-step relation `SameF` with cases: both sides take a silent step (`R` must hold
-for every pair of successors); both perform the same visible operation (`R` for every answer);
+for every pair of successors); both perform the same operation (`R` for every answer);
 both return (`RR`); both perform an operation satisfying `ub`; and, inductively, one side alone
 takes a silent step (for every successor), so only finitely many in a row and divergence is
-preserved. A silent step is a `silent` node, a `br` node, or an operation satisfying `hidden`
-that has at least one answer. `Eutt RR` is the case with no hidden operations and no `ub`.
+preserved. A silent step is a `silent` node or a `br` node; every operation is visible.
+`Eutt RR` is the case with no `ub`.
 
 Branches: `Effect` has, besides `Op`/`Resp`, branch ops `BrOp`/`BrResp` (none by default;
 `⊕ₑ` sums both parts), and `Step`/`CoFree` have a `br c k` node next to `impure`. A branch is a
@@ -361,7 +361,7 @@ In SIR, only `handleMem` emits `br` (allocation placement); the spec program `Co
 
 `Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Exec _`, `Mem` already handled):
 every allocation is a placement branch, so a silent step taken with every valid placement,
-independently on each side; no host operation is hidden; `ub` is `fault (.ub _)`. `Sir.Same2` is
+independently on each side; `ub` is `fault (.ub _)`. `Sir.Same2` is
 the same relation written out directly (`Same2F`: `tau`/`tauL`/`tauR` over `silent` and `br`,
 `visible`, `ub`), and `same2_iff_same` proves them equal. Equivalence is stated only after
 `Mem` is handled: on `CoFree SirE` an `alloc` is an ordinary operation. `Same` is a partial equivalence (symmetric and transitive), not an

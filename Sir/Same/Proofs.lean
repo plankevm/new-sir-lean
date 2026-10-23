@@ -77,21 +77,21 @@ theorem Same.ub {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Ex
     {k₂ : HostOp.Resp (.fault (.ub u₂)) → CoFree Exec B}
     (h₁ : t₁.observe = .impure (.fault (.ub u₁)) k₁)
     (h₂ : t₂.observe = .impure (.fault (.ub u₂)) k₂) : Same RR t₁ t₂ :=
-  CoFree.Same.fold (.ub _ _ h₁ h₂ rfl rfl id id)
+  CoFree.Same.fold (.ub _ _ h₁ h₂ rfl rfl)
 
 /-- Both runs perform the same visible operation, and agree for every answer. -/
 theorem Same.visible {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B} {op : HostOp}
     {k₁ : HostOp.Resp op → CoFree Exec A} {k₂ : HostOp.Resp op → CoFree Exec B}
     (h₁ : t₁.observe = .impure op k₁) (h₂ : t₂.observe = .impure op k₂)
     (h : ∀ r, Same RR (k₁ r) (k₂ r)) : Same RR t₁ t₂ :=
-  CoFree.Same.fold (.impure op h₁ h₂ id h)
+  CoFree.Same.fold (.impure op h₁ h₂ h)
 
 /-- Related runs perform the same next visible operation, unless it is undefined behavior. -/
 theorem Same.visible_inv {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     {op₁ op₂ : HostOp} {k₁ : HostOp.Resp op₁ → CoFree Exec A} {k₂ : HostOp.Resp op₂ → CoFree Exec B}
     (h : Same RR t₁ t₂) (h₁ : t₁.observe = .impure op₁ k₁) (h₂ : t₂.observe = .impure op₂ k₂)
     (hub : op₁.isUB = false) : op₁ = op₂ :=
-  CoFree.Same.impure_inv h h₁ h₂ id id (by simp [hub])
+  CoFree.Same.impure_inv h h₁ h₂ (by simp [hub])
 
 /-- Undefined behavior is related to no visible operation. -/
 theorem Same.ub_inv {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B} {u : UB}
@@ -99,7 +99,7 @@ theorem Same.ub_inv {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFre
     {k₂ : HostOp.Resp op → CoFree Exec B}
     (h : Same RR t₁ t₂) (h₁ : t₁.observe = .impure (.fault (.ub u)) k₁)
     (h₂ : t₂.observe = .impure op k₂) (hub : op.isUB = false) : False := by
-  have := CoFree.Same.impure_inv (CoFree.Same.symm h) h₂ h₁ id id (by simp [hub])
+  have := CoFree.Same.impure_inv (CoFree.Same.symm h) h₂ h₁ (by simp [hub])
   subst this
   simp [HostOp.isUB] at hub
 

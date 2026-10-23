@@ -9,35 +9,33 @@ theorem isUB_iff {op : HostOp} : op.isUB = true ↔ ∃ u, op = .fault (.ub u) :
   cases op <;> simp [HostOp.isUB]
   rename_i f; cases f <;> simp
 
-theorem next_iff_tau {t t' : Run} : Next (fun _ => False) t t' ↔ Tau t t' := by
+theorem next_iff_tau {t t' : Run} : Next t t' ↔ Tau t t' := by
   constructor
-  · rintro (h | ⟨_, hf, _⟩ | ⟨_, _, hk, r, rfl⟩)
+  · rintro (h | ⟨_, _, hk, r, rfl⟩)
     · exact .silent h
-    · exact hf.elim
     · exact .br r hk
   · rintro (h | ⟨r, hk⟩)
     · exact .inl h
-    · exact .inr (.inr ⟨_, _, hk, r, rfl⟩)
+    · exact .inr ⟨_, _, hk, r, rfl⟩
 
-theorem silent_iff {t : Run} : Silent (fun _ => False) t ↔ IsTau t := by
+theorem silent_iff {t : Run} : Silent t ↔ IsTau t := by
   constructor
-  · rintro ⟨_, h⟩
-    cases next_iff_tau.mp h with
-    | silent hs => exact .silent hs
-    | br _ hb => exact .br hb
+  · rintro (⟨_, h⟩ | ⟨_, _, h⟩)
+    · exact .silent h
+    · exact .br h
   · rintro (h | h)
     · exact CoFree.silent_of_silent h
     · exact CoFree.silent_of_br h
 
 theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
-    CoFree.SameF (fun _ => False) Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by
+    CoFree.SameF Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by
   constructor
   · intro h
     induction h with
     | silent hs₁ hs₂ h =>
       exact .tau (silent_iff.mp hs₁) (silent_iff.mp hs₂)
         fun _ _ h₁ h₂ => h _ _ (next_iff_tau.mpr h₁) (next_iff_tau.mpr h₂)
-    | impure op h₁ h₂ _ h =>
+    | impure op h₁ h₂ h =>
       exact .visible op h₁ h₂ h
     | @ret _ _ a => exact a.elim
     | ub op₁ op₂ h₁ h₂ hu₁ hu₂ =>
@@ -51,9 +49,9 @@ theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
     | tau hs₁ hs₂ h =>
       exact .silent (silent_iff.mpr hs₁) (silent_iff.mpr hs₂)
         fun _ _ h₁ h₂ => h _ _ (next_iff_tau.mp h₁) (next_iff_tau.mp h₂)
-    | visible op h₁ h₂ h => exact .impure op h₁ h₂ id h
+    | visible op h₁ h₂ h => exact .impure op h₁ h₂ h
     | ub u₁ u₂ h₁ h₂ =>
-      exact .ub _ _ h₁ h₂ rfl rfl id id
+      exact .ub _ _ h₁ h₂ rfl rfl
     | tauL hs _ ih => exact .silentL (silent_iff.mpr hs) fun _ hn => ih _ (next_iff_tau.mp hn)
     | tauR hs _ ih => exact .silentR (silent_iff.mpr hs) fun _ hn => ih _ (next_iff_tau.mp hn)
 
