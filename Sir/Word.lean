@@ -1,3 +1,4 @@
+import Lint.BinderScope
 /-! EVM words and the pure EVM operations on them. -/
 
 structure ByteSize where

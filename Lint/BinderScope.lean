@@ -11,7 +11,8 @@ inductive constructor, `h → ∀ r, P r → C` therefore binds `r` over the con
 not part of the type's leading binder telescope and whose body is, at top level, a logical
 connective (`→`, `∧`, `∨`, `↔`), unless the binder ends at a closing bracket, so the reader sees
 where its scope ends. Fixes: `(∀ x, A → B)`, `∀ x, (A → B)`, or move `x` before the colon.
-Leading binders elsewhere are idiomatic and not flagged.
+Leading binders elsewhere are idiomatic and not flagged. On by default: every root module of the
+package imports this one, so all modules inherit it.
 -/
 
 namespace Lint.BinderScope
@@ -19,7 +20,7 @@ namespace Lint.BinderScope
 open Lean Elab Command
 
 register_option linter.binderScope : Bool := {
-  defValue := false
+  defValue := true
   descr := "flag `∀`/`∃` binders whose body is an unparenthesized `→`/`∧`/`∨`/`↔`"
 }
 

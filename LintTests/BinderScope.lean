@@ -2,7 +2,6 @@ import Lint.BinderScope
 
 namespace LintTests.BinderScope
 
-set_option linter.binderScope true
 set_option warningAsError false
 
 -- The motivating bug: `res` scopes over the conclusion, so it is one constructor argument.

@@ -1,3 +1,4 @@
+import Lint.BinderScope
 universe u w
 
 /-- Operations `Op` with their responses `Resp`, and branches `BrOp` with theirs `BrResp`.

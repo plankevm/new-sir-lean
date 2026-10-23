@@ -1,3 +1,4 @@
+import Lint.BinderScope
 import Lean
 
 open Lean Elab Tactic Meta
