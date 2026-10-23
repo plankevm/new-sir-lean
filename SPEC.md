@@ -20,9 +20,9 @@ below.
 | `Sir/Word.lean` | `Word := BitVec 256`, pure EVM arithmetic (`Word.div`, `sdiv`, `signextend`, `byte`, `sar`, `clz`, …), big-endian byte conversion, `ByteArray.slicePad`. |
 | `Sir/Keccak.lean` | Keccak-256 in pure Lean, `Word.keccak256`. |
 | `Sir/Ir.lean` | AST (`Program`, `Function`, `Block`, `Control`, `Operation`, `Expr`, `Stmt`, `Query`, `UnOp`, `BinOp`, `TernOp`, with hand-written `resolve` over operands), `Immutables`, `Entry`, `Layout`, `Layout.Consistent`. |
-| `Sir/Effect.lean` | Effects: `Mem`, `Host`, `SirE := Mem ⊕ₑ Host`; `Fault` (`malformed`, `UB`), `CallKind`, `Placement`. |
+| `Sir/Effect.lean` | Effects: `Mem`, `Host`, `SirE := Mem ⊕ₑ Host` (no branches); `Choice` and `Exec` (`Host` operations plus `Choice` branches); `Fault` (`malformed`, `UB`), `CallKind`, `Placement`. |
 | `Sir/Eval.lean` | `UnOp.eval`, `BinOp.eval`, `TernOp.eval`, `Expr.eval`, `Stmt.exec`; evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
-| `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Host Empty`. |
+| `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Exec Empty`. |
 | `Sir/Memory/Proofs.lean` | `placeable_iff`: the allocation check is exact. |
 | `Sir/Same.lean`, `Sir/Same/Proofs.lean` | `Same RR t₁ t₂` and `Deterministic t` on `exec` runs (see "Equivalence of runs"), and their lemmas. |
 | `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, `Same` proofs on example programs (`kernel_rfl` computes runs in the kernel), axiom audit. |
@@ -134,7 +134,6 @@ An importer from plankc maps a program onto this AST by:
 | `log topics data` | `Unit` | |
 | `call kind gas account input` | `Bool × ByteArray` | success, return data; `kind` carries the value for `call`/`callcode` |
 | `create value salt? initcode` | `Word × ByteArray` | address (0 on failure), return data |
-| `alloc size live` | `{start // Placement live size start}` | the host places allocations; asked only when a placement exists, so it can always answer |
 | `stop`, `ret data`, `revert data`, `invalid`, `selfdestruct a`, `fault f` | `Empty` | terminal; `fault` is the stuck state (see Faults) |
 
 Gas exhaustion, static-context violations, call depth and the like are not SIR-level: a host
@@ -191,8 +190,10 @@ byte is `some b` or `none` (unwritten). `malloc` bytes start as `some 0`, `mallo
 `none`. `read` returns bytes only if every byte is allocated and written; `write` requires every
 byte to be allocated; `copy` (`mcopy`) requires both ranges to be allocated and moves byte
 states, so copying unwritten bytes is defined and the destination is unwritten. Zero-length
-accesses touch nothing. `alloc` asks the host for a placement only if one exists; otherwise it
-is out of memory. Placements have no alignment: `Placement live size s` is
+accesses touch nothing. `alloc` branches (`CoFree.choose (.placement size live fits)`, response
+`{start // Placement live size start}`) over every valid placement if one exists, so the branch is
+never empty (`fits` is the witness); otherwise it is UB `outOfMemory`. The host does not place
+allocations: the branch passes through to `exec`'s result, and whoever runs it picks. Placements have no alignment: `Placement live size s` is
 `s + size ≤ 2^256` and disjointness from every live allocation. `placeable` tries only 0 and the
 end of each live allocation; `Proofs.placeable_iff` proves this exact (a placement slides down to
 the highest allocation end at or below it, or to 0), so `outOfMemory` means no placement exists.
@@ -214,7 +215,8 @@ the highest allocation end at or below it, or to 0), so `outOfMemory` means no p
   allocated; the EVM-level check then guards its memory safety, and a compiler must preserve the
   halt rather than assume it away.
 
-`exec p layout e : CoFree Host Empty` is the semantics of an entry point. `Layout.Consistent`
+`exec p layout e : CoFree Exec Empty` is the semantics of an entry point; `Exec` has the `Host`
+operations and the `Choice` branches. `Layout.Consistent`
 states what the compiler must guarantee about the layout (data segments at their offsets, the
 runtime slice and placeholders in bounds, `init_end_offset` = init code size); it is an assumption
 for compiler proofs, not checked at run time.
@@ -355,12 +357,14 @@ discharged automatically for effects without branches or with inhabited response
 `br` with none would be related to everything; to get stuck, a semantics emits UB instead.
 `Same.trans` holds outright; `Same.refl`/`Eutt.refl`/`Eutt.of_bisim` assume there are no
 branches, because a program that observes a branch's response is not related to itself.
-Nothing in SIR emits `br` yet: `Mem` and `Host` have no branches.
+In SIR, only `handleMem` emits `br` (allocation placement); the spec program `CoFree SirE` has none.
 
-`Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Host _`, `Mem` already handled):
-`hidden` is `alloc`, so every allocation is a silent step answered with every valid placement
-(`HostOp.Resp (.alloc size live)` contains only valid ones), independently on each side; `ub`
-is `fault (.ub _)`. `Same` is a partial equivalence (symmetric and transitive), not an
+`Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Exec _`, `Mem` already handled):
+every allocation is a placement branch, so a silent step taken with every valid placement,
+independently on each side; no host operation is hidden; `ub` is `fault (.ub _)`. `Sir.Same2` is
+the same relation written out directly (`Same2F`: `tau`/`tauL`/`tauR` over `silent` and `br`,
+`visible`, `ub`), and `same2_iff_same` proves them equal. Equivalence is stated only after
+`Mem` is handled: on `CoFree SirE` an `alloc` is an ordinary operation. `Same` is a partial equivalence (symmetric and transitive), not an
 equivalence: a run whose visible behavior depends on a placement (e.g. it stores a pointer) is
 not related to itself. `Deterministic t := Same Eq t t` says that a run doesn't depend on placements.
 

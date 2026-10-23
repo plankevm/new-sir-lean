@@ -74,9 +74,6 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
     let w ← get
     pure w.callResult
   | .create _ salt _ => pure ((if salt.isSome then 0xC2 else 0xC1 : Word), ByteArray.empty)
-  | .alloc size live => do
-    let start := live.foldl (fun s a => max s (a.1 + a.2)) 0x80
-    if h : Placement live size start then pure ⟨start, h⟩ else throw (.hostError "alloc")
   | .stop => throw .stop
   | .ret data => throw (.ret data.toList)
   | .revert data => throw (.revert data.toList)
@@ -84,9 +81,15 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
   | .selfdestruct a => throw (.selfdestruct a)
   | .fault f => throw (.fault f)
 
+/-- Places every allocation after the highest live one, from `0x80`. -/
+def place : (c : Choice) → HostM (Choice.Resp c)
+  | .placement size live _ => do
+    let start := live.foldl (fun s a => max s (a.1 + a.2)) 0x80
+    if h : Placement live size start then pure ⟨start, h⟩ else throw (.hostError "alloc")
+
 def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
     (e : Entry) (fuel : Nat := 100000) : Outcome × World :=
-  match (CoFree.runM (E := Host) answer nofun fuel (exec p layout imm env e)).run.run world with
+  match (CoFree.runM (E := Exec) answer place fuel (exec p layout imm env e)).run.run world with
   | (.ok none, w) => (.outOfFuel, w)
   | (.ok (some x), _) => nomatch x
   | (.error o, w) => (o, w)

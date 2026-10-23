@@ -1,7 +1,7 @@
 import Sir.Eval
 
-/-! Frame memory: a list of allocations, plus the return data buffer. Placement of new
-allocations is chosen by the host. A byte is `none` until written if it came from `mallocany`.
+/-! Frame memory: a list of allocations, plus the return data buffer. A new allocation is placed
+by a branch (`Choice.placement`) over every valid placement. A byte is `none` until written if it came from `mallocany`.
 Reading a byte outside every allocation, reading a `none` byte, writing outside every
 allocation, and allocating when no placement exists are undefined behavior (`fault`). `mcopy`
 moves byte states, so copying unwritten bytes is not itself a read. -/
@@ -48,19 +48,26 @@ candidates fits, no placement exists. -/
 def placeable (live : List (Nat × Nat)) (size : Nat) : Bool :=
   (0 :: live.map fun a => a.1 + a.2).any fun s => decide (Placement live size s)
 
-def ub {α : Type} (u : UB) : CoFree Host α := do
-  let e ← perform (E := Host) (.fault (.ub u))
+theorem exists_placement_of_placeable {live : List (Nat × Nat)} {size : Nat}
+    (h : placeable live size = true) : ∃ start, Placement live size start := by
+  simp only [placeable, List.any_eq_true, decide_eq_true_eq] at h
+  exact let ⟨start, _, h⟩ := h; ⟨start, h⟩
+
+def ub {α : Type} (u : UB) : CoFree Exec α := do
+  let e ← perform (E := Exec) (.fault (.ub u))
   Empty.elim e
 
-def handleMem : FrameMem → (op : SirE.Op) → CoFree Host (FrameMem × SirE.Resp op)
+def handleMem : FrameMem → (op : SirE.Op) → CoFree Exec (FrameMem × SirE.Resp op)
   | m, .inr op => do
-    let r ← perform (E := Host) op
+    let r ← perform (E := Exec) op
     pure (m, r)
-  | m, .inl (.alloc zeroed size) => do
-    unless placeable m.live size do ub (.outOfMemory size)
-    let ⟨start, _⟩ ← perform (E := Host) (.alloc size m.live)
-    let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
-    pure ({ m with allocs := m.allocs.push a }, BitVec.ofNat 256 start)
+  | m, .inl (.alloc zeroed size) =>
+    if fits : placeable m.live size then do
+      let ⟨start, _⟩ ← CoFree.choose (E := Exec)
+        (.placement size m.live (exists_placement_of_placeable fits))
+      let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
+      pure ({ m with allocs := m.allocs.push a }, BitVec.ofNat 256 start)
+    else ub (.outOfMemory size)
   | m, .inl (.read offset length) => do
     let some states := m.states? offset length | ub (.memoryOutOfBounds offset length)
     let some bs := states.mapM id | ub (.uninitializedRead offset length)
@@ -75,10 +82,11 @@ def handleMem : FrameMem → (op : SirE.Op) → CoFree Host (FrameMem × SirE.Re
   | m, .inl .returnData => pure (m, m.returnData)
   | m, .inl (.setReturnData bytes) => pure ({ m with returnData := bytes }, ())
 
-/-- The semantics of an entry point: every remaining effect is a host interaction. -/
+/-- The semantics of an entry point: host interactions and placement choices. -/
 def exec (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
-    CoFree Host Empty := do
-  let (_frame', res) ← CoFree.interpState handleMem (.sum (.empty nofun) .id) {} (runEntry p layout imm env e)
+    CoFree Exec Empty := do
+  let (_frame', res) ←
+    CoFree.interpState handleMem (.sum (.empty nofun) (.empty nofun)) {} (runEntry p layout imm env e)
   nomatch res
 
 end Sir

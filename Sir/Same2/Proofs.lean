@@ -5,37 +5,40 @@ namespace Sir.Same2.Proofs
 
 open CoFree (Next Silent)
 
-theorem isAlloc_iff {op : HostOp} : op.isAlloc = true ↔ ∃ size live, op = .alloc size live := by
-  cases op <;> simp [HostOp.isAlloc]
-
 theorem isUB_iff {op : HostOp} : op.isUB = true ↔ ∃ u, op = .fault (.ub u) := by
   cases op <;> simp [HostOp.isUB]
   rename_i f; cases f <;> simp
 
-theorem next_iff_tau {t t' : Run} : Next Hidden t t' ↔ Tau t t' := by
+theorem next_iff_tau {t t' : Run} : Next (fun _ => False) t t' ↔ Tau t t' := by
   constructor
-  · rintro (h | ⟨op, hop, k, hk, r, rfl⟩ | ⟨c, _⟩)
+  · rintro (h | ⟨_, hf, _⟩ | ⟨_, _, hk, r, rfl⟩)
     · exact .silent h
-    · obtain ⟨size, live, rfl⟩ := isAlloc_iff.mp hop
-      exact .alloc r hk
-    · exact nomatch c
+    · exact hf.elim
+    · exact .br r hk
   · rintro (h | ⟨r, hk⟩)
     · exact .inl h
-    · exact .inr (.inl ⟨_, rfl, _, hk, r, rfl⟩)
+    · exact .inr (.inr ⟨_, _, hk, r, rfl⟩)
 
-theorem silent_iff {t : Run} : Silent Hidden t ↔ ∃ t', Tau t t' :=
-  ⟨fun ⟨n, h⟩ => ⟨n, next_iff_tau.mp h⟩, fun ⟨n, h⟩ => ⟨n, next_iff_tau.mpr h⟩⟩
+theorem silent_iff {t : Run} : Silent (fun _ => False) t ↔ IsTau t := by
+  constructor
+  · rintro ⟨_, h⟩
+    cases next_iff_tau.mp h with
+    | silent hs => exact .silent hs
+    | br _ hb => exact .br hb
+  · rintro (h | h)
+    · exact CoFree.silent_of_silent h
+    · exact CoFree.silent_of_br h
 
 theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
-    CoFree.SameF Hidden Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by
+    CoFree.SameF (fun _ => False) Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by
   constructor
   · intro h
     induction h with
     | silent hs₁ hs₂ h =>
       exact .tau (silent_iff.mp hs₁) (silent_iff.mp hs₂)
         fun _ _ h₁ h₂ => h _ _ (next_iff_tau.mpr h₁) (next_iff_tau.mpr h₂)
-    | impure op h₁ h₂ hop h =>
-      exact .visible op h₁ h₂ (by rintro size live rfl; exact hop rfl) h
+    | impure op h₁ h₂ _ h =>
+      exact .visible op h₁ h₂ h
     | @ret _ _ a => exact a.elim
     | ub op₁ op₂ h₁ h₂ hu₁ hu₂ =>
       obtain ⟨u₁, rfl⟩ := isUB_iff.mp hu₁
@@ -48,12 +51,9 @@ theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
     | tau hs₁ hs₂ h =>
       exact .silent (silent_iff.mpr hs₁) (silent_iff.mpr hs₂)
         fun _ _ h₁ h₂ => h _ _ (next_iff_tau.mp h₁) (next_iff_tau.mp h₂)
-    | visible op h₁ h₂ hop h =>
-      refine .impure op h₁ h₂ (fun ha => ?_) h
-      obtain ⟨size, live, rfl⟩ := isAlloc_iff.mp ha
-      exact hop size live rfl
+    | visible op h₁ h₂ h => exact .impure op h₁ h₂ id h
     | ub u₁ u₂ h₁ h₂ =>
-      exact .ub _ _ h₁ h₂ rfl rfl Bool.false_ne_true Bool.false_ne_true
+      exact .ub _ _ h₁ h₂ rfl rfl id id
     | tauL hs _ ih => exact .silentL (silent_iff.mpr hs) fun _ hn => ih _ (next_iff_tau.mp hn)
     | tauR hs _ ih => exact .silentR (silent_iff.mpr hs) fun _ hn => ih _ (next_iff_tau.mp hn)
 

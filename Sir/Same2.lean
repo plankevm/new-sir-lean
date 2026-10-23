@@ -6,8 +6,9 @@ A run (`exec`, after `Mem` is handled) never returns: it ends with an operation 
 answer (`stop`, `ret`, `revert`, `invalid`, `selfdestruct`, `fault`). So there is no return
 relation, and only three things can happen next:
 
-* a silent step (`Tau`): a `silent` node, or an `alloc`, answered with any valid placement;
-* a visible operation, any other `HostOp`, which both runs must perform identically;
+* a silent step (`Tau`): a `silent` node, or an allocation's branch, taken with any valid
+  placement;
+* a visible operation, any `HostOp`, which both runs must perform identically;
 * undefined behavior (`fault (.ub _)`), which is terminal and relates to undefined behavior of
   any kind, and to nothing else.
 
@@ -19,24 +20,27 @@ behavior depends on where something was placed is not related even to itself.
 
 namespace Sir
 
-abbrev Run := CoFree Host Empty
+abbrev Run := CoFree Exec Empty
 
 /-- `t` takes a silent step to `t'`. -/
 inductive Tau (t : Run) : Run → Prop
   | silent {t'} : t.observe = .silent t' → Tau t t'
-  | alloc {size live k} (r : HostOp.Resp (.alloc size live)) :
-      t.observe = .impure (.alloc size live) k → Tau t (k r)
+  | br {c k} (r : Choice.Resp c) : t.observe = .br c k → Tau t (k r)
 
-/-- One layer of `Same2`, with `R` for the pairs still to be checked. An allocation with no
-valid placement takes no silent step, so it relates to nothing. -/
+/-- `t` takes a silent step. A branch always has a placement to take (`Choice.placement` is made
+only when one exists), so this needs no successor. -/
+inductive IsTau (t : Run) : Prop
+  | silent {t'} : t.observe = .silent t' → IsTau t
+  | br {c k} : t.observe = .br c k → IsTau t
+
+/-- One layer of `Same2`, with `R` for the pairs still to be checked. -/
 inductive Same2F (R : Run → Run → Prop) : Run → Run → Prop
-  | tau {t₁ t₂} : (∃ t', Tau t₁ t') → (∃ t', Tau t₂ t') →
-      (∀ t₁' t₂', Tau t₁ t₁' → Tau t₂ t₂' → R t₁' t₂') → Same2F R t₁ t₂
-  | tauL {t₁ t₂} : (∃ t', Tau t₁ t') → (∀ t₁', Tau t₁ t₁' → Same2F R t₁' t₂) → Same2F R t₁ t₂
-  | tauR {t₁ t₂} : (∃ t', Tau t₂ t') → (∀ t₂', Tau t₂ t₂' → Same2F R t₁ t₂') → Same2F R t₁ t₂
+  | tau {t₁ t₂} : IsTau t₁ → IsTau t₂ → (∀ t₁' t₂', Tau t₁ t₁' → Tau t₂ t₂' → R t₁' t₂') →
+      Same2F R t₁ t₂
+  | tauL {t₁ t₂} : IsTau t₁ → (∀ t₁', Tau t₁ t₁' → Same2F R t₁' t₂) → Same2F R t₁ t₂
+  | tauR {t₁ t₂} : IsTau t₂ → (∀ t₂', Tau t₂ t₂' → Same2F R t₁ t₂') → Same2F R t₁ t₂
   | visible {t₁ t₂} (op : HostOp) {k₁ k₂} : t₁.observe = .impure op k₁ →
-      t₂.observe = .impure op k₂ → (∀ size live, op ≠ .alloc size live) →
-      (∀ r, R (k₁ r) (k₂ r)) → Same2F R t₁ t₂
+      t₂.observe = .impure op k₂ → (∀ r, R (k₁ r) (k₂ r)) → Same2F R t₁ t₂
   | ub {t₁ t₂} (u₁ u₂ : UB) {k₁ k₂} : t₁.observe = .impure (.fault (.ub u₁)) k₁ →
       t₂.observe = .impure (.fault (.ub u₂)) k₂ → Same2F R t₁ t₂
 

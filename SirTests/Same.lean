@@ -12,24 +12,45 @@ open Sir
 /-! ## Stepping through a run -/
 
 /-- Follows at most `n` `silent` nodes. -/
-def skip {A : Type} : Nat → CoFree Host A → CoFree Host A
+def skip {A : Type} : Nat → CoFree Exec A → CoFree Exec A
   | 0, t => t
   | n + 1, t => match t.observe with
     | .silent t' => skip n t'
     | _ => t
 
-def headOp {A : Type} (t : CoFree Host A) : Option HostOp :=
+def headOp {A : Type} (t : CoFree Exec A) : Option HostOp :=
   match t.observe with
   | .impure op _ => some op
   | _ => none
 
 /-- `t` after answering `r`, if `t` performs `op` next. -/
-def resume {A : Type} (t : CoFree Host A) (op : HostOp) (r : HostOp.Resp op) : CoFree Host A :=
+def resume {A : Type} (t : CoFree Exec A) (op : HostOp) (r : HostOp.Resp op) : CoFree Exec A :=
   match t.observe with
   | .impure op' k => if h : op' = op then k (h ▸ r) else t
   | _ => t
 
-theorem observe_of_headOp {A : Type} {t : CoFree Host A} {op : HostOp} (h : headOp t = some op) :
+def headBr {A : Type} (t : CoFree Exec A) : Option Choice :=
+  match t.observe with
+  | .br c _ => some c
+  | _ => none
+
+/-- `t` after placing with `r`, if `t` branches on `c` next. -/
+def resumeBr {A : Type} (t : CoFree Exec A) (c : Choice) (r : Choice.Resp c) : CoFree Exec A :=
+  match t.observe with
+  | .br c' k => if h : c' = c then k (h ▸ r) else t
+  | _ => t
+
+theorem observe_of_headBr {A : Type} {t : CoFree Exec A} {c : Choice} (h : headBr t = some c) :
+    t.observe = .br c (resumeBr t c) := by
+  unfold headBr at h
+  split at h
+  next c' k hk =>
+    cases h
+    unfold resumeBr
+    simp only [hk, dite_true]
+  next => cases h
+
+theorem observe_of_headOp {A : Type} {t : CoFree Exec A} {op : HostOp} (h : headOp t = some op) :
     t.observe = .impure op (resume t op) := by
   unfold headOp at h
   split at h
@@ -41,7 +62,7 @@ theorem observe_of_headOp {A : Type} {t : CoFree Host A} {op : HostOp} (h : head
 
 variable {A B : Type} {RR : A → B → Prop}
 
-theorem same_skipL (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
+theorem same_skipL (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     (h : Same RR (skip n t₁) t₂) : Same RR t₁ t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -51,7 +72,7 @@ theorem same_skipL (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
     next t' ht => exact Same.silentL ht (ih h)
     next => exact h
 
-theorem same_skipR (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
+theorem same_skipR (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     (h : Same RR t₁ (skip n t₂)) : Same RR t₁ t₂ := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -61,7 +82,7 @@ theorem same_skipR (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
     next t' ht => exact Same.silentR ht (ih h)
     next => exact h
 
-theorem skipL_inv (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
+theorem skipL_inv (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     (h : Same RR t₁ t₂) : Same RR (skip n t₁) t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -71,7 +92,7 @@ theorem skipL_inv (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
     next t' ht => exact ih (Same.silentL_inv h ht)
     next => exact h
 
-theorem skipR_inv (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
+theorem skipR_inv (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     (h : Same RR t₁ t₂) : Same RR t₁ (skip n t₂) := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -86,7 +107,7 @@ theorem skipR_inv (n : Nat) {t₁ : CoFree Host A} {t₂ : CoFree Host B}
 def prog (blocks : Array Block) : Program :=
   { init := 0, main := none, functions := #[⟨0, .never, blocks⟩] }
 
-def run (p : Program) : CoFree Host Empty :=
+def run (p : Program) : CoFree Exec Empty :=
   exec p noLayout (Immutables.ofWords p #[]) testEnv .init
 
 def stops : Program := prog #[{ control := .stop }]
@@ -129,21 +150,20 @@ def readUB : Program := prog #[
 /-- Placements are answered independently on each side, and the pointer is never observed. -/
 theorem mallocs_same_mallocsAny : Same Eq (run mallocs) (run mallocsAny) := by
   apply same_skipL 100; apply same_skipR 100
-  refine Same.alloc (observe_of_headOp (op := .alloc 32 []) (by kernel_rfl))
-    (observe_of_headOp (op := .alloc 64 []) (by kernel_rfl)) ⟨0, by decide⟩ ⟨0, by decide⟩
-    fun r₁ r₂ => ?_
+  refine Same.alloc (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
+    (observe_of_headBr (c := .placement 64 [] ⟨0, by decide⟩) (by kernel_rfl)) fun r₁ r₂ => ?_
   apply same_skipL 100; apply same_skipR 100
   exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (by kernel_rfl)) rfl fun r => Empty.elim r
+    (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 /-- An allocation on one side only is skipped like any silent step. -/
 theorem mallocs_same_stops : Same Eq (run mallocs) (run stops) := by
   apply same_skipL 100; apply same_skipR 100
-  refine Same.allocL (observe_of_headOp (op := .alloc 32 []) (by kernel_rfl)) ⟨0, by decide⟩
+  refine Same.allocL (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
     fun r => ?_
   apply same_skipL 100
   exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (by kernel_rfl)) rfl fun r => Empty.elim r
+    (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 theorem mallocs_deterministic : Deterministic (run mallocs) :=
   (Deterministic.of_same mallocs_same_stops).1
@@ -151,18 +171,18 @@ theorem mallocs_deterministic : Deterministic (run mallocs) :=
 theorem stores_same_jumpsThenStores : Same Eq (run (stores 1)) (run jumpsThenStores) := by
   apply same_skipL 100; apply same_skipR 100
   refine Same.visible (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (by kernel_rfl)) rfl fun r => ?_
+    (observe_of_headOp (by kernel_rfl)) fun r => ?_
   apply same_skipL 100; apply same_skipR 100
   exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (by kernel_rfl)) rfl fun r => Empty.elim r
+    (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 theorem stores_same_readsEnvThenStores : Same Eq (run (stores 1)) (run readsEnvThenStores) := by
   apply same_skipL 100; apply same_skipR 100
   refine Same.visible (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (by kernel_rfl)) rfl fun r => ?_
+    (observe_of_headOp (by kernel_rfl)) fun r => ?_
   apply same_skipL 100; apply same_skipR 100
   exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (by kernel_rfl)) rfl fun r => Empty.elim r
+    (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 /-- Undefined behavior of different kinds. -/
 theorem switchUB_same_readUB : Same Eq (run switchUB) (run readUB) := by
@@ -176,24 +196,26 @@ theorem stores_not_same : ¬Same Eq (run (stores 1)) (run (stores 2)) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
   have := Same.visible_inv h (observe_of_headOp (op := .sstore 0 1) (by kernel_rfl))
-    (observe_of_headOp (op := .sstore 0 2) (by kernel_rfl)) rfl rfl rfl
+    (observe_of_headOp (op := .sstore 0 2) (by kernel_rfl)) rfl
   simp at this
 
 theorem switchUB_not_same_stops : ¬Same Eq (run switchUB) (run stops) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
   exact Same.ub_inv (u := .switchNoMatch) h (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (op := .stop) (by kernel_rfl)) rfl rfl
+    (observe_of_headOp (op := .stop) (by kernel_rfl)) rfl
 
 /-- `Same` is not reflexive: a run that stores a pointer depends on where it was placed. -/
 theorem leaks_not_deterministic : ¬Deterministic (run leaks) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
-  have h := Same.allocL_inv h (observe_of_headOp (op := .alloc 32 []) (by kernel_rfl)) ⟨0, by decide⟩
-  have h := Same.allocR_inv h (observe_of_headOp (op := .alloc 32 []) (by kernel_rfl)) ⟨32, by decide⟩
+  have h := Same.allocL_inv h
+    (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl)) ⟨0, by decide⟩
+  have h := Same.allocR_inv h
+    (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl)) ⟨32, by decide⟩
   have h := skipR_inv 100 (skipL_inv 100 h)
   have := Same.visible_inv h (observe_of_headOp (op := .sstore 0 0) (by kernel_rfl))
-    (observe_of_headOp (op := .sstore 0 32) (by kernel_rfl)) rfl rfl rfl
+    (observe_of_headOp (op := .sstore 0 32) (by kernel_rfl)) rfl
   simp at this
 
 end SirTests.Same
