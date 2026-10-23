@@ -69,8 +69,8 @@ def silent (m : CoFree E A) : CoFree E A :=
 def impure (op : E.Op) (k : E.Resp op → CoFree E A) : CoFree E A :=
   ⟨PUnit, E.Resp op, ⟨⟩, fun _ => .impure op .inr, k⟩
 
-def br (c : E.BrOp) (k : E.BrResp c → CoFree E A) : CoFree E A :=
-  ⟨PUnit, E.BrResp c, ⟨⟩, fun _ => .br c .inr, k⟩
+def branch (c : E.BrOp) (k : E.BrResp c → CoFree E A) : CoFree E A :=
+  ⟨PUnit, E.BrResp c, ⟨⟩, fun _ => .branch c .inr, k⟩
 
 def corec {S : Type u} (f : S → Step E A S) (s : S) : CoFree E A :=
   ⟨S, PEmpty, s, fun s => (f s).map .inl, nofun⟩
@@ -86,7 +86,7 @@ def bindTrans (g : A → CoFree E B) {S J : Type u} (step : S → Step E A (S �
   | .impure op k => .impure op fun r => match k r with
     | .inl s => .inl s
     | .inr j => .inr (.inl j)
-  | .br c k => .br c fun r => match k r with
+  | .branch c k => .branch c fun r => match k r with
     | .inl s => .inl s
     | .inr j => .inr (.inl j)
 
@@ -104,7 +104,7 @@ def bindStep (g : A → CoFree E B) : Step E A (CoFree E A) → Step E B (CoFree
   | .pure a => (g a).observe
   | .silent n => .silent (n.bind g)
   | .impure op k => .impure op fun r => (k r).bind g
-  | .br c k => .br c fun r => (k r).bind g
+  | .branch c k => .branch c fun r => (k r).bind g
 
 /-! ### Renaming operations and branches -/
 
@@ -113,7 +113,7 @@ def mapStep {X : Type w} (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) 
   | .pure a => .pure a
   | .silent x => .silent x
   | .impure op k => .impure (f op) fun r => k (g op r)
-  | .br c k => .br (b.op c) fun r => k (b.resp c r)
+  | .branch c k => .branch (b.op c) fun r => k (b.resp c r)
 
 def mapOps (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
     (b : Effect.BrMap E F) : CoFree E A → CoFree F A
@@ -137,7 +137,7 @@ def iter (s : S) (g : S → CoFree E (IterStep S A)) : CoFree E A where
     | .pure (.exit a) => .pure a
     | .silent p' => .silent (.inl ⟨i, p'⟩)
     | .impure op k => .impure op fun r => .inl ⟨i, k r⟩
-    | .br c k => .br c fun r => .inl ⟨i, k r⟩
+    | .branch c k => .branch c fun r => .inl ⟨i, k r⟩
   target := nofun
 
 end Iter
@@ -165,7 +165,7 @@ def interpHandle (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op)) {S J : 
     | .inr j => .inr (s', j))
   | .silent p' => .silent (.inl (.handler op k s p'))
   | .impure op' k' => .impure op' fun r => .inl (.handler op k s (k' r))
-  | .br c k' => .br c fun r => .inl (.handler op k s (k' r))
+  | .branch c k' => .branch c fun r => .inl (.handler op k s (k' r))
 
 /-- The handled machine, started at `st`. Source jumps hand off to the handled jump target.
 Source branches are not handled: they become branches of `F` through `b`. -/
@@ -181,7 +181,7 @@ def interpAt (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op)) (b : Effect
           | .silent (.inl x') => .silent (.inl (.source s x'))
           | .silent (.inr j) => .silent (.inr (s, j))
           | .impure op k => interpHandle h op k s (h s op).initPos
-          | .br c k => .br (b.op c) fun r => match k (b.resp c r) with
+          | .branch c k => .branch (b.op c) fun r => match k (b.resp c r) with
             | .inl x' => .inl (.source s x')
             | .inr j => .inr (s, j)
         | .handler op k s p => interpHandle h op k s p
@@ -230,8 +230,8 @@ def fixFrom (body : I → CoFree (Effect.Call I O ⊕ₑ E) O) (t : CoFree (Effe
     | .silent p', stack => .silent (.inl ⟨c, p', stack⟩)
     | .impure (.inl i) k, stack => .silent (.inl ⟨some i, (body i).initPos, ⟨c, k⟩ :: stack⟩)
     | .impure (.inr op) k, stack => .impure op fun r => .inl ⟨c, k r, stack⟩
-    | .br (.inl b) _, _ => nomatch b
-    | .br (.inr b) k, stack => .br b fun r => .inl ⟨c, k r, stack⟩
+    | .branch (.inl b) _, _ => nomatch b
+    | .branch (.inr b) k, stack => .branch b fun r => .inl ⟨c, k r, stack⟩
   target := nofun
 
 end Fix

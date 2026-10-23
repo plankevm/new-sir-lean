@@ -22,38 +22,38 @@ theorem Deterministic.of_same {t₁ t₂ : CoFree Exec A} (h : Same Eq t₁ t₂
 /-- Both runs allocate; they must agree for every pair of placements. -/
 theorem Same.alloc {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B} {c₁ c₂ : Choice}
     {k₁ : Choice.Resp c₁ → CoFree Exec A} {k₂ : Choice.Resp c₂ → CoFree Exec B}
-    (h₁ : t₁.observe = .br c₁ k₁) (h₂ : t₂.observe = .br c₂ k₂)
+    (h₁ : t₁.observe = .branch c₁ k₁) (h₂ : t₂.observe = .branch c₂ k₂)
     (h : ∀ r₁ r₂, Same RR (k₁ r₁) (k₂ r₂)) : Same RR t₁ t₂ :=
-  CoFree.Same.silent (CoFree.silent_of_br h₁) (CoFree.silent_of_br h₂) fun n₁ n₂ hn₁ hn₂ => by
-    obtain ⟨r₁, rfl⟩ := (CoFree.next_br_iff h₁).mp hn₁
-    obtain ⟨r₂, rfl⟩ := (CoFree.next_br_iff h₂).mp hn₂
+  CoFree.Same.silent (CoFree.silent_of_branch h₁) (CoFree.silent_of_branch h₂) fun n₁ n₂ hn₁ hn₂ => by
+    obtain ⟨r₁, rfl⟩ := (CoFree.next_branch_iff h₁).mp hn₁
+    obtain ⟨r₂, rfl⟩ := (CoFree.next_branch_iff h₂).mp hn₂
     exact h r₁ r₂
 
 /-- Only the left run allocates here; it must agree for every placement. -/
 theorem Same.allocL {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B} {c : Choice}
-    {k : Choice.Resp c → CoFree Exec A} (h₁ : t₁.observe = .br c k)
+    {k : Choice.Resp c → CoFree Exec A} (h₁ : t₁.observe = .branch c k)
     (h : ∀ r, Same RR (k r) t₂) : Same RR t₁ t₂ :=
-  CoFree.Same.silentL (CoFree.silent_of_br h₁) fun n hn => by
-    obtain ⟨r, rfl⟩ := (CoFree.next_br_iff h₁).mp hn
+  CoFree.Same.silentL (CoFree.silent_of_branch h₁) fun n hn => by
+    obtain ⟨r, rfl⟩ := (CoFree.next_branch_iff h₁).mp hn
     exact h r
 
 theorem Same.allocR {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B} {c : Choice}
-    {k : Choice.Resp c → CoFree Exec B} (h₂ : t₂.observe = .br c k)
+    {k : Choice.Resp c → CoFree Exec B} (h₂ : t₂.observe = .branch c k)
     (h : ∀ r, Same RR t₁ (k r)) : Same RR t₁ t₂ :=
-  CoFree.Same.silentR (CoFree.silent_of_br h₂) fun n hn => by
-    obtain ⟨r, rfl⟩ := (CoFree.next_br_iff h₂).mp hn
+  CoFree.Same.silentR (CoFree.silent_of_branch h₂) fun n hn => by
+    obtain ⟨r, rfl⟩ := (CoFree.next_branch_iff h₂).mp hn
     exact h r
 
 /-- A related run, specialised to one placement of a left allocation. -/
 theorem Same.allocL_inv {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     {c : Choice} {k : Choice.Resp c → CoFree Exec A} (h : Same RR t₁ t₂)
-    (h₁ : t₁.observe = .br c k) (r : Choice.Resp c) : Same RR (k r) t₂ :=
-  CoFree.Same.silentL_inv h ((CoFree.next_br_iff h₁).mpr ⟨r, rfl⟩)
+    (h₁ : t₁.observe = .branch c k) (r : Choice.Resp c) : Same RR (k r) t₂ :=
+  CoFree.Same.silentL_inv h ((CoFree.next_branch_iff h₁).mpr ⟨r, rfl⟩)
 
 theorem Same.allocR_inv {RR : A → B → Prop} {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     {c : Choice} {k : Choice.Resp c → CoFree Exec B} (h : Same RR t₁ t₂)
-    (h₂ : t₂.observe = .br c k) (r : Choice.Resp c) : Same RR t₁ (k r) :=
-  CoFree.Same.silentR_inv h ((CoFree.next_br_iff h₂).mpr ⟨r, rfl⟩)
+    (h₂ : t₂.observe = .branch c k) (r : Choice.Resp c) : Same RR t₁ (k r) :=
+  CoFree.Same.silentR_inv h ((CoFree.next_branch_iff h₂).mpr ⟨r, rfl⟩)
 
 theorem Same.silentL {RR : A → B → Prop} {t₁ n : CoFree Exec A} {t₂ : CoFree Exec B}
     (h₁ : t₁.observe = .silent n) (h : Same RR n t₂) : Same RR t₁ t₂ :=

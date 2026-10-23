@@ -40,8 +40,8 @@ theorem next_silent_iff {m n n' : CoFree E A} (h : m.observe = .silent n) :
     rfl
   · rintro rfl; exact .inl h
 
-theorem next_br_iff {m n : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
-    (h : m.observe = .br c k) : Next m n ↔ ∃ r, k r = n := by
+theorem next_branch_iff {m n : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
+    (h : m.observe = .branch c k) : Next m n ↔ ∃ r, k r = n := by
   constructor
   · rintro (hn | ⟨_, _, hn, r, rfl⟩) <;> rw [h] at hn <;> cases hn
     exact ⟨r, rfl⟩
@@ -50,8 +50,8 @@ theorem next_br_iff {m n : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E
 theorem silent_of_silent {m n : CoFree E A} (h : m.observe = .silent n) : Silent m :=
   .inl ⟨n, h⟩
 
-theorem silent_of_br {m : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
-    (h : m.observe = .br c k) : Silent m :=
+theorem silent_of_branch {m : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
+    (h : m.observe = .branch c k) : Silent m :=
   .inr ⟨c, k, h⟩
 
 /-! ## The fixed point -/
@@ -149,18 +149,18 @@ theorem Same.silentR {RR : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree 
     Same ub RR m₁ m₂ :=
   Same.fold (.silentR hs fun n hn => Same.unfold (h n hn))
 
-theorem Same.brL {RR : A → B → Prop} (c : E.BrOp) {k : E.BrResp c → CoFree E A}
+theorem Same.branchL {RR : A → B → Prop} (c : E.BrOp) {k : E.BrResp c → CoFree E A}
     {m₂ : CoFree E B} (h : ∀ r, Same ub RR (k r) m₂) :
-    Same ub RR (CoFree.br c k) m₂ :=
-  Same.silentL (silent_of_br rfl) fun _ hn => by
-    obtain ⟨r, rfl⟩ := (next_br_iff rfl).mp hn
+    Same ub RR (CoFree.branch c k) m₂ :=
+  Same.silentL (silent_of_branch rfl) fun _ hn => by
+    obtain ⟨r, rfl⟩ := (next_branch_iff rfl).mp hn
     exact h r
 
-theorem Same.brR {RR : A → B → Prop} {m₁ : CoFree E A} (c : E.BrOp)
+theorem Same.branchR {RR : A → B → Prop} {m₁ : CoFree E A} (c : E.BrOp)
     {k : E.BrResp c → CoFree E B} (h : ∀ r, Same ub RR m₁ (k r)) :
-    Same ub RR m₁ (CoFree.br c k) :=
-  Same.silentR (silent_of_br rfl) fun _ hn => by
-    obtain ⟨r, rfl⟩ := (next_br_iff rfl).mp hn
+    Same ub RR m₁ (CoFree.branch c k) :=
+  Same.silentR (silent_of_branch rfl) fun _ hn => by
+    obtain ⟨r, rfl⟩ := (next_branch_iff rfl).mp hn
     exact h r
 
 /-! ## Inversion -/
@@ -238,7 +238,7 @@ theorem Same.refl {RR : A → A → Prop}
     refine .silent (silent_of_silent h) (silent_of_silent h) fun n₁ n₂ h₁ h₂ => ?_
     rw [(next_silent_iff h).mp h₁, (next_silent_iff h).mp h₂]
   | impure op k => exact .impure op h h fun _ => rfl
-  | br c _ => exact (hbr c).elim
+  | branch c _ => exact (hbr c).elim
 
 /-! ## Transitivity
 
@@ -383,7 +383,7 @@ theorem next_bind_inv {m : CoFree E A} {n' : CoFree E B} {f : A → CoFree E B}
     rcases h with h | ⟨_, _, h, _⟩ <;> rw [observe_bind, hm] at h <;> cases h
     exact ⟨n, .inl hm, rfl⟩
   | impure op k => exact (not_silent_impure hm hs).elim
-  | br c k =>
+  | branch c k =>
     rcases h with h | ⟨_, _, h, r, rfl⟩ <;> rw [observe_bind, hm] at h <;> cases h
     exact ⟨k r, .inr ⟨c, k, hm, r, rfl⟩, rfl⟩
 
@@ -438,6 +438,6 @@ theorem Eutt.of_bisim (hbr : E.BrOp → False) {m₁ m₂ : CoFree E A} (h : Bis
     rw [(next_silent_iff hx).mp h₁, (next_silent_iff hy).mp h₂]
     exact ⟨R, hR, h⟩
   | impure op h => exact .impure op hx hy fun r => ⟨R, hR, h r⟩
-  | br c _ => exact (hbr c).elim
+  | branch c _ => exact (hbr c).elim
 
 end CoFree.Proofs

@@ -15,7 +15,7 @@ def runM {m : Type u → Type v} [Monad m] (handle : (op : E.Op) → m (E.Resp o
     | .pure a => Pure.pure (some a)
     | .silent t => runM handle pick fuel t
     | .impure op k => do runM handle pick fuel (k (← handle op))
-    | .br c k => do runM handle pick fuel (k (← pick c))
+    | .branch c k => do runM handle pick fuel (k (← pick c))
 
 /-- Runs at most `fuel` steps, answering operations with `answer` and picking branches with
 `pick`. -/
@@ -26,12 +26,12 @@ def run (answer : (op : E.Op) → E.Resp op) (pick : (c : E.BrOp) → E.BrResp c
     | .pure a => some a
     | .silent t => run answer pick fuel t
     | .impure op k => run answer pick fuel (k (answer op))
-    | .br c k => run answer pick fuel (k (pick c))
+    | .branch c k => run answer pick fuel (k (pick c))
 
 inductive Event (E : Effect.{u}) : Type u
   | silent
   | op (op : E.Op)
-  | br (c : E.BrOp)
+  | branch (c : E.BrOp)
 
 /-- Like `run`, also recording every silent step, operation and branch. -/
 def trace (answer : (op : E.Op) → E.Resp op) (pick : (c : E.BrOp) → E.BrResp c) (fuel : Nat)
@@ -44,6 +44,6 @@ where
       | .pure a => (events, some a)
       | .silent t => go fuel t (events.push .silent)
       | .impure op k => go fuel (k (answer op)) (events.push (.op op))
-      | .br c k => go fuel (k (pick c)) (events.push (.br c))
+      | .branch c k => go fuel (k (pick c)) (events.push (.branch c))
 
 end CoFree

@@ -32,16 +32,16 @@ theorem next_silent_iff {m n n' : CoFree E A} (h : m.observe = .silent n) :
     Next m n' ↔ n' = n :=
   Proofs.next_silent_iff h
 
-theorem next_br_iff {m n : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
-    (h : m.observe = .br c k) : Next m n ↔ ∃ r, k r = n :=
-  Proofs.next_br_iff h
+theorem next_branch_iff {m n : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
+    (h : m.observe = .branch c k) : Next m n ↔ ∃ r, k r = n :=
+  Proofs.next_branch_iff h
 
 theorem silent_of_silent {m n : CoFree E A} (h : m.observe = .silent n) : Silent m :=
   Proofs.silent_of_silent h
 
-theorem silent_of_br {m : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
-    (h : m.observe = .br c k) : Silent m :=
-  Proofs.silent_of_br h
+theorem silent_of_branch {m : CoFree E A} {c : E.BrOp} {k : E.BrResp c → CoFree E A}
+    (h : m.observe = .branch c k) : Silent m :=
+  Proofs.silent_of_branch h
 
 theorem SameF.mono {RR : A → B → Prop} {R R' : CoFree E A → CoFree E B → Prop}
     (hR : ∀ x y, R x y → R' x y) {m₁ : CoFree E A} {m₂ : CoFree E B}
@@ -111,15 +111,15 @@ theorem Same.silentR {RR : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree 
   Proofs.Same.silentR hs h
 
 /-- A branch on the left: every response must be related. -/
-theorem Same.brL {RR : A → B → Prop} (c : E.BrOp) {k : E.BrResp c → CoFree E A}
+theorem Same.branchL {RR : A → B → Prop} (c : E.BrOp) {k : E.BrResp c → CoFree E A}
     {m₂ : CoFree E B} (h : ∀ r, Same ub RR (k r) m₂) :
-    Same ub RR (CoFree.br c k) m₂ :=
-  Proofs.Same.brL c h
+    Same ub RR (CoFree.branch c k) m₂ :=
+  Proofs.Same.branchL c h
 
-theorem Same.brR {RR : A → B → Prop} {m₁ : CoFree E A} (c : E.BrOp)
+theorem Same.branchR {RR : A → B → Prop} {m₁ : CoFree E A} (c : E.BrOp)
     {k : E.BrResp c → CoFree E B} (h : ∀ r, Same ub RR m₁ (k r)) :
-    Same ub RR m₁ (CoFree.br c k) :=
-  Proofs.Same.brR c h
+    Same ub RR m₁ (CoFree.branch c k) :=
+  Proofs.Same.branchR c h
 
 theorem Same.silentL_inv {RR : A → B → Prop} {m₁ n₁ : CoFree E A} {m₂ : CoFree E B}
     (h : Same ub RR m₁ m₂) (hn : Next m₁ n₁) : Same ub RR n₁ m₂ :=

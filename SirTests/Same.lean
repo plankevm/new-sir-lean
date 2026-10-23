@@ -31,17 +31,17 @@ def resume {A : Type} (t : CoFree Exec A) (op : HostOp) (r : HostOp.Resp op) : C
 
 def headBr {A : Type} (t : CoFree Exec A) : Option Choice :=
   match t.observe with
-  | .br c _ => some c
+  | .branch c _ => some c
   | _ => none
 
 /-- `t` after placing with `r`, if `t` branches on `c` next. -/
 def resumeBr {A : Type} (t : CoFree Exec A) (c : Choice) (r : Choice.Resp c) : CoFree Exec A :=
   match t.observe with
-  | .br c' k => if h : c' = c then k (h ▸ r) else t
+  | .branch c' k => if h : c' = c then k (h ▸ r) else t
   | _ => t
 
 theorem observe_of_headBr {A : Type} {t : CoFree Exec A} {c : Choice} (h : headBr t = some c) :
-    t.observe = .br c (resumeBr t c) := by
+    t.observe = .branch c (resumeBr t c) := by
   unfold headBr at h
   split at h
   next c' k hk =>

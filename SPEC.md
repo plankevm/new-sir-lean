@@ -343,26 +343,26 @@ point of a one-step relation `SameF` with cases: both sides take a silent step (
 for every pair of successors); both perform the same operation (`R` for every answer);
 both return (`RR`); both perform an operation satisfying `ub`; and, inductively, one side alone
 takes a silent step (for every successor), so only finitely many in a row and divergence is
-preserved. A silent step is a `silent` node or a `br` node; every operation is visible.
+preserved. A silent step is a `silent` node or a `branch` node; every operation is visible.
 `Eutt RR` is the case with no `ub`.
 
 Branches: `Effect` has, besides `Op`/`Resp`, branch ops `BrOp`/`BrResp` (none by default;
-`⊕ₑ` sums both parts), and `Step`/`CoFree` have a `br c k` node next to `impure`. A branch is a
+`⊕ₑ` sums both parts), and `Step`/`CoFree` have a `branch c k` node next to `impure`. A branch is a
 choice nobody handles: `bind`, `iter`, `fixFrom` keep it, and `mapOps`, `interpState` and
 `interp` pass it through via an `Effect.BrMap E F`; `run`/`runM`/`trace` take a `pick` for it.
 `Bisim` matches it structurally (same `c`, related for every response). `Same` treats it as a
 silent step quantified over every response, on each side independently, so `Deterministic`
 means every branch behaves the same. Every branch has a response (`Effect.brResp_nonempty`,
 discharged automatically for effects without branches or with inhabited responses), since a
-`br` with none would be related to everything; to get stuck, a semantics emits UB instead.
+`branch` with none would be related to everything; to get stuck, a semantics emits UB instead.
 `Same.trans` holds outright; `Same.refl`/`Eutt.refl`/`Eutt.of_bisim` assume there are no
 branches, because a program that observes a branch's response is not related to itself.
-In SIR, only `handleMem` emits `br` (allocation placement); the spec program `CoFree SirE` has none.
+In SIR, only `handleMem` emits `branch` (allocation placement); the spec program `CoFree SirE` has none.
 
 `Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Exec _`, `Mem` already handled):
 every allocation is a placement branch, so a silent step taken with every valid placement,
 independently on each side; `ub` is `fault (.ub _)`. `Sir.Same2` is
-the same relation written out directly (`Same2F`: `tau`/`tauL`/`tauR` over `silent` and `br`,
+the same relation written out directly (`Same2F`: `tau`/`tauL`/`tauR` over `silent` and `branch`,
 `visible`, `ub`), and `same2_iff_same` proves them equal. Equivalence is stated only after
 `Mem` is handled: on `CoFree SirE` an `alloc` is an ordinary operation. `Same` is a partial equivalence (symmetric and transitive), not an
 equivalence: a run whose visible behavior depends on a placement (e.g. it stores a pointer) is

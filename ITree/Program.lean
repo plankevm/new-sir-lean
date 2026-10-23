@@ -16,13 +16,13 @@ def perform (op : E.Op) : CoFree E (E.Resp op) :=
   impure op pure
 
 def choose (c : E.BrOp) : CoFree E (E.BrResp c) :=
-  br c pure
+  branch c pure
 
 def roll : Step E A (CoFree E A) → CoFree E A
   | .pure a => pure a
   | .silent m => silent m
   | .impure op k => impure op k
-  | .br c k => br c k
+  | .branch c k => branch c k
 
 instance : ForIn (CoFree.{u} E) Lean.Loop Unit where
   forIn _ init f := iter init fun b => (f ⟨⟩ b).bind fun

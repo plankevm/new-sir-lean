@@ -7,7 +7,7 @@ values related by `RR`, or both reach undefined behavior, ignoring finitely many
 either side at a time. A machine that runs silently forever is related only to another such
 machine.
 
-A silent step is a `silent` node or a `br` node. A branch is taken with each of its responses,
+A silent step is a `silent` node or a `branch` node. A branch is taken with each of its responses,
 on each side independently, and the two sides must agree for every pair of responses: it models
 a choice the environment makes that the program may not depend on (in SIR, where an allocation
 is placed). So `Same` is a partial equivalence, not an equivalence: a program whose visible
@@ -32,11 +32,11 @@ variable {E : Effect.{u}} {A B : Type u}
 /-- `n` is what `m` continues as after a silent step: a `silent` node, or a branch with any of
 its responses. -/
 def Next (m n : CoFree E A) : Prop :=
-  m.observe = .silent n ∨ ∃ c, ∃ k : E.BrResp c → CoFree E A, m.observe = .br c k ∧ ∃ r, k r = n
+  m.observe = .silent n ∨ ∃ c, ∃ k : E.BrResp c → CoFree E A, m.observe = .branch c k ∧ ∃ r, k r = n
 
 /-- `m` takes a silent step. -/
 def Silent (m : CoFree E A) : Prop :=
-  (∃ n, m.observe = .silent n) ∨ ∃ c, ∃ k : E.BrResp c → CoFree E A, m.observe = .br c k
+  (∃ n, m.observe = .silent n) ∨ ∃ c, ∃ k : E.BrResp c → CoFree E A, m.observe = .branch c k
 
 /-- One layer of `Same`. `silent`, `impure` and `ub` progress through `R`; `silentL` and
 `silentR` stay in `SameF`, so they can skip only finitely many silent steps in a row. -/

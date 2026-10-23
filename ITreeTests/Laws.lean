@@ -19,7 +19,7 @@ def answers : List (Nat → Nat) :=
 def observed {A : Type} (answer : Nat → Nat) (t : CoFree Ask A) :
     Array (Option (Nat ⊕ Nat)) × Option A :=
   let (events, result) := trace answer answer 2000 t
-  (events.map fun | .silent => none | .op q => some (.inl q) | .br c => some (.inr c), result)
+  (events.map fun | .silent => none | .op q => some (.inl q) | .branch c => some (.inr c), result)
 
 def same {A : Type} [BEq A] (name : String) (lhs rhs : CoFree Ask A) : String × Bool :=
   (name, answers.all fun answer => observed answer lhs == observed answer rhs)
@@ -68,7 +68,7 @@ def monadLaws : List (String × Bool) :=
   (programs.flatMap fun t => conts.map fun f =>
     same "silent_bind" ((silent t).bind f) (silent (t.bind f))) ++
   (conts.map fun f => same "perform_bind" ((ask 6).bind f) (CoFree.impure 6 f)) ++
-  (conts.map fun f => same "choose_bind" ((pick 6).bind f) (CoFree.br (E := Ask) 6 f)) ++
+  (conts.map fun f => same "choose_bind" ((pick 6).bind f) (CoFree.branch (E := Ask) 6 f)) ++
   (programs.map fun t => same "roll_observe" (roll t.observe) t)
 
 def loopBody (i : Nat) : CoFree Ask (IterStep Nat Nat) :=

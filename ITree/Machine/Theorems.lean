@@ -38,9 +38,9 @@ theorem Bisim.trans {m₁ m₂ m₃ : CoFree E A} : Bisim m₁ m₂ → Bisim m�
     (impure op k).observe = .impure op k :=
   Proofs.observe_impure op k
 
-@[simp] theorem observe_br (c : E.BrOp) (k : E.BrResp c → CoFree E A) :
-    (br c k).observe = .br c k :=
-  Proofs.observe_br c k
+@[simp] theorem observe_branch (c : E.BrOp) (k : E.BrResp c → CoFree E A) :
+    (branch c k).observe = .branch c k :=
+  Proofs.observe_branch c k
 
 theorem observe_corec {S : Type u} (f : S → Step E A S) (s : S) :
     (corec f s).observe = (f s).map (corec f) :=
@@ -68,7 +68,7 @@ theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E (IterStep 
       | .pure (.exit a) => .pure a
       | .silent p' => .silent ((iter s g).startAt ⟨i, p'⟩)
       | .impure op k => .impure op fun r => (iter s g).startAt ⟨i, k r⟩
-      | .br c k => .br c fun r => (iter s g).startAt ⟨i, k r⟩ :=
+      | .branch c k => .branch c fun r => (iter s g).startAt ⟨i, k r⟩ :=
   Proofs.observe_iter_startAt s g i p
 
 section Interp
@@ -83,7 +83,7 @@ theorem observe_interpAt_handler (h : σ → (op : E.Op) → CoFree F (σ × E.R
       | .pure (s', r) => .silent (interpState h b s' (m.next (k r)))
       | .silent p' => .silent (interpAt h b m (.handler op k s p'))
       | .impure op' k' => .impure op' fun r => interpAt h b m (.handler op k s (k' r))
-      | .br c k' => .br c fun r => interpAt h b m (.handler op k s (k' r)) :=
+      | .branch c k' => .branch c fun r => interpAt h b m (.handler op k s (k' r)) :=
   Proofs.observe_interpAt_handler h b m op k s p
 
 theorem observe_interpState (h : σ → (op : E.Op) → CoFree F (σ × E.Resp op))
@@ -93,7 +93,7 @@ theorem observe_interpState (h : σ → (op : E.Op) → CoFree F (σ × E.Resp o
       | .pure a => .pure (s, a)
       | .silent y => .silent (interpState h b s (m.next y))
       | .impure op k => (interpAt h b m (.handler op k s (h s op).initPos)).observe
-      | .br c k => .br (b.op c) fun r => interpState h b s (m.next (k (b.resp c r))) :=
+      | .branch c k => .branch (b.op c) fun r => interpState h b s (m.next (k (b.resp c r))) :=
   Proofs.observe_interpState h b s m
 
 end Interp
@@ -109,8 +109,8 @@ theorem observe_fixFrom_startAt {I O : Type u} (body : I → CoFree (Effect.Call
       | .impure (.inl i) k, stack =>
         .silent ((fixFrom body t).startAt ⟨some i, (body i).initPos, ⟨c, k⟩ :: stack⟩)
       | .impure (.inr op) k, stack => .impure op fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩
-      | .br (.inl b) _, _ => nomatch b
-      | .br (.inr b) k, stack => .br b fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩ :=
+      | .branch (.inl b) _, _ => nomatch b
+      | .branch (.inr b) k, stack => .branch b fun r => (fixFrom body t).startAt ⟨c, k r, stack⟩ :=
   Proofs.observe_fixFrom_startAt body t c p stack
 
 end CoFree

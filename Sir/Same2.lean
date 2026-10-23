@@ -25,13 +25,13 @@ abbrev Run := CoFree Exec Empty
 /-- `t` takes a silent step to `t'`. -/
 inductive Tau (t : Run) : Run → Prop
   | silent {t'} : t.observe = .silent t' → Tau t t'
-  | br {c k} (r : Choice.Resp c) : t.observe = .br c k → Tau t (k r)
+  | branch {c k} (r : Choice.Resp c) : t.observe = .branch c k → Tau t (k r)
 
 /-- `t` takes a silent step. A branch always has a placement to take (`Choice.placement` is made
 only when one exists), so this needs no successor. -/
 inductive IsTau (t : Run) : Prop
   | silent {t'} : t.observe = .silent t' → IsTau t
-  | br {c k} : t.observe = .br c k → IsTau t
+  | branch {c k} : t.observe = .branch c k → IsTau t
 
 /-- One layer of `Same2`, with `R` for the pairs still to be checked. -/
 inductive Same2F (R : Run → Run → Prop) : Run → Run → Prop

@@ -13,7 +13,7 @@ theorem next_iff_tau {t t' : Run} : Next t t' ↔ Tau t t' := by
   constructor
   · rintro (h | ⟨_, _, hk, r, rfl⟩)
     · exact .silent h
-    · exact .br r hk
+    · exact .branch r hk
   · rintro (h | ⟨r, hk⟩)
     · exact .inl h
     · exact .inr ⟨_, _, hk, r, rfl⟩
@@ -22,10 +22,10 @@ theorem silent_iff {t : Run} : Silent t ↔ IsTau t := by
   constructor
   · rintro (⟨_, h⟩ | ⟨_, _, h⟩)
     · exact .silent h
-    · exact .br h
+    · exact .branch h
   · rintro (h | h)
     · exact CoFree.silent_of_silent h
-    · exact CoFree.silent_of_br h
+    · exact CoFree.silent_of_branch h
 
 theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
     CoFree.SameF Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by

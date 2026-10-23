@@ -66,7 +66,7 @@ def replay (t : CoFree.{0} Log Nat) : CoFree.{1} (Effect.lift.{0, 1} Log) (ULift
     | .silent t' => pure (.repeat t')
     | .impure op k => (perform (E := Effect.lift.{0, 1} Log) ⟨op⟩).bind fun r =>
       pure (.repeat (k r.down))
-    | .br c _ => nomatch c
+    | .branch c _ => nomatch c
 
 def emitted {A : Type} (t : CoFree Log A) : Array Nat × Option A :=
   let (events, result) := trace (E := Log) (fun _ => ()) nofun 10000 t
