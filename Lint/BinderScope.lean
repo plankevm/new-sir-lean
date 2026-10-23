@@ -7,9 +7,11 @@ import Lean
 inductive constructor, `h → ∀ r, P r → C` therefore binds `r` over the conclusion `C`, making
 `r` one constructor argument (an `∃`) instead of the intended premise `(∀ r, P r) → C`.
 
-`linter.binderScope` flags every `∀`/`∃`/`(x : A) →` binder whose body is, at top level, a
-logical connective (`→`, `∧`, `∨`, `↔`), unless the binder ends at a closing bracket, so the
-reader sees where its scope ends. Fixes: `(∀ x, A → B)` or `∀ x, (A → B)`.
+`linter.binderScope` flags, in constructor types only, every `∀`/`∃`/`(x : A) →` binder that is
+not part of the type's leading binder telescope and whose body is, at top level, a logical
+connective (`→`, `∧`, `∨`, `↔`), unless the binder ends at a closing bracket, so the reader sees
+where its scope ends. Fixes: `(∀ x, A → B)`, `∀ x, (A → B)`, or move `x` before the colon.
+Leading binders elsewhere are idiomatic and not flagged.
 -/
 
 namespace Lint.BinderScope
@@ -50,6 +52,7 @@ structure Hit where
   /-- `none` if nested in an operator; otherwise the kind of the node the binder chain is the
   whole of (a declaration or constructor signature, a `have` type, a definition body, …). -/
   leading : Option SyntaxNodeKind
+  inCtor : Bool
 
 /-- `follow` is the first token after `stx` before the end of its nearest non-transparent
 ancestor; `anc` are the ancestors' kinds, innermost first. -/
@@ -64,7 +67,7 @@ partial def visit (stx : Syntax) (anc : List SyntaxNodeKind) (follow : Option St
       let leading := match up with
         | a :: _ => if isOperator a then none else some a
         | [] => some nullKind
-      modify (·.push { stx, leading })
+      modify (·.push { stx, leading, inCtor := anc.contains ``Parser.Command.ctor })
   for i in [:args.size] do
     let next := (args.extract (i + 1) args.size).findSome? fun s =>
       s.getHead?.bind fun h => if h.isAtom then some h.getAtomVal.trimAscii.toString else some ""
@@ -80,13 +83,13 @@ def message (h : Hit) : MessageData :=
   let body := (binderBody? h.stx).bind (·.reprint) |>.getD "" |>.trimAscii.toString
   let body := if body.length ≤ 40 then body else "…"
   m!"binder scope: `{binder}` extends over the whole connective after it; write \
-    `({binder} {body})` or `{binder} ({body})` \
-    ({match h.leading with | none => m!"nested" | some k => m!"leading, in {k}"})"
+    `({binder} {body})` or `{binder} ({body})`"
 
 def binderScopeLinter : Linter where
   run stx := do
     unless Linter.getLinterValue linter.binderScope (← Linter.getLinterOptions) do return
     for h in hits stx do
+      unless h.inCtor && h.leading.isNone do continue
       Linter.logLint linter.binderScope h.stx (message h)
 
 initialize addLinter binderScopeLinter
