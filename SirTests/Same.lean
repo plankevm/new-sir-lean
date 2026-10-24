@@ -7,7 +7,7 @@ computed for every placement at once. -/
 
 namespace SirTests.Same
 
-open Sir
+open Sir CoFree
 
 /-! ## Stepping through a run -/
 
@@ -150,19 +150,19 @@ def readUB : Program := prog #[
 /-- Placements are answered independently on each side, and the pointer is never observed. -/
 theorem mallocs_same_mallocsAny : Same Eq (run mallocs) (run mallocsAny) := by
   apply same_skipL 100; apply same_skipR 100
-  refine Same.alloc (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
+  refine Same.branch (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
     (observe_of_headBr (c := .placement 64 [] ⟨0, by decide⟩) (by kernel_rfl)) fun r₁ r₂ => ?_
   apply same_skipL 100; apply same_skipR 100
-  exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
+  exact Same.impure (op := .stop) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 /-- An allocation on one side only is skipped like any silent step. -/
 theorem mallocs_same_stops : Same Eq (run mallocs) (run stops) := by
   apply same_skipL 100; apply same_skipR 100
-  refine Same.allocL (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
+  refine Same.branchL _ (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
     fun r => ?_
   apply same_skipL 100
-  exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
+  exact Same.impure (op := .stop) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 theorem mallocs_deterministic : Deterministic (run mallocs) :=
@@ -170,46 +170,46 @@ theorem mallocs_deterministic : Deterministic (run mallocs) :=
 
 theorem stores_same_jumpsThenStores : Same Eq (run (stores 1)) (run jumpsThenStores) := by
   apply same_skipL 100; apply same_skipR 100
-  refine Same.visible (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
+  refine Same.impure (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) fun r => ?_
   apply same_skipL 100; apply same_skipR 100
-  exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
+  exact Same.impure (op := .stop) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 theorem stores_same_readsEnvThenStores : Same Eq (run (stores 1)) (run readsEnvThenStores) := by
   apply same_skipL 100; apply same_skipR 100
-  refine Same.visible (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
+  refine Same.impure (op := .sstore 0 1) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) fun r => ?_
   apply same_skipL 100; apply same_skipR 100
-  exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
+  exact Same.impure (op := .stop) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
 /-- Undefined behavior relates to the same undefined behavior. -/
 theorem switchUB_same_switchUB : Same Eq (run switchUB) (run switchUB) := by
   apply same_skipL 100; apply same_skipR 100
-  exact Same.ub (u := .switchNoMatch)
-    (observe_of_headOp (by kernel_rfl)) (observe_of_headOp (by kernel_rfl))
+  exact Same.impure (op := .fault (.ub .switchNoMatch))
+    (observe_of_headOp (by kernel_rfl)) (observe_of_headOp (by kernel_rfl)) nofun
 
 /-! ## Not equivalent -/
 
 theorem stores_not_same : ¬Same Eq (run (stores 1)) (run (stores 2)) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
-  have := Same.visible_inv h (observe_of_headOp (op := .sstore 0 1) (by kernel_rfl))
+  have := Same.impure_inv h (observe_of_headOp (op := .sstore 0 1) (by kernel_rfl))
     (observe_of_headOp (op := .sstore 0 2) (by kernel_rfl))
   simp at this
 
 theorem switchUB_not_same_stops : ¬Same Eq (run switchUB) (run stops) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
-  exact Same.ub_inv (u := .switchNoMatch) h (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (op := .stop) (by kernel_rfl)) (by simp)
+  nomatch Same.impure_inv h (observe_of_headOp (op := .fault (.ub .switchNoMatch)) (by kernel_rfl))
+    (observe_of_headOp (op := .stop) (by kernel_rfl))
 
 /-- Undefined behavior of different kinds is not related: their payloads differ. -/
 theorem switchUB_not_same_readUB : ¬Same Eq (run switchUB) (run readUB) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
-  have := Same.visible_inv h (observe_of_headOp (op := .fault (.ub .switchNoMatch)) (by kernel_rfl))
+  have := Same.impure_inv h (observe_of_headOp (op := .fault (.ub .switchNoMatch)) (by kernel_rfl))
     (observe_of_headOp (op := .fault (.ub (.memoryOutOfBounds 0 32))) (by kernel_rfl))
   simp at this
 
@@ -217,12 +217,12 @@ theorem switchUB_not_same_readUB : ¬Same Eq (run switchUB) (run readUB) := by
 theorem leaks_not_deterministic : ¬Deterministic (run leaks) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
-  have h := Same.allocL_inv h
+  have h := Same.branchL_inv h
     (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl)) ⟨0, by decide⟩
-  have h := Same.allocR_inv h
+  have h := Same.branchR_inv h
     (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl)) ⟨32, by decide⟩
   have h := skipR_inv 100 (skipL_inv 100 h)
-  have := Same.visible_inv h (observe_of_headOp (op := .sstore 0 0) (by kernel_rfl))
+  have := Same.impure_inv h (observe_of_headOp (op := .sstore 0 0) (by kernel_rfl))
     (observe_of_headOp (op := .sstore 0 32) (by kernel_rfl))
   simp at this
 

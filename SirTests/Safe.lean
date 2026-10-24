@@ -5,7 +5,7 @@ import Sir.Outcome.Proofs
 
 namespace SirTests.Safe
 
-open Sir SirTests.Same
+open Sir CoFree SirTests.Same
 
 theorem hasOutcome_skip_iff (n : Nat) {t : CoFree Exec Empty} {o : Sir.Outcome} :
     HasOutcome (skip n t) o ↔ HasOutcome t o := by
@@ -26,7 +26,7 @@ theorem stops_safe : Safe (run stops) :=
 
 /-- Safety carries over to related runs. -/
 theorem mallocs_safe : Safe (run mallocs) :=
-  stops_safe.of_same (Same.symm mallocs_same_stops)
+  stops_safe.of_same (Same.symm_eq mallocs_same_stops)
 
 theorem mallocs_outcome {o : Sir.Outcome} : HasOutcome (run mallocs) o ↔ o = .stop :=
   (Same.hasOutcome_iff mallocs_same_stops).trans stops_outcome

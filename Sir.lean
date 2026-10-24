@@ -5,7 +5,5 @@ import Sir.Effect
 import Sir.Eval
 import Sir.Memory
 import Sir.Memory.Proofs
-import Sir.Same
-import Sir.Same.Proofs
 import Sir.Outcome
 import Sir.Outcome.Proofs

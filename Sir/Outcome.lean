@@ -1,9 +1,19 @@
-import Sir.Same
+import Sir.Memory
+import ITree.Same
 
 /-! How a run ends, and which runs are safe.
 
 A run of `exec` has type `CoFree Exec Empty`: it never returns a value, it ends with a terminal
-host operation (the EVM halts, or a fault). So that operation is its final result. -/
+host operation (the EVM halts, or a fault). So that operation is its final result.
+
+Runs are compared with `CoFree.Same` after `Mem` is handled. Allocations are then branches
+(`Choice.placement`), unobserved steps of `Same`: each is answered with every valid placement, on
+each side independently, and the runs must agree for every pair of placements. Every host
+operation is visible and must match exactly, in the same order. A fault (`fault (.ub u)`,
+`fault .malformed`) has no answer, so it ends the run and relates only to the same fault; in
+particular undefined behavior of different kinds, or with different arguments (which may mention
+placement-dependent addresses), is not related. A run whose visible behavior depends on where
+something was allocated (say it stores a pointer) is not `CoFree.Deterministic`. -/
 
 namespace Sir
 
@@ -48,7 +58,7 @@ inductive HasOutcome : CoFree Exec Empty → Outcome → Prop
 The second half is not implied by the first: a run returning a pointer it allocated has no UB
 outcome, but different placements give it different outcomes. -/
 def Safe (t : CoFree Exec Empty) : Prop :=
-  (∀ u, ¬HasOutcome t (.fault (.ub u))) ∧ Deterministic t
+  (∀ u, ¬HasOutcome t (.fault (.ub u))) ∧ CoFree.Deterministic t
 
 /-- An entry point is safe for every frame environment (calldata, caller, …) and every value of
 the immutables. The layout is fixed by the compiler, so it is a parameter. -/

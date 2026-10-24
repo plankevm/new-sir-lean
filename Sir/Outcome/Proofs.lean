@@ -1,5 +1,5 @@
 import Sir.Outcome
-import Sir.Same.Proofs
+import ITree.Same.Theorems
 
 namespace Sir
 
@@ -129,7 +129,7 @@ private theorem hasOutcome_of_sameFinite_impure {Ret : Empty → Empty → Prop}
   | mutualUnobservedStep h => exact (CoFree.not_forallUnobserved_impure h₁ h).elim
 
 theorem HasOutcome.of_same {Ret : Empty → Empty → Prop} {t₁ t₂ : CoFree Exec Empty}
-    (h : Same Ret t₁ t₂) (ho : HasOutcome t₁ o) : HasOutcome t₂ o := by
+    (h : CoFree.Same Ret t₁ t₂) (ho : HasOutcome t₁ o) : HasOutcome t₂ o := by
   induction ho generalizing t₂ with
   | halt hk =>
     exact hasOutcome_of_sameFinite_impure (CoFree.Same.unfold h) hk fun _ _ hn _ => .halt hn
@@ -140,21 +140,21 @@ theorem HasOutcome.of_same {Ret : Empty → Empty → Prop} {t₁ t₂ : CoFree 
       .impure r hn (ih (hrec r))
 
 theorem Same.hasOutcome_iff {Ret : Empty → Empty → Prop} {t₁ t₂ : CoFree Exec Empty}
-    (h : Same Ret t₁ t₂) : HasOutcome t₁ o ↔ HasOutcome t₂ o :=
+    (h : CoFree.Same Ret t₁ t₂) : HasOutcome t₁ o ↔ HasOutcome t₂ o :=
   ⟨HasOutcome.of_same h, HasOutcome.of_same (CoFree.Same.symm h)⟩
 
 /-- In a deterministic run, every placement of an allocation leads to the same outcomes. -/
 theorem Deterministic.hasOutcome_branch {c : Choice} {k : Choice.Resp c → CoFree Exec Empty}
-    (h : Deterministic t) (hb : t.observe = .branch c k) (r₁ r₂ : Choice.Resp c) :
+    (h : CoFree.Deterministic t) (hb : t.observe = .branch c k) (r₁ r₂ : Choice.Resp c) :
     HasOutcome (k r₁) o ↔ HasOutcome (k r₂) o :=
-  Same.hasOutcome_iff (Same.allocR_inv (Same.allocL_inv h hb r₁) hb r₂)
+  Same.hasOutcome_iff (CoFree.Same.branchR_inv (CoFree.Same.branchL_inv h hb r₁) hb r₂)
 
 /-! ## Safety -/
 
 /-- A run related to a safe run is safe: what a correct compiler emits for a safe program. -/
-theorem Safe.of_same {t₁ t₂ : CoFree Exec Empty} (h : Safe t₁) (hs : Same Eq t₁ t₂) :
+theorem Safe.of_same {t₁ t₂ : CoFree Exec Empty} (h : Safe t₁) (hs : CoFree.Same Eq t₁ t₂) :
     Safe t₂ :=
-  ⟨fun u hu => h.1 u ((Same.hasOutcome_iff hs).2 hu), (Deterministic.of_same hs).2⟩
+  ⟨fun u hu => h.1 u ((Same.hasOutcome_iff hs).2 hu), (CoFree.Deterministic.of_same hs).2⟩
 
 theorem not_safe_of_hasOutcome_ub {u : UB} (h : HasOutcome t (.fault (.ub u))) : ¬Safe t :=
   fun hs => hs.1 u h
@@ -175,7 +175,7 @@ theorem not_safe_of_branch_outcomes {c : Choice} {k : Choice.Resp c → CoFree E
     {k₂ : HostOp.Resp o'.op → CoFree Exec Empty} (hb : t.observe = .branch c k)
     (h₁ : (k r₁).observe = .impure o.op k₁) (h₂ : (k r₂).observe = .impure o'.op k₂)
     (hne : o ≠ o') : ¬Safe t := fun hs =>
-  hne ((HasOutcome.halt_iff h₂).1 ((hs.2.hasOutcome_branch hb r₁ r₂).1 (.halt h₁)))
+  hne ((HasOutcome.halt_iff h₂).1 ((Deterministic.hasOutcome_branch hs.2 hb r₁ r₂).1 (.halt h₁)))
 
 theorem safe_spin : Safe (CoFree.spin : CoFree Exec Empty) :=
   ⟨fun _ => not_hasOutcome_spin, CoFree.spin_relates_to_self⟩

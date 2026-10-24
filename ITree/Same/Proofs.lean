@@ -514,11 +514,16 @@ theorem Same.deterministic_right {Ret : A → B → Prop} {m₁ : CoFree E A} {m
     (h : Same Ret m₁ m₂) : Same (fun b b' => ∃ a, Ret a b ∧ Ret a b') m₂ m₂ :=
   Same.trans (Same.symm h) h
 
-theorem Same.deterministic_left_eq {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) : Same Eq m₁ m₁ :=
-  Same.mono (fun _ _ ⟨_, h₁, h₂⟩ => h₁.trans h₂.symm) (Same.deterministic_left h)
+theorem Same.symm_eq {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) : Same Eq m₂ m₁ :=
+  Same.mono (fun _ _ h => h.symm) (Same.symm h)
 
-theorem Same.deterministic_right_eq {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) : Same Eq m₂ m₂ :=
-  Same.mono (fun _ _ ⟨_, h₁, h₂⟩ => h₁.symm.trans h₂) (Same.deterministic_right h)
+theorem Same.trans_eq {m₁ m₂ m₃ : CoFree E A} (h₁ : Same Eq m₁ m₂) (h₂ : Same Eq m₂ m₃) :
+    Same Eq m₁ m₃ :=
+  Same.mono (fun _ _ ⟨_, h₁, h₂⟩ => h₁.trans h₂) (Same.trans h₁ h₂)
+
+theorem Deterministic.of_same {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) :
+    Deterministic m₁ ∧ Deterministic m₂ :=
+  ⟨Same.trans_eq h (Same.symm_eq h), Same.trans_eq (Same.symm_eq h) h⟩
 
 theorem Same.not_of_not_self_left {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
     (hself : ∀ R : A → A → Prop, ¬Same R m₁ m₁) : ¬Same Ret m₁ m₂ :=

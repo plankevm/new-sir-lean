@@ -119,7 +119,7 @@ theorem rand_nat_not_same_eq : ¬Same Eq rand_nat rand_nat := fun h =>
 
 /-- So `rand_nat` is `Eq`-related to nothing, though `True`-related to itself. -/
 theorem rand_nat_not_same_eq_any {m : CoFree PrintRand Nat} : ¬Same Eq rand_nat m :=
-  fun h => rand_nat_not_same_eq (Same.deterministic_left_eq h)
+  fun h => rand_nat_not_same_eq (Deterministic.of_same h).1
 
 /-- A visible difference is not hidden by a vacuous `Ret`. -/
 theorem print_rand_not_same_true : ¬Same (fun _ _ => True) print_rand print_rand :=

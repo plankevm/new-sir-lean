@@ -11,7 +11,7 @@ A branch is taken with each of its responses, on each side independently, and th
 agree for every pair of responses: it models a choice the environment makes that the program may
 not depend on (in SIR, where an allocation is placed). So `Same` is a partial equivalence, not an
 equivalence: a program whose visible behavior depends on a branch's response is not related to
-itself. `Deterministic`-style statements are written `Same Eq m m`.
+itself. `Deterministic m` says that it is.
 
 Every branch has a response (`Effect.brResp_nonempty`); a branch with none would be vacuously
 related to every machine.
@@ -78,5 +78,10 @@ inductive SameFinite
 `SameFinite`. -/
 def Same (Ret : A → B → Prop) (m₁ : CoFree E A) (m₂ : CoFree E B) : Prop :=
   ∃ CoindRec, CoindRec m₁ m₂ ∧ ∀ m₁' m₂', CoindRec m₁' m₂' → SameFinite Ret CoindRec m₁' m₂'
+
+/-- `m` is related to itself, with equal results. `Same` is only a partial equivalence: a machine
+whose visible behavior or result depends on a branch's response is not even related to itself. -/
+def Deterministic (m : CoFree E A) : Prop :=
+  Same Eq m m
 
 end CoFree

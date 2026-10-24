@@ -24,7 +24,6 @@ below.
 | `Sir/Eval.lean` | `UnOp.eval`, `BinOp.eval`, `TernOp.eval`, `Expr.eval`, `Stmt.exec`; evaluator: `evalFunction`, `runEntry : (p : Program) → Layout → Immutables p → Entry → CoFree SirE Empty`. |
 | `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Exec Empty`. |
 | `Sir/Memory/Proofs.lean` | `placeable_iff`: the allocation check is exact. |
-| `Sir/Same.lean`, `Sir/Same/Proofs.lean` | `Same RR t₁ t₂` and `Deterministic t` on `exec` runs (see "Equivalence of runs"), and their lemmas. |
 | `Sir/Outcome.lean`, `Sir/Outcome/Proofs.lean` | `Outcome`, `HasOutcome`, `Safe`, `Program.Safe` (see "Outcomes and safety"), and their lemmas. |
 | `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, `Same` and `Safe` proofs on example programs (`kernel_rfl` computes runs in the kernel), axiom audit. |
 
@@ -360,24 +359,25 @@ Branches: `Effect` has, besides `Op`/`Resp`, branch ops `BrOp`/`BrResp` (none by
 choice nobody handles: `bind`, `iter`, `fixFrom` keep it, and `mapOps`, `interpState` and
 `interp` pass it through via an `Effect.BrMap E F`; `run`/`runM`/`trace` take a `pick` for it.
 `Bisim` matches it structurally (same `c`, related for every response). `Same` treats it as a
-silent step quantified over every response, on each side independently, so `Deterministic`
-means every branch behaves the same. Every branch has a response (`Effect.brResp_nonempty`,
+silent step quantified over every response, on each side independently, so
+`Deterministic m := Same Eq m m` means every branch behaves the same (`Deterministic.of_same`:
+only deterministic machines are related to anything; `Same.symm_eq`/`trans_eq` for `Ret := Eq`). Every branch has a response (`Effect.brResp_nonempty`,
 discharged automatically for effects without branches or with inhabited responses), since a
 `branch` with none would be related to everything; to get stuck, a semantics emits UB instead.
 `Same.trans` holds outright; `Same.refl`/`Same.of_bisim` assume there are no
 branches, because a program that observes a branch's response is not related to itself.
 In SIR, only `handleMem` emits `branch` (allocation placement); the spec program `CoFree SirE` has none.
 
-`Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Exec _`, `Mem` already handled):
+SIR runs are compared with `CoFree.Same` on `exec` runs (`CoFree Exec _`, `Mem` already handled):
 every allocation is a placement branch, so a silent step taken with every valid placement,
 independently on each side. A fault (`fault (.ub u)`, `fault .malformed`) relates only to the
 same fault: UB of different kinds or arguments is not related (equivalence of SIR programs is
-meant to be stated for programs that reach no UB). `Sir.Same2` is the relation written out
-directly (`Same2F`: `tau`/`tauL`/`tauR` over `silent` and `branch`, `visible`, `ub`); its `ub`
-rule still relates UB of any kind, so `same2_of_same` proves only `Same Eq → Same2`. Equivalence is stated only after
-`Mem` is handled: on `CoFree SirE` an `alloc` is an ordinary operation. `Same` is a partial equivalence (symmetric and transitive), not an
-equivalence: a run whose visible behavior depends on a placement (e.g. it stores a pointer) is
-not related to itself. `Deterministic t := Same Eq t t` says that a run doesn't depend on placements.
+meant to be stated for programs that reach no UB). Equivalence is stated only after `Mem` is
+handled: on `CoFree SirE` an `alloc` is an ordinary operation. A run whose visible behavior
+depends on a placement (e.g. it stores a pointer) is not related to itself:
+`CoFree.Deterministic t` says that a run doesn't depend on placements. There is no SIR-specific
+wrapper; the generic lemmas apply directly (`Same.branch*` for allocations, `Same.impure` for
+host operations and faults).
 
 ## Outcomes and safety
 
@@ -441,5 +441,5 @@ to the same outcomes; `Safe.of_same`: a run related to a safe run is safe;
 - `SirTests.Safe`: `HasOutcome`/`Safe` on example programs: `stops` and `mallocs` are safe with
   outcome exactly `stop` (`mallocs` via `Safe.of_same`), `switchUB` and the pointer-storing `leaks`
   are not, and a run whose placement picks `stop` or `invalid` has no UB outcome but is not safe.
-- `SirTests.Audit`: every declaration of `Sir`, `SirTests.Same`, `SirTests.Same2` and `SirTests.Safe` uses only `propext`,
+- `SirTests.Audit`: every declaration of `Sir`, `SirTests.Same` and `SirTests.Safe` uses only `propext`,
   `Quot.sound`, `Classical.choice` (no `sorry`). `ITreeTests.Audit` does the same for `ITree`.
