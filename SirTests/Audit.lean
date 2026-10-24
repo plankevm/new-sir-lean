@@ -1,7 +1,6 @@
 import Lean
 import Sir
 import SirTests.Same
-import SirTests.Same2
 import SirTests.Safe
 
 namespace SirTests.Audit

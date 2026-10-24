@@ -7,7 +7,5 @@ import Sir.Memory
 import Sir.Memory.Proofs
 import Sir.Same
 import Sir.Same.Proofs
-import Sir.Same2
-import Sir.Same2.Proofs
 import Sir.Outcome
 import Sir.Outcome.Proofs
