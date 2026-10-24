@@ -25,7 +25,8 @@ below.
 | `Sir/Memory.lean` | Frame memory handler `handleMem`, and the semantics `exec : (p : Program) → Layout → Immutables p → Entry → CoFree Exec Empty`. |
 | `Sir/Memory/Proofs.lean` | `placeable_iff`: the allocation check is exact. |
 | `Sir/Same.lean`, `Sir/Same/Proofs.lean` | `Same RR t₁ t₂` and `Deterministic t` on `exec` runs (see "Equivalence of runs"), and their lemmas. |
-| `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, `Same` proofs on example programs (`kernel_rfl` computes runs in the kernel), axiom audit. |
+| `Sir/Outcome.lean`, `Sir/Outcome/Proofs.lean` | `Outcome`, `HasOutcome`, `Safe`, `Program.Safe` (see "Outcomes and safety"), and their lemmas. |
+| `SirTests/` | Test host (`runWith`), pure-op and Keccak vectors, example programs, `Same` and `Safe` proofs on example programs (`kernel_rfl` computes runs in the kernel), axiom audit. |
 
 ## AST
 
@@ -278,12 +279,11 @@ does not depend on their values; it propagates `none`, and a later read of the c
 
 ```lean
 theorem wf_not_malformed (p : Program) (hp : p.WF) (layout : Layout) (imm : Immutables p)
-    (e : Entry) (he : e = .init ∨ p.main.isSome) :
-    ¬ (exec p layout imm e).Reaches fun op => op = .fault .malformed
+    (env : Env) (e : Entry) (he : e = .init ∨ p.main.isSome) :
+    ¬HasOutcome (exec p layout imm env e) (.fault .malformed)
 ```
 
-where `Reaches P t` (to be defined) holds if, for some sequence of host answers, `t` reaches an
-operation satisfying `P` after finitely many steps. `layout` and `imm` are unconstrained:
+(`HasOutcome`: see "Outcomes and safety"). `layout` and `imm` are unconstrained:
 `Layout.Consistent` is not needed, since layout values only flow into words. `Program.WF` does
 not exist yet; it is the conjunction of the last column of the malformed rows: function, data
 and immutable ids in range, block ids in range of their own function, arities (jumps, calls and
@@ -379,6 +379,48 @@ rule still relates UB of any kind, so `same2_of_same` proves only `Same Eq → S
 equivalence: a run whose visible behavior depends on a placement (e.g. it stores a pointer) is
 not related to itself. `Deterministic t := Same Eq t t` says that a run doesn't depend on placements.
 
+## Outcomes and safety
+
+`Sir/Outcome.lean`. An `exec` run has type `CoFree Exec Empty`, so it never returns; it ends at a
+terminal host operation, which is its final result (no trace):
+
+```lean
+inductive Outcome
+  | stop | ret (data : ByteArray) | revert (data : ByteArray) | invalid
+  | selfdestruct (beneficiary : Word) | fault (f : Fault)
+-- Outcome.op : Outcome → HostOp, the terminal operation of the same name
+
+inductive HasOutcome : CoFree Exec Empty → Outcome → Prop
+  | halt   : t.observe = .impure o.op k → HasOutcome t o
+  | silent : t.observe = .silent t' → HasOutcome t' o → HasOutcome t o
+  | branch (r) : t.observe = .branch c k → HasOutcome (k r) o → HasOutcome t o
+  | impure (r) : t.observe = .impure op k → HasOutcome (k r) o → HasOutcome t o
+
+def Safe (t : CoFree Exec Empty) : Prop :=
+  (∀ u, ¬HasOutcome t (.fault (.ub u))) ∧ Deterministic t
+
+def Program.Safe (p : Program) (layout : Layout) (e : Entry) : Prop :=
+  ∀ imm env, Sir.Safe (exec p layout imm env e)
+```
+
+`HasOutcome t o`: for some host answers and some placements, `t` ends with `o` after finitely
+many steps. A run with no outcome at all diverges on every path. `Safe` needs both halves: a run
+with no UB outcome may still depend on placements (return a pointer), which `Deterministic`
+rules out. Inputs are quantified in `Program.Safe`: frame data (calldata, caller, …) is the
+`Env` argument and immutables the `Immutables p` argument, while everything the host answers
+during the run is already covered by `HasOutcome`'s `impure` rule. The layout is fixed by the
+compiler, so it is a parameter.
+
+Theorems (`Sir/Outcome/Proofs.lean`): `HasOutcome.halt_iff` (at a terminal operation the outcome
+is exactly that one), `silent_iff`, `branch_iff`/`impure_iff` (∃ response), `congr`,
+`of_terminal`; `not_hasOutcome_spin`; `HasOutcome.of_same` and `Same.hasOutcome_iff`: runs
+related by `Same` (any `Ret`) have the same outcomes, with no determinism assumption (a branch
+on one side is related for every response, so whichever response reaches `o`, the other side
+reaches it too); `Deterministic.hasOutcome_branch`: in a deterministic run every placement leads
+to the same outcomes; `Safe.of_same`: a run related to a safe run is safe;
+`not_safe_of_ub`, `not_safe_of_hasOutcome_ub`, `not_safe_of_branch_ub` (UB under one placement),
+`not_safe_of_branch_outcomes` (placements with different outcomes, no UB needed); `safe_spin`.
+
 ## Gates (`lake build`)
 
 - `SirTests.Ops`: pure operations and Keccak-256 (vectors including one- and two-block inputs).
@@ -396,5 +438,8 @@ not related to itself. `Deterministic t := Same Eq t t` says that a run doesn't 
 - `SirTests.Same`: proved `Same`/not `Same` on example programs: allocations of different
   sizes, or on one side only, with the pointer unused; an extra jump; the same UB; two kinds of UB
   (not related); different stores; UB against `stop`; a program storing its pointer is not `Deterministic`.
-- `SirTests.Audit`: every declaration of `Sir` and `SirTests.Same` uses only `propext`,
+- `SirTests.Safe`: `HasOutcome`/`Safe` on example programs: `stops` and `mallocs` are safe with
+  outcome exactly `stop` (`mallocs` via `Safe.of_same`), `switchUB` and the pointer-storing `leaks`
+  are not, and a run whose placement picks `stop` or `invalid` has no UB outcome but is not safe.
+- `SirTests.Audit`: every declaration of `Sir`, `SirTests.Same`, `SirTests.Same2` and `SirTests.Safe` uses only `propext`,
   `Quot.sound`, `Classical.choice` (no `sorry`). `ITreeTests.Audit` does the same for `ITree`.
