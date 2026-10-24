@@ -18,6 +18,9 @@ def perform (op : E.Op) : CoFree E (E.Resp op) :=
 def choose (c : E.BrOp) : CoFree E (E.BrResp c) :=
   branch c pure
 
+/-- Runs silently forever. -/
+def spin : CoFree E A := ⟨PUnit, PEmpty, PUnit.unit, fun _ => .silent (.inl PUnit.unit), nofun⟩
+
 def roll : Step E A (CoFree E A) → CoFree E A
   | .pure a => pure a
   | .silent m => silent m

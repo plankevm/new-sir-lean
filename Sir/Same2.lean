@@ -16,7 +16,8 @@ relation, and only three things can happen next:
 on one side (`tauL`, `tauR`, inductive), then one step of progress (`tau`, `visible`, `ub`).
 Answers to silent steps are universally quantified on each side independently, so a run whose
 behavior depends on where something was placed is not related even to itself.
-`Sir.Same2.Proofs.same2_iff_same` proves `Same2 ↔ Same Eq`. -/
+`Sir.Same2.Proofs.same2_of_same` proves `Same Eq → Same2`. The converse fails: `CoFree.Same`
+relates a fault only to the same fault, while `ub` here relates undefined behavior of any kind. -/
 
 namespace Sir
 

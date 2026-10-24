@@ -233,8 +233,8 @@ inductive Fault
   | ub (u : UB)   -- undefined behavior, reachable by well-formed programs
 ```
 
-`Same` (below) relates undefined behavior only to undefined behavior, of any kind, and treats
-`malformed` as an ordinary visible operation. The split exists for the well-formedness theorem
+`Same` (below) treats both as ordinary visible operations: a fault relates only to the same
+fault, payload included. The split exists for the well-formedness theorem
 below. `malformed` carries no
 reason: the cases below are listed only to derive `Program.WF`.
 
@@ -338,13 +338,22 @@ segments, immutables: all modeled.
 
 ## Equivalence of runs
 
-`CoFree.Same ub RR` (in `ITree/Same.lean`) is a weak bisimulation, the greatest fixed
-point of a one-step relation `SameF` with cases: both sides take a silent step (`R` must hold
-for every pair of successors); both perform the same operation (`R` for every answer);
-both return (`RR`); both perform an operation satisfying `ub`; and, inductively, one side alone
-takes a silent step (for every successor), so only finitely many in a row and divergence is
-preserved. A silent step is a `silent` node or a `branch` node; every operation is visible.
-`Eutt RR` is the case with no `ub`.
+`CoFree.Same Ret` (in `ITree/Same.lean`) is a weak bisimulation: `Same Ret m₁ m₂` holds if
+some relation `CoindRec` contains the pair and is closed under the one-layer inductive
+`SameFinite Ret CoindRec`. Its rules: both return (`ret`, values related by `Ret`); both perform
+the same operation (`impure`, `CoindRec` for every answer); both take an unobserved step
+(`mutualUnobservedStep`, `CoindRec` for every pair of successors, via `ForallUnobserved`); and,
+inductively, one side alone takes a `silent` step (`silentL`/`silentR`) or a branch for every
+response (`branchL`/`branchR`), so only finitely many in a row and divergence is preserved. An
+unobserved step is a `silent` or `branch` node; every operation is visible, and an operation
+with no answer (a fault) relates only to the same operation, arguments included. `Same.coind`
+is coinduction up to `Same`. Sanity theorems (`ITree/Same/Theorems.lean`, "Sanity checks"):
+`spin` relates to `spin` and to no `pure`/`impure`; `pure a ~ pure b ↔ Ret a b`; a `silent`
+step on either side is invisible; `impure` is related iff same op and related continuations;
+an answerless op relates to itself; two branches are related iff every pair of responses is; a
+response-ignoring branch is invisible; a branch whose responses are unrelated is not
+self-related; `spin` relates to a branch into `spin`. `ITreeTests/Same.lean` proves a branch
+printing the chosen number is not self-related, and not related to printing `0`.
 
 Branches: `Effect` has, besides `Op`/`Resp`, branch ops `BrOp`/`BrResp` (none by default;
 `⊕ₑ` sums both parts), and `Step`/`CoFree` have a `branch c k` node next to `impure`. A branch is a
@@ -355,15 +364,17 @@ silent step quantified over every response, on each side independently, so `Dete
 means every branch behaves the same. Every branch has a response (`Effect.brResp_nonempty`,
 discharged automatically for effects without branches or with inhabited responses), since a
 `branch` with none would be related to everything; to get stuck, a semantics emits UB instead.
-`Same.trans` holds outright; `Same.refl`/`Eutt.refl`/`Eutt.of_bisim` assume there are no
+`Same.trans` holds outright; `Same.refl`/`Same.of_bisim` assume there are no
 branches, because a program that observes a branch's response is not related to itself.
 In SIR, only `handleMem` emits `branch` (allocation placement); the spec program `CoFree SirE` has none.
 
 `Sir.Same RR t₁ t₂` instantiates it on `exec` runs (`CoFree Exec _`, `Mem` already handled):
 every allocation is a placement branch, so a silent step taken with every valid placement,
-independently on each side; `ub` is `fault (.ub _)`. `Sir.Same2` is
-the same relation written out directly (`Same2F`: `tau`/`tauL`/`tauR` over `silent` and `branch`,
-`visible`, `ub`), and `same2_iff_same` proves them equal. Equivalence is stated only after
+independently on each side. A fault (`fault (.ub u)`, `fault .malformed`) relates only to the
+same fault: UB of different kinds or arguments is not related (equivalence of SIR programs is
+meant to be stated for programs that reach no UB). `Sir.Same2` is the relation written out
+directly (`Same2F`: `tau`/`tauL`/`tauR` over `silent` and `branch`, `visible`, `ub`); its `ub`
+rule still relates UB of any kind, so `same2_of_same` proves only `Same Eq → Same2`. Equivalence is stated only after
 `Mem` is handled: on `CoFree SirE` an `alloc` is an ordinary operation. `Same` is a partial equivalence (symmetric and transitive), not an
 equivalence: a run whose visible behavior depends on a placement (e.g. it stores a pointer) is
 not related to itself. `Deterministic t := Same Eq t t` says that a run doesn't depend on placements.
@@ -383,7 +394,7 @@ not related to itself. `Deterministic t := Same Eq t t` says that a run doesn't 
   `returndatacopy` source past the return data is `invalid` even with an out-of-bounds
   destination).
 - `SirTests.Same`: proved `Same`/not `Same` on example programs: allocations of different
-  sizes, or on one side only, with the pointer unused; an extra jump; two kinds of UB; different
-  stores; UB against `stop`; a program storing its pointer is not `Deterministic`.
+  sizes, or on one side only, with the pointer unused; an extra jump; the same UB; two kinds of UB
+  (not related); different stores; UB against `stop`; a program storing its pointer is not `Deterministic`.
 - `SirTests.Audit`: every declaration of `Sir` and `SirTests.Same` uses only `propext`,
   `Quot.sound`, `Classical.choice` (no `sorry`). `ITreeTests.Audit` does the same for `ITree`.

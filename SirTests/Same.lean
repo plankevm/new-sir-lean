@@ -184,10 +184,10 @@ theorem stores_same_readsEnvThenStores : Same Eq (run (stores 1)) (run readsEnvT
   exact Same.visible (op := .stop) (observe_of_headOp (by kernel_rfl))
     (observe_of_headOp (by kernel_rfl)) fun r => Empty.elim r
 
-/-- Undefined behavior of different kinds. -/
-theorem switchUB_same_readUB : Same Eq (run switchUB) (run readUB) := by
+/-- Undefined behavior relates to the same undefined behavior. -/
+theorem switchUB_same_switchUB : Same Eq (run switchUB) (run switchUB) := by
   apply same_skipL 100; apply same_skipR 100
-  exact Same.ub (u₁ := .switchNoMatch) (u₂ := .memoryOutOfBounds 0 32)
+  exact Same.ub (u := .switchNoMatch)
     (observe_of_headOp (by kernel_rfl)) (observe_of_headOp (by kernel_rfl))
 
 /-! ## Not equivalent -/
@@ -196,14 +196,22 @@ theorem stores_not_same : ¬Same Eq (run (stores 1)) (run (stores 2)) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
   have := Same.visible_inv h (observe_of_headOp (op := .sstore 0 1) (by kernel_rfl))
-    (observe_of_headOp (op := .sstore 0 2) (by kernel_rfl)) rfl
+    (observe_of_headOp (op := .sstore 0 2) (by kernel_rfl))
   simp at this
 
 theorem switchUB_not_same_stops : ¬Same Eq (run switchUB) (run stops) := by
   intro h
   have h := skipR_inv 100 (skipL_inv 100 h)
   exact Same.ub_inv (u := .switchNoMatch) h (observe_of_headOp (by kernel_rfl))
-    (observe_of_headOp (op := .stop) (by kernel_rfl)) rfl
+    (observe_of_headOp (op := .stop) (by kernel_rfl)) (by simp)
+
+/-- Undefined behavior of different kinds is not related: their payloads differ. -/
+theorem switchUB_not_same_readUB : ¬Same Eq (run switchUB) (run readUB) := by
+  intro h
+  have h := skipR_inv 100 (skipL_inv 100 h)
+  have := Same.visible_inv h (observe_of_headOp (op := .fault (.ub .switchNoMatch)) (by kernel_rfl))
+    (observe_of_headOp (op := .fault (.ub (.memoryOutOfBounds 0 32))) (by kernel_rfl))
+  simp at this
 
 /-- `Same` is not reflexive: a run that stores a pointer depends on where it was placed. -/
 theorem leaks_not_deterministic : ¬Deterministic (run leaks) := by
@@ -215,7 +223,7 @@ theorem leaks_not_deterministic : ¬Deterministic (run leaks) := by
     (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl)) ⟨32, by decide⟩
   have h := skipR_inv 100 (skipL_inv 100 h)
   have := Same.visible_inv h (observe_of_headOp (op := .sstore 0 0) (by kernel_rfl))
-    (observe_of_headOp (op := .sstore 0 32) (by kernel_rfl)) rfl
+    (observe_of_headOp (op := .sstore 0 32) (by kernel_rfl))
   simp at this
 
 end SirTests.Same

@@ -3,60 +3,53 @@ import Sir.Same
 
 namespace Sir.Same2.Proofs
 
-open CoFree (Next Silent)
+theorem isTau_of_forallUnobserved {t : Run} {p : Run → Prop}
+    (h : CoFree.ForallUnobserved t p) : IsTau t := by
+  unfold CoFree.ForallUnobserved at h
+  split at h
+  · rename_i h'; exact .silent h'
+  · rename_i h'; exact .branch h'
+  · exact h.elim
 
-theorem isUB_iff {op : HostOp} : op.isUB = true ↔ ∃ u, op = .fault (.ub u) := by
-  cases op <;> simp [HostOp.isUB]
-  rename_i f; cases f <;> simp
+theorem forallUnobserved_tau {t t' : Run} {p : Run → Prop}
+    (h : CoFree.ForallUnobserved t p) (ht : Tau t t') : p t' := by
+  cases ht with
+  | silent h' => exact (CoFree.forallUnobserved_silent h').mp h
+  | branch r h' => exact (CoFree.forallUnobserved_branch h').mp h r
 
-theorem next_iff_tau {t t' : Run} : Next t t' ↔ Tau t t' := by
-  constructor
-  · rintro (h | ⟨_, _, hk, r, rfl⟩)
-    · exact .silent h
-    · exact .branch r hk
-  · rintro (h | ⟨r, hk⟩)
-    · exact .inl h
-    · exact .inr ⟨_, _, hk, r, rfl⟩
+theorem same2F_of_sameFinite (R : Run → Run → Prop) {t₁ t₂ : Run}
+    (h : CoFree.SameFinite Eq R t₁ t₂) : Same2F R t₁ t₂ := by
+  induction h with
+  | ret a => exact a.elim
+  | impure op h₁ h₂ h => exact .visible op h₁ h₂ h
+  | silentL h₁ _ ih =>
+    refine .tauL (.silent h₁) fun t' ht => ?_
+    cases ht with
+    | silent h => rw [h₁] at h; cases h; exact ih
+    | branch _ h => rw [h₁] at h; cases h
+  | silentR h₂ _ ih =>
+    refine .tauR (.silent h₂) fun t' ht => ?_
+    cases ht with
+    | silent h => rw [h₂] at h; cases h; exact ih
+    | branch _ h => rw [h₂] at h; cases h
+  | branchL _ h₁ _ ih =>
+    refine .tauL (.branch h₁) fun t' ht => ?_
+    cases ht with
+    | silent h => rw [h₁] at h; cases h
+    | branch r h => rw [h₁] at h; cases h; exact ih r
+  | branchR _ h₂ _ ih =>
+    refine .tauR (.branch h₂) fun t' ht => ?_
+    cases ht with
+    | silent h => rw [h₂] at h; cases h
+    | branch r h => rw [h₂] at h; cases h; exact ih r
+  | mutualUnobservedStep h =>
+    obtain ⟨_, h', _⟩ := CoFree.forallUnobserved_exists h h
+    exact .tau (isTau_of_forallUnobserved h) (isTau_of_forallUnobserved h')
+      fun _ _ ht₁ ht₂ => forallUnobserved_tau (forallUnobserved_tau h ht₁) ht₂
 
-theorem silent_iff {t : Run} : Silent t ↔ IsTau t := by
-  constructor
-  · rintro (⟨_, h⟩ | ⟨_, _, h⟩)
-    · exact .silent h
-    · exact .branch h
-  · rintro (h | h)
-    · exact CoFree.silent_of_silent h
-    · exact CoFree.silent_of_branch h
-
-theorem sameF_iff (R : Run → Run → Prop) {t₁ t₂ : Run} :
-    CoFree.SameF Undefined Eq R t₁ t₂ ↔ Same2F R t₁ t₂ := by
-  constructor
-  · intro h
-    induction h with
-    | silent hs₁ hs₂ h =>
-      exact .tau (silent_iff.mp hs₁) (silent_iff.mp hs₂)
-        fun _ _ h₁ h₂ => h _ _ (next_iff_tau.mpr h₁) (next_iff_tau.mpr h₂)
-    | impure op h₁ h₂ h =>
-      exact .visible op h₁ h₂ h
-    | @ret _ _ a => exact a.elim
-    | ub op₁ op₂ h₁ h₂ hu₁ hu₂ =>
-      obtain ⟨u₁, rfl⟩ := isUB_iff.mp hu₁
-      obtain ⟨u₂, rfl⟩ := isUB_iff.mp hu₂
-      exact .ub u₁ u₂ h₁ h₂
-    | silentL hs _ ih => exact .tauL (silent_iff.mp hs) fun _ hn => ih _ (next_iff_tau.mpr hn)
-    | silentR hs _ ih => exact .tauR (silent_iff.mp hs) fun _ hn => ih _ (next_iff_tau.mpr hn)
-  · intro h
-    induction h with
-    | tau hs₁ hs₂ h =>
-      exact .silent (silent_iff.mpr hs₁) (silent_iff.mpr hs₂)
-        fun _ _ h₁ h₂ => h _ _ (next_iff_tau.mp h₁) (next_iff_tau.mp h₂)
-    | visible op h₁ h₂ h => exact .impure op h₁ h₂ h
-    | ub u₁ u₂ h₁ h₂ =>
-      exact .ub _ _ h₁ h₂ rfl rfl
-    | tauL hs _ ih => exact .silentL (silent_iff.mpr hs) fun _ hn => ih _ (next_iff_tau.mp hn)
-    | tauR hs _ ih => exact .silentR (silent_iff.mpr hs) fun _ hn => ih _ (next_iff_tau.mp hn)
-
-theorem same2_iff_same {t₁ t₂ : Run} : Same2 t₁ t₂ ↔ Same Eq t₁ t₂ :=
-  ⟨fun ⟨R, hR, h⟩ => ⟨R, fun _ _ h => (sameF_iff R).mpr (hR _ _ h), h⟩,
-   fun ⟨R, hR, h⟩ => ⟨R, fun _ _ h => (sameF_iff R).mp (hR _ _ h), h⟩⟩
+/-- `Same2` still relates undefined behavior of different kinds (its `ub` rule), `Same` does
+not, so only this direction holds. -/
+theorem same2_of_same {t₁ t₂ : Run} : Same Eq t₁ t₂ → Same2 t₁ t₂
+  | ⟨R, h, hR⟩ => ⟨R, fun _ _ h => same2F_of_sameFinite R (hR _ _ h), h⟩
 
 end Sir.Same2.Proofs
