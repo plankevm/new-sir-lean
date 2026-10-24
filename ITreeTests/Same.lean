@@ -104,4 +104,29 @@ theorem print_rand_not_print_zero : ∀ {Ret}, ¬Same Ret print_rand (perform (P
   have := Same.impure_inv (Same.branchL_inv h hk (1 : Nat)) h1 rfl
   cases this
 
+/-! Weak `Ret`: determinism is only up to `Ret ∘ Ret⁻¹`. -/
+
+/-- Returns a number the environment picks, with no visible operation. -/
+def rand_nat : CoFree PrintRand Nat := choose PrintRandBr.rand
+
+/-- With a vacuous `Ret` the result's dependence on the branch is invisible. -/
+theorem rand_nat_same_true : Same (fun _ _ => True) rand_nat rand_nat :=
+  Same.branch rfl rfl fun _ _ => Same.ret rfl rfl trivial
+
+theorem rand_nat_not_same_eq : ¬Same Eq rand_nat rand_nat := fun h =>
+  nomatch Same.ret_inv
+    (Same.branchR_inv (Same.branchL_inv h rfl (0 : Nat)) rfl (1 : Nat)) rfl rfl
+
+/-- So `rand_nat` is `Eq`-related to nothing, though `True`-related to itself. -/
+theorem rand_nat_not_same_eq_any {m : CoFree PrintRand Nat} : ¬Same Eq rand_nat m :=
+  fun h => rand_nat_not_same_eq (Same.deterministic_left_eq h)
+
+/-- A visible difference is not hidden by a vacuous `Ret`. -/
+theorem print_rand_not_same_true : ¬Same (fun _ _ => True) print_rand print_rand :=
+  nondet_unrelated_to_self
+
+theorem print_rand_not_same_any {Ret : Unit → Unit → Prop} {m : CoFree PrintRand Unit} :
+    ¬Same Ret print_rand m :=
+  Same.not_of_not_self_left fun _ => nondet_unrelated_to_self
+
 end ITreeTests.Same

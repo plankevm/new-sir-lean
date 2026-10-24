@@ -504,6 +504,30 @@ theorem Same.trans {x : CoFree E A} {y : CoFree E B} {z : CoFree E C}
 
 end Trans
 
+/-! ## Determinism -/
+
+theorem Same.deterministic_left {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (h : Same Ret m₁ m₂) : Same (fun a a' => ∃ b, Ret a b ∧ Ret a' b) m₁ m₁ :=
+  Same.trans h (Same.symm h)
+
+theorem Same.deterministic_right {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (h : Same Ret m₁ m₂) : Same (fun b b' => ∃ a, Ret a b ∧ Ret a b') m₂ m₂ :=
+  Same.trans (Same.symm h) h
+
+theorem Same.deterministic_left_eq {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) : Same Eq m₁ m₁ :=
+  Same.mono (fun _ _ ⟨_, h₁, h₂⟩ => h₁.trans h₂.symm) (Same.deterministic_left h)
+
+theorem Same.deterministic_right_eq {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) : Same Eq m₂ m₂ :=
+  Same.mono (fun _ _ ⟨_, h₁, h₂⟩ => h₁.symm.trans h₂) (Same.deterministic_right h)
+
+theorem Same.not_of_not_self_left {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (hself : ∀ R : A → A → Prop, ¬Same R m₁ m₁) : ¬Same Ret m₁ m₂ :=
+  fun h => hself _ (Same.deterministic_left h)
+
+theorem Same.not_of_not_self_right {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (hself : ∀ R : B → B → Prop, ¬Same R m₂ m₂) : ¬Same Ret m₁ m₂ :=
+  fun h => hself _ (Same.deterministic_right h)
+
 /-! ## Bind -/
 
 theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoFree E A}

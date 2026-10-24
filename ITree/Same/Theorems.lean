@@ -193,6 +193,37 @@ theorem Same.trans {x : CoFree E A} {y : CoFree E B} {z : CoFree E C}
     Same (fun a c => ∃ b, RA a b ∧ RB b c) x z :=
   Proofs.Same.trans h₁ h₂
 
+/-! ## Determinism
+
+A machine related to anything is related to itself, but only up to `Ret ∘ Ret⁻¹`: two results
+of `m₁` count as equal when some result of `m₂` is related to both. With a coarse `Ret` (e.g.
+`fun _ _ => True`) this says nothing about results, so a machine whose result depends on a branch
+response is still "deterministic"; only its visible operations are pinned down. With `Ret := Eq`
+it is determinism of results too. -/
+
+theorem Same.deterministic_left {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (h : Same Ret m₁ m₂) : Same (fun a a' => ∃ b, Ret a b ∧ Ret a' b) m₁ m₁ :=
+  Proofs.Same.deterministic_left h
+
+theorem Same.deterministic_right {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (h : Same Ret m₁ m₂) : Same (fun b b' => ∃ a, Ret a b ∧ Ret a b') m₂ m₂ :=
+  Proofs.Same.deterministic_right h
+
+theorem Same.deterministic_left_eq {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) : Same Eq m₁ m₁ :=
+  Proofs.Same.deterministic_left_eq h
+
+theorem Same.deterministic_right_eq {m₁ m₂ : CoFree E A} (h : Same Eq m₁ m₂) : Same Eq m₂ m₂ :=
+  Proofs.Same.deterministic_right_eq h
+
+/-- A machine related to itself under no relation is related to nothing. -/
+theorem Same.not_of_not_self_left {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (hself : ∀ R : A → A → Prop, ¬Same R m₁ m₁) : ¬Same Ret m₁ m₂ :=
+  Proofs.Same.not_of_not_self_left hself
+
+theorem Same.not_of_not_self_right {Ret : A → B → Prop} {m₁ : CoFree E A} {m₂ : CoFree E B}
+    (hself : ∀ R : B → B → Prop, ¬Same R m₂ m₂) : ¬Same Ret m₁ m₂ :=
+  Proofs.Same.not_of_not_self_right hself
+
 theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoFree E A}
     {m₂ : CoFree E B} {f : A → CoFree E C} {g : B → CoFree E D} (h : Same Ret m₁ m₂)
     (hfg : ∀ a b, Ret a b → Same Ret' (f a) (g b)) :
