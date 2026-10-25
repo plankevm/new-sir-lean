@@ -84,8 +84,8 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
 /-- Places every allocation after the highest live one, from `0x80`. -/
 def place : (c : Choice) → HostM (Choice.Resp c)
   | .placement size live _ => do
-    let start := live.foldl (fun s a => max s (a.1 + a.2)) 0x80
-    if h : Placement live size start then pure ⟨start, h⟩ else throw (.hostError "alloc")
+    let start := live.foldl (fun s a => max s a.end) 0x80
+    if h : MemRange.Placement ⟨start, size⟩ live then pure ⟨start, h⟩ else throw (.hostError "alloc")
 
 def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
     (e : Entry) (fuel : Nat := 100000) : Outcome × World :=

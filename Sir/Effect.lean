@@ -33,13 +33,49 @@ inductive CallKind
   | staticcall
   deriving DecidableEq, Repr
 
-/-- `[start, start + size)` fits in the address space and misses every live allocation
-`(start, size)`. -/
-def Placement (live : List (Nat × Nat)) (size start : Nat) : Prop :=
-  start + size ≤ 2 ^ 256 ∧ ∀ a ∈ live, start + size ≤ a.1 ∨ a.1 + a.2 ≤ start
+structure MemRange where
+  start : Nat
+  size : Nat
+  deriving DecidableEq
 
-instance (live : List (Nat × Nat)) (size start : Nat) : Decidable (Placement live size start) := by
+namespace MemRange
+
+def «end» (a : MemRange) : Nat := a.start + a.size
+
+def Disjoint (a₁ a₂ : MemRange) : Prop := a₁.end ≤ a₂.start ∨ a₂.end ≤ a₁.start
+
+instance {a₁ a₂ : MemRange} : Decidable (a₁.Disjoint a₂) := by unfold Disjoint; infer_instance
+
+/-- `[start, start + size)` fits in the address space and misses every live allocation `(start, size)`. -/
+def Placement (a' : MemRange) (live : List MemRange) : Prop :=
+  a'.end ≤ Word.size ∧ ∀ a ∈ live, a.Disjoint a'
+
+instance (live : List MemRange) (a' : MemRange) : Decidable (Placement a' live) := by
   unfold Placement; infer_instance
+
+universe u
+
+instance {α : Type u} (p : α → Prop) (l : List α) [DecidablePred p] : Decidable (∃ x ∈ l, p x) := by
+  infer_instance
+
+instance {live : List MemRange} {size : Nat} : Decidable (∃ start, Placement ⟨start, size⟩ live) :=
+  if h : ∃ start ∈ 0 :: live.map (fun a => a.end), Placement ⟨start, size⟩ live
+  then .isTrue (let ⟨start, _, h⟩ := h; ⟨start, h⟩)
+  else .isFalse fun ⟨start, hs⟩ => h <| by
+    -- A placement at neither 0 nor a live end slides down by one and stays a placement.
+    induction start with
+    | zero => exact ⟨0, List.mem_cons_self, hs⟩
+    | succ s ih =>
+      if hc : s + 1 ∈ 0 :: live.map (fun a => a.end) then exact ⟨s + 1, hc, hs⟩
+      else
+        refine ih ⟨by have := hs.1; simp only [MemRange.end] at *; omega, fun a ha => ?_⟩
+        have := hs.2 a ha
+        have : a.end ≠ s + 1 := fun e => hc (List.mem_cons_of_mem _ (List.mem_map.mpr ⟨a, ha, e⟩))
+        simp only [Disjoint, MemRange.end] at *
+        omega
+    
+
+end MemRange
 
 /-- The frame's constants: the transaction, the block, and the code being run. -/
 structure Env where
@@ -118,11 +154,11 @@ abbrev SirE : Effect := Mem ⊕ₑ Host
 /-- Where a new allocation of `size` bytes goes, among the placements that miss the `live`
 allocations. Nobody controls the choice; it is made only when some placement exists. -/
 inductive Choice
-  | placement (size : Nat) (live : List (Nat × Nat)) (fits : ∃ start, Placement live size start)
+  | placement (size : Nat) (live : List MemRange) (fits : ∃ start, MemRange.Placement ⟨start, size⟩ live)
   deriving DecidableEq
 
 def Choice.Resp : Choice → Type
-  | .placement size live _ => { start : Nat // Placement live size start }
+  | .placement size live _ => { start : Nat // MemRange.Placement ⟨start, size⟩ live }
 
 /-- What a run emits once `Mem` is handled. -/
 abbrev Exec : Effect where

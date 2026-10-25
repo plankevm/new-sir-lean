@@ -38,20 +38,10 @@ def states? (m : FrameMem) (offset length : Nat) : Option (Array (Option UInt8))
 def write (m : FrameMem) (offset : Nat) (bytes : Array (Option UInt8)) : FrameMem :=
   { m with allocs := m.allocs.map (·.write offset bytes) }
 
-def live (m : FrameMem) : List (Nat × Nat) :=
-  m.allocs.toList.filterMap fun a => if a.bytes.size = 0 then none else some (a.start, a.bytes.size)
+def live (m : FrameMem) : List MemRange :=
+  (m.allocs.toList.filter (·.bytes.size > 0)).map (fun a => ⟨a.start, a.bytes.size⟩)
 
 end FrameMem
-
-/-- The lowest placement starts at 0 or right after a live allocation, so if none of these
-candidates fits, no placement exists. -/
-def placeable (live : List (Nat × Nat)) (size : Nat) : Bool :=
-  (0 :: live.map fun a => a.1 + a.2).any fun s => decide (Placement live size s)
-
-theorem exists_placement_of_placeable {live : List (Nat × Nat)} {size : Nat}
-    (h : placeable live size = true) : ∃ start, Placement live size start := by
-  simp only [placeable, List.any_eq_true, decide_eq_true_eq] at h
-  exact let ⟨start, _, h⟩ := h; ⟨start, h⟩
 
 def ub {α : Type} (u : UB) : CoFree Exec α := do
   let e ← perform (E := Exec) (.fault (.ub u))
@@ -62,11 +52,10 @@ def handleMem : FrameMem → (op : SirE.Op) → CoFree Exec (FrameMem × SirE.Re
     let r ← perform (E := Exec) op
     pure (m, r)
   | m, .inl (.alloc zeroed size) =>
-    if fits : placeable m.live size then do
-      let ⟨start, _⟩ ← CoFree.choose (E := Exec)
-        (.placement size m.live (exists_placement_of_placeable fits))
+    if fits : ∃ start, MemRange.Placement ⟨start, size⟩ m.live then do
+      let ⟨start, _⟩ ← CoFree.choose (E := Exec) (.placement size m.live fits)
       let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
-      pure ({ m with allocs := m.allocs.push a }, BitVec.ofNat 256 start)
+      pure ({ m with allocs := m.allocs.push a }, Word.ofNat start)
     else ub (.outOfMemory size)
   | m, .inl (.read offset length) => do
     let some states := m.states? offset length | ub (.memoryOutOfBounds offset length)

@@ -1,6 +1,8 @@
 import Lint.BinderScope
 /-! EVM words and the pure EVM operations on them. -/
 
+universe u
+
 structure ByteSize where
   val : Nat
   valid : 1 ≤ val ∧ val ≤ 32 := by decide
@@ -10,15 +12,113 @@ def ByteSize.bits (s : ByteSize) : Nat := s.val * 8
 
 abbrev Word := BitVec 256
 
+def FiniteCardinality (α : Type u) (size : Nat) : Prop :=
+  ∃ D : List α, D.length = size ∧ D.Nodup ∧ ∀ w, w ∈ D
+
 namespace Word
+
+def bits := 256
+
+def ofNat (n : Nat) : Word := BitVec.ofNat bits n
+
+def size : Nat := 2^bits
 
 def has_size (x : Word) (s : ByteSize) : Prop :=
   x.toNat < 2 ^ s.bits
 
-def lowBits (n : Nat) (w : Word) : Word := (w.setWidth n).setWidth 256
+def lowBits (n : Nat) (w : Word) : Word := (w.setWidth n).setWidth bits
+
+private def mkD : Nat → List Word
+  | 0 => []
+  | n+1 => (n : Word) :: mkD n
+
+theorem valid_index_iff_mem {α : Type u} {l : List α} (x : α) : (∃ i : Nat, l[i]? = some x) ↔ (x ∈ l) :=
+  let mem_means_idx := match leq : l with
+    | .nil => by grind
+    | .cons head tail => by
+        intro h
+        exact match heq : h with
+          | .head tail' => ⟨0, by grind⟩
+          | .tail head' in_tail => by
+            have ⟨i', _⟩ := (valid_index_iff_mem x).mpr in_tail
+            exact ⟨i' + 1, by grind⟩
+  ⟨by grind, mem_means_idx⟩
+
+theorem ofNat_eq_iff_eq_toNat {n : Nat} {w : Word} : n < size → (↑n = w ↔ n = w.toNat)
+:= by
+  intro n_lt
+  constructor
+  intro ofNat_eq
+  rw [← ofNat_eq]
+  apply Eq.symm
+  simp
+  exact n_lt
+  intro eq_toNat
+  rw [eq_toNat]
+  simp
+
+
+theorem size_is_domain : FiniteCardinality Word size :=
+  ⟨mkD size, by
+    have mkD_size : ∀ n, (mkD n).length = n := by
+      intro n
+      induction n
+      simp [mkD]
+      rename_i n' ih
+      unfold mkD
+      grind
+    have mkD_max_n : ∀ n, ∀ w ∈ mkD n, w.toNat < n := by
+      intro n w w_mem
+      induction n with
+      | zero => cases w_mem
+      | succ n' ih =>
+          unfold mkD at w_mem
+          cases List.mem_cons.mp w_mem with
+          | inl w_eq_n' =>
+              rw [w_eq_n']
+              simp
+              grind
+          | inr w_mem => grind
+    have mkD_nodup : ∀ n, n ≤ size → (mkD n).Nodup := by
+      intro n n_le_size
+      induction n with
+      | zero => exact .nil
+      | succ n' ih =>
+          unfold mkD
+          have pre_pairwise : ∀ (a' : Word), a' ∈ mkD n' → ↑n' ≠ a' := by
+            intro a' a'_mem
+            have ne_toNat := Nat.ne_iff_lt_or_gt.mpr (Or.inr $ mkD_max_n n' a' a'_mem)
+            intro absurd_eq
+            have eq_toNat := (ofNat_eq_iff_eq_toNat (by grind)).mp absurd_eq
+            contradiction
+          exact List.nodup_cons.mpr ⟨fun mem => pre_pairwise _ mem rfl, ih (by grind)⟩
+    have mkD_idx : ∀ n, n ≤ size → ∀ w : Word, w.toNat < n → ∃ i : Nat, (mkD n)[i]? = some w := by
+      intro n n_le_size w w_lt
+      exact ⟨n - BitVec.toNat w - 1, by 
+        induction n with
+        | zero => grind
+        | succ n' ih =>
+          unfold mkD
+          have ih := ih (by grind)
+          if w_lt' : w.toNat < n'
+          then grind
+          else
+            have w_eq : w.toNat = n' := by grind
+            rw [w_eq]
+            simp
+            rw [← w_eq]
+            grind
+      ⟩
+
+    exact ⟨
+      mkD_size size,
+      mkD_nodup size (by simp),
+      fun w => (valid_index_iff_mem w).mp (mkD_idx size (by simp) w (w.toFin.isLt))
+    ⟩
+  ⟩
 
 theorem lowBits_lt (n : Nat) (w : Word) : (Word.lowBits n w).toNat < 2 ^ n := by
-  simp only [Word.lowBits , BitVec.toNat_setWidth]
+  simp only [Word.lowBits, bits, BitVec.toNat_setWidth]
   exact Nat.lt_of_le_of_lt (Nat.mod_le _ _) (Nat.mod_lt _ (Nat.two_pow_pos _))
 
 def ofBool (b : Bool) : Word := if b then 1 else 0
@@ -29,7 +129,7 @@ def toBytes (n : Nat) (w : Word) : ByteArray :=
 
 /-- Big-endian bytes as a word, keeping the low 256 bits. -/
 def ofBytes (b : ByteArray) : Word :=
-  BitVec.ofNat 256 (b.data.foldl (fun acc x => acc * 256 + x.toNat) 0)
+  ofNat (b.data.foldl (fun acc x => acc * 256 + x.toNat) 0)
 
 def div (a b : Word) : Word := if b = 0 then 0 else a / b
 
@@ -40,10 +140,10 @@ def mod (a b : Word) : Word := if b = 0 then 0 else a % b
 def smod (a b : Word) : Word := if b = 0 then 0 else BitVec.srem a b
 
 def addmod (a b n : Word) : Word :=
-  if n = 0 then 0 else BitVec.ofNat 256 ((a.toNat + b.toNat) % n.toNat)
+  if n = 0 then 0 else ofNat ((a.toNat + b.toNat) % n.toNat)
 
 def mulmod (a b n : Word) : Word :=
-  if n = 0 then 0 else BitVec.ofNat 256 ((a.toNat * b.toNat) % n.toNat)
+  if n = 0 then 0 else ofNat ((a.toNat * b.toNat) % n.toNat)
 
 def exp (base e : Word) : Word :=
   go 256 base e.toNat 1
@@ -78,7 +178,7 @@ def sar (shift x : Word) : Word :=
   if shift.toNat < 256 then x.sshiftRight shift.toNat
   else if x.msb then BitVec.allOnes 256 else 0
 
-def clz (x : Word) : Word := if x = 0 then 256 else BitVec.ofNat 256 (255 - x.toNat.log2)
+def clz (x : Word) : Word := if x = 0 then 256 else ofNat (255 - x.toNat.log2)
 
 end Word
 
