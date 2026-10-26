@@ -3,11 +3,13 @@ import Host.Word
 
 /-! The EVM host interface of one call frame, shared by every IR that compiles to the EVM.
 
-`Env` holds what stays fixed for the whole frame, so reading it is pure. `HostE Φ` is everything
+`Env` holds what stays fixed for the whole frame, so reading it is pure. `HostE` is everything
 else the frame asks of the outside: gas, its own storage and transient storage, the rest of the
-world (balances, code), calls, creations, logs, and how the frame ends. `Φ` is the IR's own
-reason for a run to be stuck (malformed program, undefined behavior); a `fault` ends the run.
-Its branches (`Choice`) are the choices nobody controls: where an allocation is placed, or one
+world (balances, code), calls, creations, logs, and how the frame ends. It is the same for every
+IR, so runs of different IRs can be related. A frame ends normally (`stop`, `ret`,
+`selfdestruct`), by reverting, by an exceptional halt (`invalid`: every EVM exceptional halt,
+and an IR's malformed program, look the same from outside), or with undefined behavior (`ub`),
+which an IR may reach and the EVM never does. Its branches (`Choice`) are the choices nobody controls: where an allocation is placed, or one
 of `n` alternatives (say, which ready node of a dataflow graph runs next). `Host.Storage` makes
 storage and the world concrete. -/
 
@@ -85,6 +87,14 @@ instance {live : List MemRange} {size : Nat} : Decidable (∃ start, Placement �
 
 end MemRange
 
+/-- Undefined behavior: well-formed programs can reach these, depending on the values they compute. -/
+inductive UB
+  | switchNoMatch
+  | memoryOutOfBounds (offset length : Nat)
+  | uninitializedRead (offset length : Nat)
+  | outOfMemory (size : Nat)
+  deriving DecidableEq, Repr
+
 /-- A choice nobody controls. `placement`: where a new allocation of `size` bytes goes, among
 the placements that miss the `live` allocations; made only when some placement exists.
 `choose n`: one of `n` alternatives. -/
@@ -97,7 +107,7 @@ def Choice.Resp : Choice → Type
   | .placement size live _ => { start : Nat // MemRange.Placement ⟨start, size⟩ live }
   | .choose n _ => Fin n
 
-inductive HostOp (Φ : Type)
+inductive HostOp
   | gas
   | selfbalance
   | balance (account : Word)
@@ -115,10 +125,10 @@ inductive HostOp (Φ : Type)
   | revert (data : ByteArray)
   | invalid
   | selfdestruct (beneficiary : Word)
-  | fault (fault : Φ)
+  | ub (u : UB)
   deriving DecidableEq
 
-def HostOp.Resp {Φ : Type} : HostOp Φ → Type
+def HostOp.Resp : HostOp → Type
   | .gas | .selfbalance | .balance _ | .extcodehash _ => Word
   | .sload _ | .tload _ => Word
   | .sstore .. | .tstore .. => Unit
@@ -126,11 +136,10 @@ def HostOp.Resp {Φ : Type} : HostOp Φ → Type
   | .log .. => Unit
   | .call .. => Bool × ByteArray
   | .create .. => Word × ByteArray
-  | .stop | .ret _ | .revert _ | .invalid | .selfdestruct _ => Empty
-  | .fault _ => Empty
+  | .stop | .ret _ | .revert _ | .invalid | .selfdestruct _ | .ub _ => Empty
 
-abbrev HostE (Φ : Type) : Effect where
-  Op := HostOp Φ
+abbrev HostE : Effect where
+  Op := HostOp
   Resp := HostOp.Resp
   BrOp := Choice
   BrResp := Choice.Resp

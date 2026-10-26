@@ -1,75 +1,18 @@
 import Sir.Memory
-import ITree.Same
+import Host.Outcome
 
-/-! How a run ends, and which runs are safe.
-
-A run of `exec` has type `CoFree Exec Empty`: it never returns a value, it ends with a terminal
-operation (the EVM halts, or a fault). So that operation is its final result.
-
-Runs are compared with `CoFree.Same` after `Mem`, storage and the world are handled. Allocations
-are then branches (`Choice.placement`), unobserved steps of `Same`: each is answered with every
-valid placement, on each side independently, and the runs must agree for every pair of
-placements. Storage accesses and world reads are no longer operations, so only their effect is
-observed: the storage handed to a call or creation, and the storage the run commits with. Every
-remaining operation (gas, logs, calls, creations, the end of the run) is visible and must match
-exactly, in the same order. A fault (`fault (.ub u)`,
-`fault .malformed`) has no answer, so it ends the run and relates only to the same fault; in
-particular undefined behavior of different kinds, or with different arguments (which may mention
-placement-dependent addresses), is not related. A run whose visible behavior depends on where
-something was allocated (say it stores a pointer) is not `CoFree.Deterministic`. -/
+/-! Which SIR programs are safe. Outcomes and safety of a run are `Host`'s: a run of `exec` is a
+`CoFree Exec Empty` with `Exec = WorldE`, the same as any other IR's once its own effects are
+handled. -/
 
 namespace Sir
 
 open Host
 
-/-- How a run ends. A run that commits (`stop`, `ret`, `selfdestruct`) ends with the running
-account's storage and transient storage. -/
-inductive Outcome
-  | stop (store : Store)
-  | ret (data : ByteArray) (store : Store)
-  | revert (data : ByteArray)
-  | invalid
-  | selfdestruct (beneficiary : Word) (store : Store)
-  | fault (f : Fault)
-
-/-- The terminal operation that ends a run with this outcome. -/
-def Outcome.op : Outcome → WorldOp Fault
-  | .stop st => .stop st
-  | .ret data st => .ret data st
-  | .revert data => .revert data
-  | .invalid => .invalid
-  | .selfdestruct a st => .selfdestruct a st
-  | .fault f => .fault f
-
-/-- `t` ends with `o` for some answers to its host operations and some placements, after finitely
-many steps. -/
-inductive HasOutcome : CoFree Exec Empty → Outcome → Prop
-  | halt {t o k} :
-      t.observe = .impure o.op k →
-        HasOutcome t o
-  | silent {t t' o} :
-      t.observe = .silent t' →
-      HasOutcome t' o →
-        HasOutcome t o
-  | branch {t c k o} (r : Choice.Resp c) :
-      t.observe = .branch c k →
-      HasOutcome (k r) o →
-        HasOutcome t o
-  | impure {t op k o} (r : WorldOp.Resp op) :
-      t.observe = .impure op k →
-      HasOutcome (k r) o →
-        HasOutcome t o
-
-/-- `t` reaches no undefined behavior, and does not depend on where its allocations are placed.
-The second half is not implied by the first: a run returning a pointer it allocated has no UB
-outcome, but different placements give it different outcomes. -/
-def Safe (t : CoFree Exec Empty) : Prop :=
-  (∀ u, ¬HasOutcome t (.fault (.ub u))) ∧ CoFree.Deterministic t
-
 /-- An entry point is safe for every frame environment (calldata, caller, …), every initial
 storage and world, and every value of the immutables. The layout is fixed by the compiler, so it
 is a parameter. -/
 def Program.Safe (p : Program) (layout : Layout) (e : Entry) : Prop :=
-  ∀ imm env s, Sir.Safe (exec p layout imm env e s)
+  ∀ imm env s, Host.Safe (exec p layout imm env e s)
 
 end Sir

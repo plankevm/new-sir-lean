@@ -24,17 +24,14 @@ structure Ctx where
 
 def mem (op : MemOp) : CoFree EvalE (MemOp.Resp op) := perform (E := EvalE) (.inr (.inl op))
 
-def host (op : HostOp Fault) : CoFree EvalE (HostOp.Resp op) := perform (E := EvalE) (.inr (.inr op))
+def host (op : HostOp) : CoFree EvalE (HostOp.Resp op) := perform (E := EvalE) (.inr (.inr op))
 
-def fault {α : Type} (f : Fault) : CoFree EvalE α := do
-  let e ← host (.fault f)
-  Empty.elim e
-
-def malformed {α : Type} : CoFree EvalE α := fault .malformed
-
-def halt {α : Type} (op : HostOp Fault) (h : HostOp.Resp op = Empty := by rfl) : CoFree EvalE α := do
+def halt {α : Type} (op : HostOp) (h : HostOp.Resp op = Empty := by rfl) : CoFree EvalE α := do
   let e ← host op
   Empty.elim (h ▸ e)
+
+/-- A malformed program halts exceptionally, as invalid EVM code would. -/
+def malformed {α : Type} : CoFree EvalE α := halt .invalid
 
 def lookup (l : Locals) (v : VarId) : CoFree EvalE Word := do
   let some w := l[v]? | malformed
@@ -243,7 +240,7 @@ def execControl (call : Call) (fn : Function) (l : Locals) (blk : Block) :
   | .continuesTo t => jump t
   | .branches c nonZero zero => jump (if c ≠ 0 then nonZero else zero)
   | .switch c cases fallback => do
-    let some t := (cases.find? (·.1 == c)).map (·.2) <|> fallback | fault (.ub .switchNoMatch)
+    let some t := (cases.find? (·.1 == c)).map (·.2) <|> fallback | halt (.ub .switchNoMatch)
     jump t
   | .stop => halt .stop
   | .return offset length => do
@@ -272,7 +269,7 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
       execControl call fn l blk
 
 def malformedTop {α : Type} : CoFree SirE α := do
-  nomatch ← perform (E := SirE) (.inr (.fault .malformed))
+  nomatch ← perform (E := SirE) (.inr .invalid)
 
 /-- An entry point runs until a halting control; entry functions take no inputs and
 must not return. -/

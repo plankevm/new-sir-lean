@@ -3,7 +3,7 @@ import Host.Effect
 /-! Concrete storage and world.
 
 `interpStore` answers the frame's storage, transient storage and world reads from a `State`, and
-emits `WorldE Φ`: what is left, gas, logs, calls, creations and the end of the frame. Within a
+emits `WorldE`: what is left, gas, logs, calls, creations and the end of the frame. Within a
 frame only the frame itself changes its storage, and nothing changes the world, except a call or
 a creation: the callee (or the initcode) may change balances and code, and may reenter and write
 this account's storage. So a call or creation passes the current `Store` out (a reentrant callee
@@ -11,8 +11,9 @@ reads it) and is answered with the whole `State` afterwards, which the environme
 relates two runs only if they agree for every such answer. A `staticcall` changes nothing and
 is answered without a `State`.
 
-The frame's `Store` leaves it at `stop`, `ret` and `selfdestruct`; `revert`, `invalid` and a
-`fault` discard it. A static frame that tries to change state halts like `invalid` (EIP-214,
+`WorldE` is where runs of different IRs are related, so it has one way to say each observable
+thing: `stop` is `ret` with no data. The frame's `Store` leaves it at `ret` and `selfdestruct`;
+`revert`, `invalid` and `ub` discard it. A static frame that tries to change state halts like `invalid` (EIP-214,
 EIP-1153), and its callees run static too, so no call changes its state. -/
 
 namespace Host
@@ -40,44 +41,43 @@ structure State where
   world : World
   deriving Inhabited
 
-inductive WorldOp (Φ : Type)
+inductive WorldOp
   | gas
   | log (topics : Array Word) (data : ByteArray)
   | call (kind : CallKind) (gas account : Word) (input : ByteArray) (store : Store)
   | create (value : Word) (salt : Option Word) (initcode : ByteArray) (store : Store)
-  | stop (store : Store)
   | ret (data : ByteArray) (store : Store)
   | revert (data : ByteArray)
   | invalid
   | selfdestruct (beneficiary : Word) (store : Store)
-  | fault (fault : Φ)
+  | ub (u : UB)
 
-def WorldOp.Resp {Φ : Type} : WorldOp Φ → Type
+def WorldOp.Resp : WorldOp → Type
   | .gas => Word
   | .log .. => Unit
   | .call .staticcall .. => Bool × ByteArray
   | .call .. => Bool × ByteArray × State
   | .create .. => Word × ByteArray × State
-  | .stop _ | .ret .. | .revert _ | .invalid | .selfdestruct .. | .fault _ => Empty
+  | .ret .. | .revert _ | .invalid | .selfdestruct .. | .ub _ => Empty
 
-abbrev WorldE (Φ : Type) : Effect where
-  Op := WorldOp Φ
+abbrev WorldE : Effect where
+  Op := WorldOp
   Resp := WorldOp.Resp
   BrOp := Choice
   BrResp := Choice.Resp
-  brResp_nonempty := (HostE Φ).brResp_nonempty
+  brResp_nonempty := HostE.brResp_nonempty
 
-variable {Φ : Type} {A : Type}
+variable {A : Type}
 
-def world (op : WorldOp Φ) : CoFree (WorldE Φ) (WorldOp.Resp op) := CoFree.perform (E := WorldE Φ) op
+def world (op : WorldOp) : CoFree WorldE (WorldOp.Resp op) := CoFree.perform (E := WorldE) op
 
-def halt (op : WorldOp Φ) (h : WorldOp.Resp op = Empty := by rfl) : CoFree (WorldE Φ) A := do
+def halt (op : WorldOp) (h : WorldOp.Resp op = Empty := by rfl) : CoFree WorldE A := do
   let e ← world op
   Empty.elim (h ▸ e)
 
 def State.setStore (s : State) (f : Store → Store) : State := { s with store := f s.store }
 
-def handleHost (env : Env) (s : State) : (op : HostOp Φ) → CoFree (WorldE Φ) (State × HostOp.Resp op)
+def handleHost (env : Env) (s : State) : (op : HostOp) → CoFree WorldE (State × HostOp.Resp op)
   | .gas => do pure (s, ← world .gas)
   | .selfbalance => pure (s, s.world.balance env.address)
   | .balance a => pure (s, s.world.balance a)
@@ -105,14 +105,14 @@ def handleHost (env : Env) (s : State) : (op : HostOp Φ) → CoFree (WorldE Φ)
   | .create value salt initcode => if env.static then halt .invalid else do
     let (account, out, s') ← world (.create value salt initcode s.store)
     pure (s', (account, out))
-  | .stop => halt (.stop s.store)
+  | .stop => halt (.ret .empty s.store)
   | .ret data => halt (.ret data s.store)
   | .revert data => halt (.revert data)
   | .invalid => halt .invalid
   | .selfdestruct a => if env.static then halt .invalid else halt (.selfdestruct a s.store)
-  | .fault f => halt (.fault f)
+  | .ub u => halt (.ub u)
 
-def interpStore (env : Env) (s : State) (t : CoFree (HostE Φ) A) : CoFree (WorldE Φ) (State × A) :=
-  CoFree.interpState (E := HostE Φ) (handleHost env) ⟨fun c => c, fun _ r => r⟩ s t
+def interpStore (env : Env) (s : State) (t : CoFree HostE A) : CoFree WorldE (State × A) :=
+  CoFree.interpState (E := HostE) (handleHost env) ⟨fun c => c, fun _ r => r⟩ s t
 
 end Host

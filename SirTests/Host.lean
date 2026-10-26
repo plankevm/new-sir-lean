@@ -15,7 +15,7 @@ inductive Outcome
   | revert (data : List UInt8)
   | invalid
   | selfdestruct (beneficiary : Word)
-  | fault (fault : Fault)
+  | ub (u : UB)
   | hostError (msg : String)
   | outOfFuel
   deriving DecidableEq, Repr
@@ -58,7 +58,7 @@ def countQuery (v : Word) : HostM Word := do
   modify fun w => { w with queries := w.queries + 1 }
   pure v
 
-def answer : (op : HostOp Fault) → HostM (HostOp.Resp op)
+def answer : (op : HostOp) → HostM (HostOp.Resp op)
   | .gas => countQuery 1000000
   | .selfbalance | .balance _ | .extcodehash _ => countQuery 7
   | .sload k => do
@@ -81,7 +81,7 @@ def answer : (op : HostOp Fault) → HostM (HostOp.Resp op)
   | .revert data => throw (.revert data.toList)
   | .invalid => throw .invalid
   | .selfdestruct a => throw (.selfdestruct a)
-  | .fault f => throw (.fault f)
+  | .ub u => throw (.ub u)
 
 /-- Places every allocation after the highest live one, from `0x80`. -/
 def place : (c : Choice) → HostM (Choice.Resp c)
@@ -92,7 +92,7 @@ def place : (c : Choice) → HostM (Choice.Resp c)
 
 def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
     (e : Entry) (fuel : Nat := 100000) : Outcome × World :=
-  match (CoFree.runM (E := HostE Fault) answer place fuel (execHost p layout imm env e)).run.run world with
+  match (CoFree.runM (E := HostE) answer place fuel (execHost p layout imm env e)).run.run world with
   | (.ok none, w) => (.outOfFuel, w)
   | (.ok (some x), _) => nomatch x
   | (.error o, w) => (o, w)
@@ -104,19 +104,18 @@ inductive ExecOutcome
 
 /-- Answers `exec`'s world operations: the gas left is fixed, logs are dropped, and every call or
 creation answers `(true, empty)`, `0xC1` or `0xC2`, and leaves the state `after store`. -/
-def answerWorld (after : Store → State) : (op : WorldOp Fault) → Except ExecOutcome (WorldOp.Resp op)
+def answerWorld (after : Store → State) : (op : WorldOp) → Except ExecOutcome (WorldOp.Resp op)
   | .gas => pure (1000000 : Word)
   | .log .. => pure ()
   | .call .staticcall .. => pure ((true, .empty) : Bool × ByteArray)
   | .call (.call _) _ _ _ st | .call (.callcode _) _ _ _ st | .call .delegatecall _ _ _ st =>
     pure ((true, .empty, after st) : Bool × ByteArray × State)
   | .create _ salt _ st => pure (((if salt.isSome then 0xC2 else 0xC1 : Word), .empty, after st) : Word × ByteArray × State)
-  | .stop st => throw (.done .stop (some st))
   | .ret data st => throw (.done (.ret data.toList) (some st))
   | .revert data => throw (.done (.revert data.toList) none)
   | .invalid => throw (.done .invalid none)
   | .selfdestruct a st => throw (.done (.selfdestruct a) (some st))
-  | .fault f => throw (.done (.fault f) none)
+  | .ub u => throw (.done (.ub u) none)
 
 def runExec (env : Env) (s : State) (after : Store → State) (p : Program) (layout : Layout)
     (imm : Immutables p) (e : Entry) (fuel : Nat := 100000) : ExecOutcome :=

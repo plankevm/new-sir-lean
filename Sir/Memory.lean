@@ -3,7 +3,7 @@ import Sir.Eval
 /-! Frame memory: a list of allocations, plus the return data buffer. A new allocation is placed
 by a branch (`Choice.placement`) over every valid placement. A byte is `none` until written if it came from `mallocany`.
 Reading a byte outside every allocation, reading a `none` byte, writing outside every
-allocation, and allocating when no placement exists are undefined behavior (`fault`). `mcopy`
+allocation, and allocating when no placement exists are undefined behavior (`ub`). `mcopy`
 moves byte states, so copying unwritten bytes is not itself a read. -/
 
 namespace Sir
@@ -45,17 +45,17 @@ def live (m : FrameMem) : List MemRange :=
 
 end FrameMem
 
-def ub {α : Type} (u : UB) : CoFree (HostE Fault) α := do
-  let e ← perform (E := HostE Fault) (.fault (.ub u))
+def ub {α : Type} (u : UB) : CoFree (HostE) α := do
+  let e ← perform (E := HostE) (.ub u)
   Empty.elim e
 
-def handleMem : FrameMem → (op : SirE.Op) → CoFree (HostE Fault) (FrameMem × SirE.Resp op)
+def handleMem : FrameMem → (op : SirE.Op) → CoFree (HostE) (FrameMem × SirE.Resp op)
   | m, .inr op => do
-    let r ← perform (E := HostE Fault) op
+    let r ← perform (E := HostE) op
     pure (m, r)
   | m, .inl (.alloc zeroed size) =>
     if fits : ∃ start, MemRange.Placement ⟨start, size⟩ m.live then do
-      let ⟨start, _⟩ ← CoFree.choose (E := HostE Fault) (.placement size m.live fits)
+      let ⟨start, _⟩ ← CoFree.choose (E := HostE) (.placement size m.live fits)
       let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
       pure ({ m with allocs := m.allocs.push a }, Word.ofNat start)
     else ub (.outOfMemory size)
@@ -75,7 +75,7 @@ def handleMem : FrameMem → (op : SirE.Op) → CoFree (HostE Fault) (FrameMem �
 
 /-- The semantics of an entry point with storage and the world left abstract. -/
 def execHost (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
-    CoFree (HostE Fault) Empty := do
+    CoFree (HostE) Empty := do
   let (_, res) ← CoFree.interpState handleMem (.sum (.empty nofun) .id) {} (runEntry p layout imm env e)
   nomatch res
 

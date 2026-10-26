@@ -3,7 +3,7 @@ import Sir.Ir
 
 /-! The effects of a SIR run.
 
-The evaluator reads `Env` and emits `SirE = Mem ⊕ₑ HostE Fault`. `Env` holds what stays fixed for
+The evaluator reads `Env` and emits `SirE = Mem ⊕ₑ HostE`. `Env` holds what stays fixed for
 the whole frame, so reading it is pure: equivalence can ignore, reorder or drop those reads. `Mem`
 (allocation, byte reads/writes, the return data buffer) is frame-local and handled by
 `Sir.Memory`, which places each allocation by a branch (`Choice.placement`). `HostE` is the
@@ -13,20 +13,6 @@ concrete, leaving `Exec`: gas, logs, calls, creations and the end of the frame. 
 namespace Sir
 
 open Host
-
-/-- Undefined behavior: well-formed programs can reach these, depending on the values they compute. -/
-inductive UB
-  | switchNoMatch
-  | memoryOutOfBounds (offset length : Nat)
-  | uninitializedRead (offset length : Nat)
-  | outOfMemory (size : Nat)
-  deriving DecidableEq, Repr
-
-/-- Why a run is stuck. -/
-inductive Fault
-  | malformed
-  | ub (u : UB)
-  deriving DecidableEq, Repr
 
 inductive MemOp
   | alloc (zeroed : Bool) (size : Nat)
@@ -46,9 +32,9 @@ def MemOp.Resp : MemOp → Type
 
 abbrev Mem : Effect := { Op := MemOp, Resp := MemOp.Resp }
 
-abbrev SirE : Effect := Mem ⊕ₑ HostE Fault
+abbrev SirE : Effect := Mem ⊕ₑ HostE
 
 /-- What a run emits once `Mem`, storage and the world are handled. -/
-abbrev Exec : Effect := WorldE Fault
+abbrev Exec : Effect := WorldE
 
 end Sir

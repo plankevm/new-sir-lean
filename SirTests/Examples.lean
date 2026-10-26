@@ -169,9 +169,9 @@ def entryReturns : Program := initOnly #[{ control := .iret }]
 def entryReturnsValues : Program :=
   { initOnly #[] with functions := #[⟨0, .values 0, #[{ control := .iret }]⟩] }
 
-def undef (u : UB) : Outcome := .fault (.ub u)
+def undef (u : UB) : Outcome := .ub u
 
-def malformed : Outcome := .fault .malformed
+def malformed : Outcome := .invalid
 
 def run (p : Program) (e : Entry := .init) (env : Env := testEnv) (world : World := {})
     (layout : Layout := noLayout) (imm : Array Word := #[]) (fuel : Nat := 100000) :
@@ -220,7 +220,7 @@ def checks : List (String × Bool) :=
       r.1 == .stop && storage r == [(0, 0x2345), (1, 0x2345)] && r.2.queries == 0),
     ("Immutables.ofWords keeps the low size bytes",
       (Immutables.ofWords immutables #[0x12345])[(0 : ImmutableId)]? == some 0x2345),
-    ("getimmutable in init faults", (run getImmutableInInit).1 == malformed),
+    ("getimmutable in init is invalid", (run getImmutableInInit).1 == malformed),
     ("call: success, returndatasize, truncated return copy",
       storage call == [(0, 1), (1, 3), (2, 0x0102)]),
     ("call: request", call.2.calls.toList == [(.call 0, 0xBEEF, [])]),
@@ -234,19 +234,19 @@ def checks : List (String × Bool) :=
     ("returndatacopy source past the return data is invalid even if the destination is too",
       (runOut returnDataCopyPastBoth).1 == .invalid),
     ("switch takes the matching case", storage (run (switchOn 7)) == [(2, 2)]),
-    ("switch without match or fallback faults", (run (switchOn 9)).1 == undef .switchNoMatch),
+    ("UB: switch without match or fallback", (run (switchOn 9)).1 == undef .switchNoMatch),
     ("environment", env.1 == .selfdestruct 0xC0 && storage env ==
       ([(0, (0x0203 : Word) <<< 240), (1, 3), (2, 0x1000), (3, 0xC2), (4, 0xC0)] : List (Word × Word))),
-    ("undefined variable faults", (run undefinedVar).1 == malformed),
+    ("undefined variable is invalid", (run undefinedVar).1 == malformed),
     ("blocks are local to their function", (run foreignBlock).1 == malformed),
     ("icall_never: the callee halts", (run (neverCallee .never .stop)).1 == .stop),
-    ("icall_never: the callee returning faults",
+    ("icall_never: the callee returning is invalid",
       (run (neverCallee (.values 0) .iret)).1 == malformed),
-    ("returning from an entry faults",
+    ("returning from an entry is invalid",
       (run entryReturns).1 == malformed),
-    ("an entry function declared to return values faults when it returns",
+    ("an entry function declared to return values is invalid when it returns",
       (run entryReturnsValues).1 == malformed),
-    ("missing main faults", (run loopSum .main).1 == malformed) ]
+    ("missing main is invalid", (run loopSum .main).1 == malformed) ]
 
 /-! Concrete storage (`exec`). -/
 
@@ -283,25 +283,25 @@ def staticEnv : Env := { testEnv with static := true }
 
 def worldChecks : List (String × Bool) :=
   [ ("sload reads the frame's own sstore",
-      slots (runS (storeAround (.const 0))) == some (.stop, [5, 5, 1, 0])),
-    ("tload reads the frame's own tstore", slots (runS transient) == some (.stop, [0, 0, 0, 7])),
+      slots (runS (storeAround (.const 0))) == some (.ret [], [5, 5, 1, 0])),
+    ("tload reads the frame's own tstore", slots (runS transient) == some (.ret [], [0, 0, 0, 7])),
     ("after a call, storage and world are what the callee left",
-      slots (runS (storeAround (.call 10 10 10 10 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+      slots (runS (storeAround (.call 10 10 10 10 10 10 10))) == some (.ret [], [9, 9, 3, 0])),
     ("after a callcode too",
-      slots (runS (storeAround (.callcode 10 10 10 10 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+      slots (runS (storeAround (.callcode 10 10 10 10 10 10 10))) == some (.ret [], [9, 9, 3, 0])),
     ("after a delegatecall too",
-      slots (runS (storeAround (.delegatecall 10 10 10 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+      slots (runS (storeAround (.delegatecall 10 10 10 10 10 10))) == some (.ret [], [9, 9, 3, 0])),
     ("after a create too (initcode may reenter)",
-      slots (runS (storeAround (.create 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+      slots (runS (storeAround (.create 10 10 10))) == some (.ret [], [9, 9, 3, 0])),
     ("a staticcall changes nothing",
-      slots (runS (storeAround (.staticcall 10 10 10 10 10 10))) == some (.stop, [5, 5, 1, 0])),
+      slots (runS (storeAround (.staticcall 10 10 10 10 10 10))) == some (.ret [], [5, 5, 1, 0])),
     ("a static frame halts at sstore", slots (runS (storeAround (.const 0)) staticEnv) == some (.invalid, [])),
     ("a static frame halts at tstore", slots (runS transient staticEnv) == some (.invalid, [])),
     ("a static frame halts at create", slots (runS (just (.create 10 10 10)) staticEnv) == some (.invalid, [])),
     ("a static frame halts at a call with value",
       slots (runS (just (.call 10 10 11 10 10 10 10)) staticEnv) == some (.invalid, [])),
     ("a static frame may call without value, and the callee changes nothing",
-      slots (runS (just (.call 10 10 10 10 10 10 10)) staticEnv) == some (.stop, [0, 0, 0, 0])),
+      slots (runS (just (.call 10 10 10 10 10 10 10)) staticEnv) == some (.ret [], [0, 0, 0, 0])),
     ("revert discards storage", slots (runS revert) == some (.revert [0xDE, 0xAD], [])) ]
 
 #eval show IO Unit from do
