@@ -42,6 +42,28 @@ def Outcome.ofOp : (op : WorldOp) → (WorldOp.Resp op → False) → Outcome
   | .selfdestruct a st, _ => .selfdestruct a st
   | .ub u, _ => .ub u
 
+instance WorldOp.decidableHalts : (op : WorldOp) → Decidable (WorldOp.Resp op → False)
+  | .gas => .isFalse fun h => h (0 : Word)
+  | .log .. => .isFalse fun h => h ()
+  | .call .staticcall .. => .isFalse fun h => h (false, .empty)
+  | .call (.call _) .. | .call (.callcode _) .. | .call .delegatecall .. =>
+    .isFalse fun h => h (false, .empty, default)
+  | .create .. => .isFalse fun h => h (0, .empty, default)
+  | .ret .. | .revert _ | .invalid | .selfdestruct .. | .ub _ => .isTrue Empty.elim
+
+universe w in
+def catchStep {X : Type w} : Step WorldE Empty X → Step WorldE Outcome X
+  | .pure e => nomatch e
+  | .silent x => .silent x
+  | .impure op k => if h : WorldOp.Resp op → False then .pure (.ofOp op h) else .impure op k
+  | .branch c k => .branch c k
+
+/-- `t` with its end made a returned value: a terminal operation returns its `Outcome`, every
+other step is kept. Terminal operations end a run without an answer, so two runs that halt with
+different data can only be related by `CoFree.Same` with a relation on the results of `catchHalt`. -/
+def catchHalt : CoFree WorldE Empty → CoFree WorldE Outcome
+  | ⟨S, J, s₀, step, target⟩ => ⟨S, J, s₀, fun s => catchStep (step s), fun j => catchHalt (target j)⟩
+
 /-- `t` ends with `o` for some answers to its operations and some branches, after finitely
 many steps. -/
 inductive HasOutcome : CoFree WorldE Empty → Outcome → Prop

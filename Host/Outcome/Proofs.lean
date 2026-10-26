@@ -164,4 +164,224 @@ theorem not_safe_of_branch_outcomes {c : Choice} {k : Choice.Resp c → CoFree W
 theorem safe_spin : Safe (CoFree.spin : CoFree WorldE Empty) :=
   ⟨fun _ => not_hasOutcome_spin, CoFree.spin_relates_to_self⟩
 
+/-! ## Halting as a result -/
+
+section CatchHalt
+
+open CoFree (Same SameFinite ForallUnobserved Returns)
+
+variable {t t' : CoFree WorldE Empty} {o : Outcome}
+
+universe w₁ w₂ in
+theorem catchStep_map {X : Type w₁} {Y : Type w₂} (f : X → Y) (x : Step WorldE Empty X) :
+    catchStep (x.map f) = (catchStep x).map f := by
+  cases x with
+  | pure e => nomatch e
+  | impure op k => simp only [Step.map, catchStep]; split <;> rfl
+  | _ => rfl
+
+theorem observe_catchHalt (t : CoFree WorldE Empty) :
+    (catchHalt t).observe = catchStep (t.observe.map catchHalt) := by
+  obtain ⟨S, J, s₀, step, target⟩ := t
+  simp only [CoFree.observe, catchHalt, catchStep_map, Step.map_map]
+  refine Step.map_congr (fun x => ?_) _
+  cases x <;> rfl
+
+theorem catchHalt_silent (h : t.observe = .silent t') :
+    (catchHalt t).observe = .silent (catchHalt t') := by
+  rw [observe_catchHalt, h]; rfl
+
+theorem catchHalt_branch {c : Choice} {k : Choice.Resp c → CoFree WorldE Empty}
+    (h : t.observe = .branch c k) : (catchHalt t).observe = .branch c fun r => catchHalt (k r) := by
+  rw [observe_catchHalt, h]; rfl
+
+theorem catchHalt_halt {op : WorldOp} {k : WorldOp.Resp op → CoFree WorldE Empty}
+    (h : t.observe = .impure op k) (hop : WorldOp.Resp op → False) :
+    (catchHalt t).observe = .pure (.ofOp op hop) := by
+  rw [observe_catchHalt, h]; simp only [Step.map, catchStep, dite_eq_left_of_eq_true (eq_true hop)]
+
+theorem catchHalt_impure {op : WorldOp} {k : WorldOp.Resp op → CoFree WorldE Empty}
+    (h : t.observe = .impure op k) (hop : ¬(WorldOp.Resp op → False)) :
+    (catchHalt t).observe = .impure op fun r => catchHalt (k r) := by
+  rw [observe_catchHalt, h]; simp only [Step.map, catchStep, dite_eq_right_of_eq_false (eq_false hop)]; rfl
+
+theorem catchHalt_pure_inv (h : (catchHalt t).observe = .pure o) :
+    ∃ op k hop, t.observe = .impure op k ∧ o = .ofOp op hop := by
+  rw [observe_catchHalt] at h
+  cases ht : t.observe with
+  | pure e => nomatch e
+  | impure op k =>
+    rw [ht] at h
+    by_cases hop : WorldOp.Resp op → False
+    · simp only [Step.map, catchStep, dite_eq_left_of_eq_true (eq_true hop)] at h; cases h; exact ⟨op, k, hop, rfl, rfl⟩
+    · simp only [Step.map, catchStep, dite_eq_right_of_eq_false (eq_false hop)] at h; cases h
+  | _ => rw [ht] at h; cases h
+
+theorem catchHalt_impure_inv {op : WorldOp} {c : WorldOp.Resp op → CoFree WorldE Outcome}
+    (h : (catchHalt t).observe = .impure op c) :
+    ∃ k, t.observe = .impure op k ∧ c = fun r => catchHalt (k r) := by
+  rw [observe_catchHalt] at h
+  cases ht : t.observe with
+  | pure e => nomatch e
+  | impure op' k =>
+    rw [ht] at h
+    by_cases hop : WorldOp.Resp op' → False
+    · simp only [Step.map, catchStep, dite_eq_left_of_eq_true (eq_true hop)] at h; cases h
+    · simp only [Step.map, catchStep, dite_eq_right_of_eq_false (eq_false hop)] at h; cases h; exact ⟨k, rfl, rfl⟩
+  | _ => rw [ht] at h; cases h
+
+theorem catchHalt_silent_inv {x : CoFree WorldE Outcome} (h : (catchHalt t).observe = .silent x) :
+    ∃ t', t.observe = .silent t' ∧ x = catchHalt t' := by
+  rw [observe_catchHalt] at h
+  cases ht : t.observe with
+  | pure e => nomatch e
+  | silent t' => rw [ht] at h; cases h; exact ⟨t', rfl, rfl⟩
+  | impure op k =>
+    rw [ht] at h
+    by_cases hop : WorldOp.Resp op → False
+    · simp only [Step.map, catchStep, dite_eq_left_of_eq_true (eq_true hop)] at h; cases h
+    · simp only [Step.map, catchStep, dite_eq_right_of_eq_false (eq_false hop)] at h; cases h
+  | branch => rw [ht] at h; cases h
+
+theorem catchHalt_branch_inv {c : Choice} {k' : Choice.Resp c → CoFree WorldE Outcome}
+    (h : (catchHalt t).observe = .branch c k') :
+    ∃ k, t.observe = .branch c k ∧ k' = fun r => catchHalt (k r) := by
+  rw [observe_catchHalt] at h
+  cases ht : t.observe with
+  | pure e => nomatch e
+  | branch c' k => rw [ht] at h; cases h; exact ⟨k, rfl, rfl⟩
+  | impure op k =>
+    rw [ht] at h
+    by_cases hop : WorldOp.Resp op → False
+    · simp only [Step.map, catchStep, dite_eq_left_of_eq_true (eq_true hop)] at h; cases h
+    · simp only [Step.map, catchStep, dite_eq_right_of_eq_false (eq_false hop)] at h; cases h
+  | silent => rw [ht] at h; cases h
+
+theorem forallUnobserved_catchHalt {p : CoFree WorldE Outcome → Prop} :
+    ForallUnobserved (catchHalt t) p ↔ ForallUnobserved t fun t' => p (catchHalt t') := by
+  unfold ForallUnobserved
+  rw [observe_catchHalt]
+  cases t.observe with
+  | pure e => nomatch e
+  | impure op k =>
+    by_cases hop : WorldOp.Resp op → False
+    · simp only [Step.map, catchStep, dite_eq_left_of_eq_true (eq_true hop)]
+    · simp only [Step.map, catchStep, dite_eq_right_of_eq_false (eq_false hop)]
+  | _ => rfl
+
+/-- A run ends with `o` exactly when its `catchHalt` returns `o`. -/
+theorem hasOutcome_iff_returns : HasOutcome t o ↔ Returns (catchHalt t) o := by
+  constructor
+  · intro h
+    induction h with
+    | halt hop hk => exact .pure (catchHalt_halt hk hop)
+    | silent hs _ ih => exact .silent (catchHalt_silent hs) ih
+    | branch r hb _ ih => exact .branch r (catchHalt_branch hb) ih
+    | impure r hi _ ih => exact .impure r (catchHalt_impure hi fun h => h r) ih
+  · suffices ∀ x, Returns x o → ∀ t, x = catchHalt t → HasOutcome t o from fun h => this _ h t rfl
+    intro x h
+    induction h with
+    | pure hx =>
+      rintro t rfl
+      obtain ⟨op, k, hop, ht, rfl⟩ := catchHalt_pure_inv hx
+      exact .halt hop ht
+    | silent hx _ ih =>
+      rintro t rfl
+      obtain ⟨t', ht, rfl⟩ := catchHalt_silent_inv hx
+      exact .silent ht (ih t' rfl)
+    | impure r hx _ ih =>
+      rintro t rfl
+      obtain ⟨k, ht, rfl⟩ := catchHalt_impure_inv hx
+      exact .impure r ht (ih _ rfl)
+    | branch r hx _ ih =>
+      rintro t rfl
+      obtain ⟨k, ht, rfl⟩ := catchHalt_branch_inv hx
+      exact .branch r ht (ih _ rfl)
+
+private theorem sameFinite_catchHalt {Ret : Empty → Empty → Prop}
+    {R : CoFree WorldE Empty → CoFree WorldE Empty → Prop} {t₁ t₂ : CoFree WorldE Empty}
+    (h : SameFinite Ret R t₁ t₂) :
+    SameFinite Eq (fun x y => ∃ t₁ t₂, R t₁ t₂ ∧ x = catchHalt t₁ ∧ y = catchHalt t₂)
+      (catchHalt t₁) (catchHalt t₂) := by
+  induction h with
+  | ret a => nomatch a
+  | impure op h₁ h₂ hrec =>
+    by_cases hop : WorldOp.Resp op → False
+    · exact .ret _ _ (catchHalt_halt h₁ hop) (catchHalt_halt h₂ hop) rfl
+    · exact .impure op (catchHalt_impure h₁ hop) (catchHalt_impure h₂ hop)
+        fun r => ⟨_, _, hrec r, rfl, rfl⟩
+  | silentL h _ ih => exact .silentL (catchHalt_silent h) ih
+  | silentR h _ ih => exact .silentR (catchHalt_silent h) ih
+  | branchL c h _ ih => exact .branchL c (catchHalt_branch h) ih
+  | branchR c h _ ih => exact .branchR c (catchHalt_branch h) ih
+  | mutualUnobservedStep h =>
+    refine .mutualUnobservedStep (forallUnobserved_catchHalt.2 ?_)
+    refine CoFree.forallUnobserved_mono h fun t₁' h' => forallUnobserved_catchHalt.2 ?_
+    exact CoFree.forallUnobserved_mono h' fun t₂' h'' => ⟨_, _, h'', rfl, rfl⟩
+
+private theorem sameFinite_of_catchHalt {Ret : Empty → Empty → Prop} {x y : CoFree WorldE Outcome}
+    (h : SameFinite Eq (Same Eq) x y) :
+    ∀ t₁ t₂, x = catchHalt t₁ → y = catchHalt t₂ →
+      SameFinite Ret (fun t₁ t₂ => Same Eq (catchHalt t₁) (catchHalt t₂)) t₁ t₂ := by
+  induction h with
+  | ret a b h₁ h₂ hab =>
+    rintro t₁ t₂ rfl rfl
+    obtain ⟨op₁, k₁, hop₁, ht₁, rfl⟩ := catchHalt_pure_inv h₁
+    obtain ⟨op₂, k₂, hop₂, ht₂, rfl⟩ := catchHalt_pure_inv h₂
+    obtain rfl := Outcome.ofOp_injective hab
+    exact .impure op₁ ht₁ ht₂ fun r => (hop₁ r).elim
+  | impure op h₁ h₂ hrec =>
+    rintro t₁ t₂ rfl rfl
+    obtain ⟨k₁, ht₁, rfl⟩ := catchHalt_impure_inv h₁
+    obtain ⟨k₂, ht₂, rfl⟩ := catchHalt_impure_inv h₂
+    exact .impure op ht₁ ht₂ hrec
+  | silentL h _ ih =>
+    rintro t₁ t₂ rfl rfl
+    obtain ⟨t₁', ht, rfl⟩ := catchHalt_silent_inv h
+    exact .silentL ht (ih t₁' t₂ rfl rfl)
+  | silentR h _ ih =>
+    rintro t₁ t₂ rfl rfl
+    obtain ⟨t₂', ht, rfl⟩ := catchHalt_silent_inv h
+    exact .silentR ht (ih t₁ t₂' rfl rfl)
+  | branchL c h _ ih =>
+    rintro t₁ t₂ rfl rfl
+    obtain ⟨k, ht, rfl⟩ := catchHalt_branch_inv h
+    exact .branchL c ht fun r => ih r _ t₂ rfl rfl
+  | branchR c h _ ih =>
+    rintro t₁ t₂ rfl rfl
+    obtain ⟨k, ht, rfl⟩ := catchHalt_branch_inv h
+    exact .branchR c ht fun r => ih r t₁ _ rfl rfl
+  | mutualUnobservedStep h =>
+    rintro t₁ t₂ rfl rfl
+    refine .mutualUnobservedStep (CoFree.forallUnobserved_mono (forallUnobserved_catchHalt.1 h) ?_)
+    exact fun _ h' => forallUnobserved_catchHalt.1 h'
+
+/-- Two runs are related exactly when they are related with their ends as results. The relation
+on `Empty` results says nothing; on outcomes it is `Eq`, a terminal operation relating only to
+itself. -/
+theorem same_iff_catchHalt {Ret : Empty → Empty → Prop} {t₁ t₂ : CoFree WorldE Empty} :
+    Same Ret t₁ t₂ ↔ Same Eq (catchHalt t₁) (catchHalt t₂) := by
+  constructor
+  · intro h
+    refine Same.coind (fun x y => ∃ t₁ t₂, Same Ret t₁ t₂ ∧ x = catchHalt t₁ ∧ y = catchHalt t₂)
+      ?_ ⟨t₁, t₂, h, rfl, rfl⟩
+    rintro _ _ ⟨t₁, t₂, h, rfl, rfl⟩
+    exact SameFinite.mono (fun _ _ h => .inl h) (sameFinite_catchHalt (Same.unfold h))
+  · intro h
+    refine Same.coind (fun t₁ t₂ => Same Eq (catchHalt t₁) (catchHalt t₂)) ?_ h
+    intro t₁ t₂ h
+    exact SameFinite.mono (fun _ _ h => .inl h)
+      (sameFinite_of_catchHalt (Same.unfold h) t₁ t₂ rfl rfl)
+
+theorem deterministic_iff_catchHalt :
+    CoFree.Deterministic t ↔ CoFree.Deterministic (catchHalt t) :=
+  same_iff_catchHalt
+
+/-- `Safe` in terms of `catchHalt`: no UB result, and deterministic. -/
+theorem safe_iff_catchHalt :
+    Safe t ↔ (∀ u, ¬Returns (catchHalt t) (.ub u)) ∧ CoFree.Deterministic (catchHalt t) := by
+  simp only [Safe, hasOutcome_iff_returns, deterministic_iff_catchHalt]
+
+end CatchHalt
+
 end Host
