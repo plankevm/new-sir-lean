@@ -4,3 +4,5 @@ import Sir.Effect
 import Sir.Eval
 import Sir.Memory
 import Sir.Outcome
+import Sir.Deploy
+import Sir.Deploy.Proofs

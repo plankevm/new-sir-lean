@@ -2,13 +2,14 @@ import Lean
 import Sir
 import SirTests.Same
 import SirTests.Safe
+import SirTests.Deploy
 
 namespace SirTests.Audit
 
 open Lean Elab Command
 
-/-- Fails unless every declaration of the `Host` and `Sir` libraries and of `SirTests.Same`
-and `SirTests.Safe` uses only `propext`, `Quot.sound` and `Classical.choice`;
+/-- Fails unless every declaration of the `Host` and `Sir` libraries and of `SirTests.Same`,
+`SirTests.Safe` and `SirTests.Deploy` uses only `propext`, `Quot.sound` and `Classical.choice`;
 in particular no `sorryAx`. -/
 elab "#audit_axioms" : command => do
   let env ← getEnv
@@ -19,7 +20,7 @@ elab "#audit_axioms" : command => do
     unless (env.getModuleIdxFor? name).any fun idx =>
         let mod := env.header.moduleNames[idx.toNat]!
         mod.getRoot == `Sir || mod.getRoot == `Host || mod == `SirTests.Same ||
-          mod == `SirTests.Safe do continue
+          mod == `SirTests.Safe || mod == `SirTests.Deploy do continue
     checked := checked + 1
     for ax in ← liftCoreM (collectAxioms name) do
       unless allowed.contains ax do bad := bad.push (name, ax)
