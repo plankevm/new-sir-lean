@@ -5,23 +5,13 @@ namespace Host
 
 /-! ## Outcomes are the terminal operations -/
 
-theorem Outcome.op_resp_empty (o : Outcome) (r : WorldOp.Resp o.op) : False := by
-  cases o <;> exact nomatch r
-
-theorem Outcome.op_injective {o₁ o₂ : Outcome} (h : o₁.op = o₂.op) : o₁ = o₂ := by
-  cases o₁ <;> cases o₂ <;> simp_all [Outcome.op]
-
-/-- Every operation without an answer ends a run with some outcome. -/
-theorem Outcome.exists_op {op : WorldOp} (h : WorldOp.Resp op → False) :
-    ∃ o : Outcome, o.op = op := by
-  cases op
-  case ret d st => exact ⟨.ret d st, rfl⟩
-  case revert d => exact ⟨.revert d, rfl⟩
-  case invalid => exact ⟨.invalid, rfl⟩
-  case selfdestruct a st => exact ⟨.selfdestruct a st, rfl⟩
-  case ub u => exact ⟨.ub u, rfl⟩
-  case call k _ _ _ _ => cases k <;> exact (h (by unfold WorldOp.Resp; exact default)).elim
-  all_goals exact (h (by unfold WorldOp.Resp; exact default)).elim
+theorem Outcome.ofOp_injective {op₁ op₂ : WorldOp} {h₁ : WorldOp.Resp op₁ → False}
+    {h₂ : WorldOp.Resp op₂ → False} (h : Outcome.ofOp op₁ h₁ = .ofOp op₂ h₂) : op₁ = op₂ := by
+  rcases op₁ with _ | _ | ⟨_ | _ | _ | _⟩ <;>
+    try exact (h₁ (by unfold WorldOp.Resp; exact default)).elim
+  all_goals rcases op₂ with _ | _ | ⟨_ | _ | _ | _⟩ <;>
+    try exact (h₂ (by unfold WorldOp.Resp; exact default)).elim
+  all_goals simp_all [Outcome.ofOp]
 
 /-! ## One step -/
 
@@ -29,32 +19,30 @@ variable {t t' : CoFree WorldE Empty} {o o' : Outcome}
 
 theorem HasOutcome.congr (h : HasOutcome t o) (he : t.observe = t'.observe) : HasOutcome t' o := by
   cases h with
-  | halt hk => exact .halt (he ▸ hk)
+  | halt hop hk => exact .halt hop (he ▸ hk)
   | silent hs h => exact .silent (he ▸ hs) h
   | branch r hb h => exact .branch r (he ▸ hb) h
   | impure r hi h => exact .impure r (he ▸ hi) h
 
 /-- A run at its terminal operation has exactly that outcome. -/
-theorem HasOutcome.halt_iff {k : WorldOp.Resp o.op → CoFree WorldE Empty}
-    (hk : t.observe = .impure o.op k) : HasOutcome t o' ↔ o' = o := by
+theorem HasOutcome.halt_iff {op : WorldOp} {k : WorldOp.Resp op → CoFree WorldE Empty}
+    (hk : t.observe = .impure op k) (hop : WorldOp.Resp op → False) :
+    HasOutcome t o ↔ o = .ofOp op hop := by
   constructor
   · intro h
     cases h with
-    | halt h =>
-      rw [hk] at h
-      injection h with hop
-      exact Outcome.op_injective (by first | exact hop | exact hop.symm)
+    | halt _ h => rw [hk] at h; cases h; rfl
     | silent h _ => rw [hk] at h; cases h
     | branch _ h _ => rw [hk] at h; cases h
-    | impure r h _ => rw [hk] at h; cases h; exact (o.op_resp_empty r).elim
-  · rintro rfl; exact .halt hk
+    | impure r h _ => rw [hk] at h; cases h; exact (hop r).elim
+  · rintro rfl; exact .halt hop hk
 
 theorem HasOutcome.silent_iff (hs : t.observe = .silent t') :
     HasOutcome t o ↔ HasOutcome t' o := by
   constructor
   · intro h
     cases h with
-    | halt h => rw [hs] at h; cases h
+    | halt _ h => rw [hs] at h; cases h
     | silent h h' => rw [hs] at h; cases h; exact h'
     | branch _ h _ => rw [hs] at h; cases h
     | impure _ h _ => rw [hs] at h; cases h
@@ -65,7 +53,7 @@ theorem HasOutcome.branch_iff {c : Choice} {k : Choice.Resp c → CoFree WorldE 
   constructor
   · intro h
     cases h with
-    | halt h => rw [hb] at h; cases h
+    | halt _ h => rw [hb] at h; cases h
     | silent h _ => rw [hb] at h; cases h
     | branch r h h' => rw [hb] at h; cases h; exact ⟨r, h'⟩
     | impure _ h _ => rw [hb] at h; cases h
@@ -74,29 +62,28 @@ theorem HasOutcome.branch_iff {c : Choice} {k : Choice.Resp c → CoFree WorldE 
 /-- A host operation either ends the run with `o`, or some answer to it leads to `o`. -/
 theorem HasOutcome.impure_iff {op : WorldOp} {k : WorldOp.Resp op → CoFree WorldE Empty}
     (hi : t.observe = .impure op k) :
-    HasOutcome t o ↔ op = o.op ∨ ∃ r, HasOutcome (k r) o := by
+    HasOutcome t o ↔ (∃ hop, o = .ofOp op hop) ∨ ∃ r, HasOutcome (k r) o := by
   constructor
   · intro h
     cases h with
-    | halt h => rw [hi] at h; cases h; exact .inl rfl
+    | halt hop h => rw [hi] at h; cases h; exact .inl ⟨hop, rfl⟩
     | silent h _ => rw [hi] at h; cases h
     | branch _ h _ => rw [hi] at h; cases h
     | impure r h h' => rw [hi] at h; cases h; exact .inr ⟨r, h'⟩
-  · rintro (rfl | ⟨r, h⟩)
-    · exact .halt hi
+  · rintro (⟨hop, rfl⟩ | ⟨r, h⟩)
+    · exact .halt hop hi
     · exact .impure r hi h
 
 /-- A terminal operation gives the run an outcome. -/
 theorem HasOutcome.of_terminal {op : WorldOp} {k : WorldOp.Resp op → CoFree WorldE Empty}
-    (hi : t.observe = .impure op k) (hop : WorldOp.Resp op → False) : ∃ o, HasOutcome t o := by
-  obtain ⟨o, rfl⟩ := Outcome.exists_op hop
-  exact ⟨o, .halt hi⟩
+    (hi : t.observe = .impure op k) (hop : WorldOp.Resp op → False) : ∃ o, HasOutcome t o :=
+  ⟨_, .halt hop hi⟩
 
 theorem not_hasOutcome_spin : ¬HasOutcome (CoFree.spin : CoFree WorldE Empty) o := by
   suffices ∀ t, HasOutcome t o → t = CoFree.spin → False from fun h => this _ h rfl
   intro t h
   induction h with
-  | halt h => rintro rfl; rw [CoFree.spin_observe] at h; cases h
+  | halt _ h => rintro rfl; rw [CoFree.spin_observe] at h; cases h
   | silent h _ ih => rintro rfl; rw [CoFree.spin_observe] at h; cases h; exact ih rfl
   | branch _ h _ => rintro rfl; rw [CoFree.spin_observe] at h; cases h
   | impure _ h _ => rintro rfl; rw [CoFree.spin_observe] at h; cases h
@@ -126,8 +113,8 @@ private theorem hasOutcome_of_sameFinite_impure {Ret : Empty → Empty → Prop}
 theorem HasOutcome.of_same {Ret : Empty → Empty → Prop} {t₁ t₂ : CoFree WorldE Empty}
     (h : CoFree.Same Ret t₁ t₂) (ho : HasOutcome t₁ o) : HasOutcome t₂ o := by
   induction ho generalizing t₂ with
-  | halt hk =>
-    exact hasOutcome_of_sameFinite_impure (CoFree.Same.unfold h) hk fun _ _ hn _ => .halt hn
+  | halt hop hk =>
+    exact hasOutcome_of_sameFinite_impure (CoFree.Same.unfold h) hk fun _ _ hn _ => .halt hop hn
   | silent hs _ ih => exact ih (CoFree.Same.silentL_inv h hs)
   | branch r hb _ ih => exact ih (CoFree.Same.branchL_inv h hb r)
   | impure r hi _ ih =>
@@ -156,7 +143,7 @@ theorem not_safe_of_hasOutcome_ub {u : UB} (h : HasOutcome t (.ub u)) : ¬Safe t
 
 theorem not_safe_of_ub {u : UB} {k : WorldOp.Resp (WorldOp.ub u) → CoFree WorldE Empty}
     (h : t.observe = .impure (.ub u) k) : ¬Safe t :=
-  not_safe_of_hasOutcome_ub (HasOutcome.halt (o := .ub u) h)
+  not_safe_of_hasOutcome_ub (.halt Empty.elim h)
 
 /-- Undefined behavior for one response to a branch is enough to make a run unsafe. -/
 theorem not_safe_of_branch_ub {c : Choice} {k : Choice.Resp c → CoFree WorldE Empty} {u : UB}
@@ -166,11 +153,13 @@ theorem not_safe_of_branch_ub {c : Choice} {k : Choice.Resp c → CoFree WorldE 
 
 /-- A run whose branch responses lead to different outcomes is unsafe, though it may have no UB. -/
 theorem not_safe_of_branch_outcomes {c : Choice} {k : Choice.Resp c → CoFree WorldE Empty}
-    {r₁ r₂ : Choice.Resp c} {k₁ : WorldOp.Resp o.op → CoFree WorldE Empty}
-    {k₂ : WorldOp.Resp o'.op → CoFree WorldE Empty} (hb : t.observe = .branch c k)
-    (h₁ : (k r₁).observe = .impure o.op k₁) (h₂ : (k r₂).observe = .impure o'.op k₂)
-    (hne : o ≠ o') : ¬Safe t := fun hs =>
-  hne ((HasOutcome.halt_iff h₂).1 ((Deterministic.hasOutcome_branch hs.2 hb r₁ r₂).1 (.halt h₁)))
+    {r₁ r₂ : Choice.Resp c} {op₁ op₂ : WorldOp} {k₁ : WorldOp.Resp op₁ → CoFree WorldE Empty}
+    {k₂ : WorldOp.Resp op₂ → CoFree WorldE Empty} (hb : t.observe = .branch c k)
+    (h₁ : (k r₁).observe = .impure op₁ k₁) (h₂ : (k r₂).observe = .impure op₂ k₂)
+    (hop₁ : WorldOp.Resp op₁ → False) (hop₂ : WorldOp.Resp op₂ → False) (hne : op₁ ≠ op₂) :
+    ¬Safe t := fun hs =>
+  hne (Outcome.ofOp_injective ((HasOutcome.halt_iff h₂ hop₂).1
+    ((Deterministic.hasOutcome_branch hs.2 hb r₁ r₂).1 (.halt hop₁ h₁))))
 
 theorem safe_spin : Safe (CoFree.spin : CoFree WorldE Empty) :=
   ⟨fun _ => not_hasOutcome_spin, CoFree.spin_relates_to_self⟩

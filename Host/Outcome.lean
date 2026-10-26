@@ -27,20 +27,27 @@ inductive Outcome
   | selfdestruct (beneficiary : Word) (store : Store)
   | ub (u : UB)
 
-/-- The terminal operation that ends a run with this outcome. -/
-def Outcome.op : Outcome → WorldOp
-  | .ret data st => .ret data st
-  | .revert data => .revert data
-  | .invalid => .invalid
-  | .selfdestruct a st => .selfdestruct a st
-  | .ub u => .ub u
+/-- The outcome of a run ending with `op`. Only operations without an answer end a run; listing
+every operation makes a new one decide which it is. -/
+def Outcome.ofOp : (op : WorldOp) → (WorldOp.Resp op → False) → Outcome
+  | .gas, h => (h (0 : Word)).elim
+  | .log .., h => (h ()).elim
+  | .call .staticcall .., h => (h (false, .empty)).elim
+  | .call (.call _) .., h | .call (.callcode _) .., h | .call .delegatecall .., h =>
+    (h (false, .empty, default)).elim
+  | .create .., h => (h (0, .empty, default)).elim
+  | .ret data st, _ => .ret data st
+  | .revert data, _ => .revert data
+  | .invalid, _ => .invalid
+  | .selfdestruct a st, _ => .selfdestruct a st
+  | .ub u, _ => .ub u
 
 /-- `t` ends with `o` for some answers to its operations and some branches, after finitely
 many steps. -/
 inductive HasOutcome : CoFree WorldE Empty → Outcome → Prop
-  | halt {t o k} :
-      t.observe = .impure o.op k →
-        HasOutcome t o
+  | halt {t op k} (h : WorldOp.Resp op → False) :
+      t.observe = .impure op k →
+        HasOutcome t (.ofOp op h)
   | silent {t t' o} :
       t.observe = .silent t' →
       HasOutcome t' o →

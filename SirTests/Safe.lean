@@ -20,13 +20,15 @@ theorem hasOutcome_skip_iff (n : Nat) {t : CoFree Exec Empty} {o : Host.Outcome}
 
 theorem stops_outcome {o : Host.Outcome} : HasOutcome (run stops) o ↔ o = .ret .empty default := by
   rw [← hasOutcome_skip_iff 100]
-  exact HasOutcome.halt_iff (o := .ret .empty default) (observe_of_headOp (op := stopOp default) (by kernel_rfl))
+  exact HasOutcome.halt_iff (observe_of_headOp (op := stopOp default) (by kernel_rfl)) Empty.elim
 
 /-- Storage is concrete: `sload` reads what the run itself stored. -/
 theorem storeLoads_outcome {o : Host.Outcome} :
     HasOutcome (run storeLoads) o ↔ o = .ret .empty ⟨((default : Storage).set 0 5).set 1 5, default⟩ := by
   rw [← hasOutcome_skip_iff 100]
-  exact HasOutcome.halt_iff (observe_of_headOp (by kernel_rfl))
+  exact HasOutcome.halt_iff
+    (observe_of_headOp (op := .ret .empty ⟨((default : Storage).set 0 5).set 1 5, default⟩)
+      (by kernel_rfl)) Empty.elim
 
 theorem stops_safe : Safe (run stops) :=
   ⟨fun _ h => (nomatch stops_outcome.1 h), (Deterministic.of_same mallocs_same_stops).2⟩
@@ -40,12 +42,11 @@ theorem mallocs_outcome {o : Host.Outcome} : HasOutcome (run mallocs) o ↔ o = 
 
 theorem switchUB_not_safe : ¬Safe (run switchUB) :=
   not_safe_of_hasOutcome_ub ((hasOutcome_skip_iff 100).1
-    (.halt (o := .ub .switchNoMatch)
-      (observe_of_headOp (op := .ub .switchNoMatch) (by kernel_rfl))))
+    (.halt Empty.elim (observe_of_headOp (op := .ub .switchNoMatch) (by kernel_rfl))))
 
 theorem undefinedVar_outcome {o : Host.Outcome} : HasOutcome (run undefinedVar) o ↔ o = .ub .malformed := by
   rw [← hasOutcome_skip_iff 100]
-  exact HasOutcome.halt_iff (o := .ub .malformed) (observe_of_headOp (op := .ub .malformed) (by kernel_rfl))
+  exact HasOutcome.halt_iff (observe_of_headOp (op := .ub .malformed) (by kernel_rfl)) Empty.elim
 
 /-- A malformed program is never `Safe`. -/
 theorem undefinedVar_not_safe : ¬Safe (run undefinedVar) :=
@@ -69,18 +70,18 @@ theorem placementDecides_outcome {o : Host.Outcome} :
   constructor
   · rintro ⟨r, h⟩
     split at h
-    · exact .inl ((HasOutcome.halt_iff (o := .ret .empty default) (CoFree.observe_impure _ _)).1 h)
-    · exact .inr ((HasOutcome.halt_iff (o := .invalid) (CoFree.observe_impure _ _)).1 h)
+    · exact .inl ((HasOutcome.halt_iff (CoFree.observe_impure _ _) Empty.elim).1 h)
+    · exact .inr ((HasOutcome.halt_iff (CoFree.observe_impure _ _) Empty.elim).1 h)
   · rintro (rfl | rfl)
-    · exact ⟨⟨0, by decide⟩, .halt (o := .ret .empty default) (CoFree.observe_impure _ _)⟩
-    · exact ⟨⟨1, by decide⟩, .halt (o := .invalid) (CoFree.observe_impure _ _)⟩
+    · exact ⟨⟨0, by decide⟩, .halt Empty.elim (CoFree.observe_impure _ _)⟩
+    · exact ⟨⟨1, by decide⟩, .halt Empty.elim (CoFree.observe_impure _ _)⟩
 
 theorem placementDecides_no_ub {u : UB} : ¬HasOutcome placementDecides (.ub u) := by
   rw [placementDecides_outcome]; simp
 
 theorem placementDecides_not_safe : ¬Safe placementDecides :=
-  not_safe_of_branch_outcomes (c := oneByte) (r₁ := ⟨0, by decide⟩) (r₂ := ⟨1, by decide⟩) (o := .ret .empty default)
-    (o' := .invalid) (CoFree.observe_branch _ _) (CoFree.observe_impure _ _)
-    (CoFree.observe_impure _ _) nofun
+  not_safe_of_branch_outcomes (c := oneByte) (r₁ := ⟨0, by decide⟩) (r₂ := ⟨1, by decide⟩)
+    (CoFree.observe_branch _ _) (CoFree.observe_impure _ _) (CoFree.observe_impure _ _)
+    Empty.elim Empty.elim nofun
 
 end SirTests.Safe
