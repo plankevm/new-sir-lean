@@ -1,4 +1,4 @@
-import Sir.Word
+import Host.Word
 
 /-! The SIR AST: plankc's `sir-data` (`EthIRProgram`) minus static allocation and `freeptr`, with
 three structural changes. Each function owns its blocks, so a jump can only target a block of the

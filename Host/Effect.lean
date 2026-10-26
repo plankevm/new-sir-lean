@@ -1,5 +1,5 @@
 import ITree
-import Sir.Word
+import Host.Word
 
 /-! The EVM host interface of one call frame, shared by every IR that compiles to the EVM.
 

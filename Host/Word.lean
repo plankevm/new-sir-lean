@@ -33,89 +33,27 @@ private def mkD : Nat → List Word
   | n+1 => (n : Word) :: mkD n
 
 theorem valid_index_iff_mem {α : Type u} {l : List α} (x : α) : (∃ i : Nat, l[i]? = some x) ↔ (x ∈ l) :=
-  let mem_means_idx := match leq : l with
-    | .nil => by grind
-    | .cons head tail => by
-        intro h
-        exact match heq : h with
-          | .head tail' => ⟨0, by grind⟩
-          | .tail head' in_tail => by
-            have ⟨i', _⟩ := (valid_index_iff_mem x).mpr in_tail
-            exact ⟨i' + 1, by grind⟩
-  ⟨by grind, mem_means_idx⟩
+  List.mem_iff_getElem?.symm
 
-theorem ofNat_eq_iff_eq_toNat {n : Nat} {w : Word} : n < size → (↑n = w ↔ n = w.toNat)
-:= by
-  intro n_lt
-  constructor
-  intro ofNat_eq
-  rw [← ofNat_eq]
-  apply Eq.symm
-  simp
-  exact n_lt
-  intro eq_toNat
-  rw [eq_toNat]
-  simp
+theorem ofNat_eq_iff_eq_toNat {n : Nat} {w : Word} : n < size → (↑n = w ↔ n = w.toNat) := by
+  intro h
+  rw [← BitVec.toNat_inj, BitVec.natCast_eq_ofNat, BitVec.toNat_ofNat,
+    Nat.mod_eq_of_lt (show n < 2 ^ 256 from h)]
 
-
-theorem size_is_domain : FiniteCardinality Word size :=
-  ⟨mkD size, by
-    have mkD_size : ∀ n, (mkD n).length = n := by
-      intro n
-      induction n
-      simp [mkD]
-      rename_i n' ih
-      unfold mkD
-      grind
-    have mkD_max_n : ∀ n, ∀ w ∈ mkD n, w.toNat < n := by
-      intro n w w_mem
-      induction n with
-      | zero => cases w_mem
-      | succ n' ih =>
-          unfold mkD at w_mem
-          cases List.mem_cons.mp w_mem with
-          | inl w_eq_n' =>
-              rw [w_eq_n']
-              simp
-              grind
-          | inr w_mem => grind
-    have mkD_nodup : ∀ n, n ≤ size → (mkD n).Nodup := by
-      intro n n_le_size
-      induction n with
-      | zero => exact .nil
-      | succ n' ih =>
-          unfold mkD
-          have pre_pairwise : ∀ (a' : Word), a' ∈ mkD n' → ↑n' ≠ a' := by
-            intro a' a'_mem
-            have ne_toNat := Nat.ne_iff_lt_or_gt.mpr (Or.inr $ mkD_max_n n' a' a'_mem)
-            intro absurd_eq
-            have eq_toNat := (ofNat_eq_iff_eq_toNat (by grind)).mp absurd_eq
-            contradiction
-          exact List.nodup_cons.mpr ⟨fun mem => pre_pairwise _ mem rfl, ih (by grind)⟩
-    have mkD_idx : ∀ n, n ≤ size → ∀ w : Word, w.toNat < n → ∃ i : Nat, (mkD n)[i]? = some w := by
-      intro n n_le_size w w_lt
-      exact ⟨n - BitVec.toNat w - 1, by 
-        induction n with
-        | zero => grind
-        | succ n' ih =>
-          unfold mkD
-          have ih := ih (by grind)
-          if w_lt' : w.toNat < n'
-          then grind
-          else
-            have w_eq : w.toNat = n' := by grind
-            rw [w_eq]
-            simp
-            rw [← w_eq]
-            grind
-      ⟩
-
-    exact ⟨
-      mkD_size size,
-      mkD_nodup size (by simp),
-      fun w => (valid_index_iff_mem w).mp (mkD_idx size (by simp) w (w.toFin.isLt))
-    ⟩
-  ⟩
+theorem size_is_domain : FiniteCardinality Word size := by
+  have : ∀ n ≤ size, (mkD n).length = n ∧ (mkD n).Nodup ∧ ∀ w, w ∈ mkD n ↔ w.toNat < n := by
+    intro n hn
+    induction n with
+    | zero => simp [mkD]
+    | succ n ih =>
+      have ⟨hl, hd, hm⟩ := ih (by omega)
+      have he : ∀ w : Word, (n : Word) = w ↔ n = w.toNat := fun _ => ofNat_eq_iff_eq_toNat (by omega)
+      refine ⟨by simp [mkD, hl],
+        List.nodup_cons.2 ⟨by rw [hm, ← (he _).1 rfl]; exact Nat.lt_irrefl n, hd⟩, fun w => ?_⟩
+      simp only [mkD, List.mem_cons, hm, eq_comm (a := w), he]
+      omega
+  have ⟨hl, hd, hm⟩ := this size (Nat.le_refl _)
+  exact ⟨mkD size, hl, hd, fun w => (hm w).2 w.isLt⟩
 
 theorem lowBits_lt (n : Nat) (w : Word) : (Word.lowBits n w).toNat < 2 ^ n := by
   simp only [Word.lowBits, bits, BitVec.toNat_setWidth]

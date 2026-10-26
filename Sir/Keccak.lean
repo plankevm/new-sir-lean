@@ -1,4 +1,4 @@
-import Sir.Word
+import Host.Word
 
 /-! Keccak-256 (the pre-standard padding used by the EVM), in pure Lean. -/
 
