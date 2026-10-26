@@ -7,9 +7,9 @@ import Host.Word
 else the frame asks of the outside: gas, its own storage and transient storage, the rest of the
 world (balances, code), calls, creations, logs, and how the frame ends. It is the same for every
 IR, so runs of different IRs can be related. A frame ends normally (`stop`, `ret`,
-`selfdestruct`), by reverting, by an exceptional halt (`invalid`: every EVM exceptional halt,
-and an IR's malformed program, look the same from outside), or with undefined behavior (`ub`),
-which an IR may reach and the EVM never does. Its branches (`Choice`) are the choices nobody controls: where an allocation is placed, or one
+`selfdestruct`), by reverting, by an exceptional halt (`invalid`: every EVM exceptional halt
+looks the same from outside), or with undefined behavior (`ub`), which an IR may reach and the
+EVM never does; a malformed IR program is UB, never a valid halt. Its branches (`Choice`) are the choices nobody controls: where an allocation is placed, or one
 of `n` alternatives (say, which ready node of a dataflow graph runs next). `Host.Storage` makes
 storage and the world concrete. -/
 
@@ -87,8 +87,10 @@ instance {live : List MemRange} {size : Nat} : Decidable (âˆƒ start, Placement â
 
 end MemRange
 
-/-- Undefined behavior: well-formed programs can reach these, depending on the values they compute. -/
+/-- Undefined behavior: `malformed` for an ill-formed IR program, the rest reachable by well-formed
+programs depending on the values they compute. -/
 inductive UB
+  | malformed
   | switchNoMatch
   | memoryOutOfBounds (offset length : Nat)
   | uninitializedRead (offset length : Nat)

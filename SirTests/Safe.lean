@@ -43,6 +43,14 @@ theorem switchUB_not_safe : ¬Safe (run switchUB) :=
     (.halt (o := .ub .switchNoMatch)
       (observe_of_headOp (op := .ub .switchNoMatch) (by kernel_rfl))))
 
+theorem undefinedVar_outcome {o : Host.Outcome} : HasOutcome (run undefinedVar) o ↔ o = .ub .malformed := by
+  rw [← hasOutcome_skip_iff 100]
+  exact HasOutcome.halt_iff (o := .ub .malformed) (observe_of_headOp (op := .ub .malformed) (by kernel_rfl))
+
+/-- A malformed program is never `Safe`. -/
+theorem undefinedVar_not_safe : ¬Safe (run undefinedVar) :=
+  not_safe_of_hasOutcome_ub (undefinedVar_outcome.2 rfl)
+
 theorem leaks_not_safe : ¬Safe (run leaks) :=
   fun h => leaks_not_deterministic h.2
 

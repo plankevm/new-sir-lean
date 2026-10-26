@@ -30,8 +30,9 @@ def halt {α : Type} (op : HostOp) (h : HostOp.Resp op = Empty := by rfl) : CoFr
   let e ← host op
   Empty.elim (h ▸ e)
 
-/-- A malformed program halts exceptionally, as invalid EVM code would. -/
-def malformed {α : Type} : CoFree EvalE α := halt .invalid
+/-- A malformed program is UB, so it is never confused with a valid halt and `Safe` programs are
+well-formed. -/
+def malformed {α : Type} : CoFree EvalE α := halt (.ub .malformed)
 
 def lookup (l : Locals) (v : VarId) : CoFree EvalE Word := do
   let some w := l[v]? | malformed
@@ -269,7 +270,7 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
       execControl call fn l blk
 
 def malformedTop {α : Type} : CoFree SirE α := do
-  nomatch ← perform (E := SirE) (.inr .invalid)
+  nomatch ← perform (E := SirE) (.inr (.ub .malformed))
 
 /-- An entry point runs until a halting control; entry functions take no inputs and
 must not return. -/

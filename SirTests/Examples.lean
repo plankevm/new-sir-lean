@@ -171,7 +171,7 @@ def entryReturnsValues : Program :=
 
 def undef (u : UB) : Outcome := .ub u
 
-def malformed : Outcome := .invalid
+def malformed : Outcome := .ub .malformed
 
 def run (p : Program) (e : Entry := .init) (env : Env := testEnv) (world : World := {})
     (layout : Layout := noLayout) (imm : Array Word := #[]) (fuel : Nat := 100000) :
@@ -220,7 +220,7 @@ def checks : List (String × Bool) :=
       r.1 == .stop && storage r == [(0, 0x2345), (1, 0x2345)] && r.2.queries == 0),
     ("Immutables.ofWords keeps the low size bytes",
       (Immutables.ofWords immutables #[0x12345])[(0 : ImmutableId)]? == some 0x2345),
-    ("getimmutable in init is invalid", (run getImmutableInInit).1 == malformed),
+    ("UB: getimmutable in init", (run getImmutableInInit).1 == malformed),
     ("call: success, returndatasize, truncated return copy",
       storage call == [(0, 1), (1, 3), (2, 0x0102)]),
     ("call: request", call.2.calls.toList == [(.call 0, 0xBEEF, [])]),
@@ -237,16 +237,16 @@ def checks : List (String × Bool) :=
     ("UB: switch without match or fallback", (run (switchOn 9)).1 == undef .switchNoMatch),
     ("environment", env.1 == .selfdestruct 0xC0 && storage env ==
       ([(0, (0x0203 : Word) <<< 240), (1, 3), (2, 0x1000), (3, 0xC2), (4, 0xC0)] : List (Word × Word))),
-    ("undefined variable is invalid", (run undefinedVar).1 == malformed),
-    ("blocks are local to their function", (run foreignBlock).1 == malformed),
+    ("UB: undefined variable", (run undefinedVar).1 == malformed),
+    ("UB: blocks are local to their function", (run foreignBlock).1 == malformed),
     ("icall_never: the callee halts", (run (neverCallee .never .stop)).1 == .stop),
-    ("icall_never: the callee returning is invalid",
+    ("UB: icall_never callee returning",
       (run (neverCallee (.values 0) .iret)).1 == malformed),
-    ("returning from an entry is invalid",
+    ("UB: returning from an entry",
       (run entryReturns).1 == malformed),
-    ("an entry function declared to return values is invalid when it returns",
+    ("UB: an entry function declared to return values returning",
       (run entryReturnsValues).1 == malformed),
-    ("missing main is invalid", (run loopSum .main).1 == malformed) ]
+    ("UB: missing main", (run loopSum .main).1 == malformed) ]
 
 /-! Concrete storage (`exec`). -/
 

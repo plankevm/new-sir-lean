@@ -157,6 +157,12 @@ def leaks : Program := prog #[
 def switchUB : Program := prog #[
   { ops := #[.let 1 (.const 5)], control := .switch 1 #[(0, 0)] none }]
 
+/-- Malformed: `sstore`s an undefined variable. -/
+def undefinedVar : Program := prog #[{ ops := #[.stmt (.sstore 1 1)], control := .stop }]
+
+/-- Halts exceptionally, as invalid EVM code does. -/
+def halts : Program := prog #[{ control := .invalid }]
+
 /-- UB `memoryOutOfBounds`: reads memory that was never allocated. -/
 def readUB : Program := prog #[
   { ops := #[.let 1 (.const 0), .let 2 (.mload ⟨32, by decide⟩ 1)], control := .stop }]
@@ -221,6 +227,13 @@ theorem switchUB_not_same_readUB : ¬Same Eq (run switchUB) (run readUB) := by
   have := Same.impure_inv h (observe_of_headOp (op := .ub .switchNoMatch) (by kernel_rfl))
     (observe_of_headOp (op := .ub (.memoryOutOfBounds 0 32)) (by kernel_rfl))
   simp at this
+
+/-- A malformed program is UB, not related to a valid exceptional halt. -/
+theorem undefinedVar_not_same_halts : ¬Same Eq (run undefinedVar) (run halts) := by
+  intro h
+  have h := skipR_inv 100 (skipL_inv 100 h)
+  nomatch Same.impure_inv h (observe_of_headOp (op := .ub .malformed) (by kernel_rfl))
+    (observe_of_headOp (op := .invalid) (by kernel_rfl))
 
 /-- `Same` is not reflexive: a run that stores a pointer depends on where it was placed. -/
 theorem leaks_not_deterministic : ¬Deterministic (run leaks) := by
