@@ -558,22 +558,6 @@ theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoF
     exact .mutualUnobservedStep (forallUnobserved_bind (forallUnobserved_mono h fun n₁ h =>
       forallUnobserved_bind (forallUnobserved_mono h fun n₂ h => .inl ⟨n₁, n₂, h, rfl, rfl⟩)))
 
-/-! ## Strong bisimulation -/
-
-theorem Same.of_bisim (hbr : E.BrOp → False) {m₁ m₂ : CoFree E A} (h : Bisim m₁ m₂) :
-    Same Eq m₁ m₂ := by
-  refine ⟨Bisim, h, fun x y ⟨R, hR, hxy⟩ => ?_⟩
-  have hs := hR x y hxy
-  generalize hx : x.observe = sx at hs
-  generalize hy : y.observe = sy at hs
-  cases hs with
-  | pure a => exact .ret a a hx hy rfl
-  | @silent n₁ n₂ h =>
-    exact .mutualUnobservedStep ((forallUnobserved_silent hx).mpr
-      ((forallUnobserved_silent hy).mpr ⟨R, hR, h⟩))
-  | impure op h => exact .impure op hx hy fun r => ⟨R, hR, h r⟩
-  | branch c _ => exact (hbr c).elim
-
 /-! ## Sanity checks of the definition -/
 
 theorem spin_observe : (spin : CoFree E A).observe = .silent spin := rfl

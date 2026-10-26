@@ -18,13 +18,4 @@ def map {S : Type w₁} {T : Type w₂} (f : S → T) : Step E A S → Step E A 
   | .impure op k => .impure op (f ∘ k)
   | .branch c k => .branch c (f ∘ k)
 
-inductive Rel {S : Type w₁} {T : Type w₂} (R : S → T → Prop) :
-    Step E A S → Step E A T → Prop where
-  | pure (a : A) : Rel R (.pure a) (.pure a)
-  | silent {s : S} {t : T} : R s t → Rel R (.silent s) (.silent t)
-  | impure (op : E.Op) {k₁ : E.Resp op → S} {k₂ : E.Resp op → T} :
-      (∀ r, R (k₁ r) (k₂ r)) → Rel R (.impure op k₁) (.impure op k₂)
-  | branch (c : E.BrOp) {k₁ : E.BrResp c → S} {k₂ : E.BrResp c → T} :
-      (∀ r, R (k₁ r) (k₂ r)) → Rel R (.branch c k₁) (.branch c k₂)
-
 end Step

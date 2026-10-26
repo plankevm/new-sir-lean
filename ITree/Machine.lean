@@ -50,14 +50,6 @@ def atPos : (m : CoFree E A) → m.Pos → CoFree E A
   | ⟨S, J, _, step, target⟩, .inl s => ⟨S, J, s, step, target⟩
   | ⟨_, _, _, _, target⟩, .inr ⟨j, p⟩ => atPos (target j) p
 
-/-! ## Strong bisimulation -/
-
-def IsBisim (R : CoFree E A → CoFree E A → Prop) : Prop :=
-  ∀ m₁ m₂, R m₁ m₂ → Step.Rel R m₁.observe m₂.observe
-
-def Bisim (m₁ m₂ : CoFree E A) : Prop :=
-  ∃ R, IsBisim R ∧ R m₁ m₂
-
 /-! ## Combinators -/
 
 def pure (a : A) : CoFree E A :=

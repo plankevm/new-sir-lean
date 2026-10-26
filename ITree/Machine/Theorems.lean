@@ -15,17 +15,6 @@ theorem observe_atPos (m : CoFree E A) (p : m.Pos) :
     (m.atPos p).observe = (m.stepAt p).map m.atPos :=
   Proofs.observe_atPos m p
 
-/-! ## Strong bisimulation -/
-
-theorem Bisim.refl (m : CoFree E A) : Bisim m m :=
-  Proofs.Bisim.refl m
-
-theorem Bisim.symm {m₁ m₂ : CoFree E A} : Bisim m₁ m₂ → Bisim m₂ m₁ :=
-  Proofs.Bisim.symm
-
-theorem Bisim.trans {m₁ m₂ m₃ : CoFree E A} : Bisim m₁ m₂ → Bisim m₂ m₃ → Bisim m₁ m₃ :=
-  Proofs.Bisim.trans
-
 /-! ## Combinators -/
 
 @[simp] theorem observe_pure (a : A) : (pure a : CoFree E A).observe = .pure a :=

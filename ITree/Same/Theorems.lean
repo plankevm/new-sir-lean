@@ -236,10 +236,6 @@ theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoF
     Same Ret' (m₁.bind f) (m₂.bind g) :=
   Proofs.Same.bind h hfg
 
-theorem Same.of_bisim (hbr : E.BrOp → False) {m₁ m₂ : CoFree E A} (h : Bisim m₁ m₂) :
-    Same Eq m₁ m₂ :=
-  Proofs.Same.of_bisim hbr h
-
 /-! ## Sanity checks of the definition -/
 
 @[simp]

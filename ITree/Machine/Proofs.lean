@@ -28,23 +28,6 @@ theorem observe_atPos (m : CoFree E A) (p : m.Pos) :
         (g := fun p' => atPos ⟨S, J, s₀, step, target⟩ (.inr ⟨j, p'⟩)) (fun _ => rfl) _) ?_
       exact (Step.map_map (fun p' => (Sum.inr ⟨j, p'⟩ : Pos ⟨S, J, s₀, step, target⟩)) _ _).symm
 
-/-! ## Strong bisimulation -/
-
-theorem Bisim.refl (m : CoFree E A) : Bisim m m := by
-  refine ⟨Eq, ?_, rfl⟩
-  intro m₁ m₂ h
-  subst h
-  exact Step.Rel.refl (fun _ => rfl) _
-
-theorem Bisim.symm {m₁ m₂ : CoFree E A} : Bisim m₁ m₂ → Bisim m₂ m₁
-  | ⟨R, hR, h⟩ => ⟨fun x y => R y x, fun x y hxy => (hR y x hxy).symm, h⟩
-
-theorem Bisim.trans {m₁ m₂ m₃ : CoFree E A} : Bisim m₁ m₂ → Bisim m₂ m₃ → Bisim m₁ m₃
-  | ⟨R₁, h₁, i₁⟩, ⟨R₂, h₂, i₂⟩ =>
-    ⟨fun x z => ∃ y, R₁ x y ∧ R₂ y z,
-     fun x z ⟨y, hxy, hyz⟩ => (h₁ x y hxy).trans (h₂ y z hyz),
-     ⟨_, i₁, i₂⟩⟩
-
 /-! ## Combinators -/
 
 theorem observe_pure (a : A) : (pure a : CoFree E A).observe = .pure a := rfl
