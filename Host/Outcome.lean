@@ -24,7 +24,7 @@ inductive Outcome
   | ret (data : ByteArray) (store : Store)
   | revert (data : ByteArray)
   | invalid
-  | selfdestruct (beneficiary : Word) (store : Store)
+  | selfdestruct (beneficiary : Address) (store : Store)
   | ub (u : UB)
 
 /-- The outcome of a run ending with `op`. Only operations without an answer end a run; listing

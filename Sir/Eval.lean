@@ -62,16 +62,16 @@ def copyIn (src : ByteArray) (dst offset length : Word) : CoFree EvalE Unit :=
 def externalCall (kind : CallKind) (gas account argsOffset argsLength retOffset retLength : Word) :
     CoFree EvalE Word := do
   let input ← read argsOffset argsLength
-  let (ok, out) : Bool × ByteArray ← host (.call kind gas account input)
+  let (ok, out) : Bool × ByteArray ← host (.call kind gas (.ofWord account) input)
   mem (.setReturnData out)
   write retOffset (out.extract 0 (min retLength.toNat out.size))
   pure (Word.ofBool ok)
 
 def createContract (value offset length : Word) (salt : Option Word) : CoFree EvalE Word := do
   let input ← read offset length
-  let (account, out) : Word × ByteArray ← host (.create value salt input)
+  let (account, out) : Address × ByteArray ← host (.create value salt input)
   mem (.setReturnData out)
-  pure account
+  pure account.toWord
 
 def log (offset length : Word) (topics : Array Word) : CoFree EvalE Unit := do
   let data ← read offset length
@@ -112,12 +112,12 @@ def TernOp.eval : TernOp → Word → Word → Word → Word
 def Query.eval (env : Env) : Query → CoFree EvalE Word
   | .gas => host .gas
   | .selfbalance => host .selfbalance
-  | .address => pure env.address
-  | .origin => pure env.origin
-  | .caller => pure env.caller
+  | .address => pure env.address.toWord
+  | .origin => pure env.origin.toWord
+  | .caller => pure env.caller.toWord
   | .callvalue => pure env.callvalue
   | .gasprice => pure env.gasprice
-  | .coinbase => pure env.coinbase
+  | .coinbase => pure env.coinbase.toWord
   | .timestamp => pure env.timestamp
   | .number => pure env.number
   | .prevrandao => pure env.prevrandao
@@ -133,8 +133,8 @@ def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE Word
   | .const v => pure v
   | .copy x => pure x
   | .query q => q.eval ctx.env
-  | .balance a => host (.balance a)
-  | .extcodehash a => host (.extcodehash a)
+  | .balance a => host (.balance (.ofWord a))
+  | .extcodehash a => host (.extcodehash (.ofWord a))
   | .blockhash n => pure (ctx.env.blockhash n)
   | .blobhash i => pure (ctx.env.blobhash i)
   | .sload k => host (.sload k)
@@ -143,7 +143,7 @@ def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE Word
   | .calldatasize => pure (lengthOf ctx.env.calldata)
   | .codesize => pure (lengthOf ctx.env.code)
   | .extcodesize a => do
-    let code ← host (.extcode a)
+    let code ← host (.extcode (.ofWord a))
     pure (lengthOf code)
   | .returndatasize => do
     let data ← mem .returnData
@@ -181,7 +181,7 @@ def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE Unit
   | .calldatacopy dst offset length => copyIn ctx.env.calldata dst offset length
   | .codecopy dst offset length => copyIn ctx.env.code dst offset length
   | .extcodecopy a dst offset length => do
-    let code ← host (.extcode a)
+    let code ← host (.extcode (.ofWord a))
     copyIn code dst offset length
   | .returndatacopy dst offset length => do
     let data ← mem .returnData
@@ -251,7 +251,7 @@ def execControl (call : Call) (fn : Function) (l : Locals) (blk : Block) :
     let data ← read offset length
     halt (.revert data)
   | .invalid => halt .invalid
-  | .selfdestruct a => halt (.selfdestruct a)
+  | .selfdestruct a => halt (.selfdestruct (.ofWord a))
   | .icallNever g args => do
     let _ ← call g args
     malformed

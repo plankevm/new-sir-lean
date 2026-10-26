@@ -31,9 +31,9 @@ structure Store where
 
 /-- What the frame can read of every account, itself included, apart from storage. -/
 structure World where
-  balance : Word → Word
-  extcodehash : Word → Word
-  extcode : Word → ByteArray
+  balance : Address → Word
+  extcodehash : Address → Word
+  extcode : Address → ByteArray
   deriving Inhabited
 
 structure State where
@@ -44,12 +44,12 @@ structure State where
 inductive WorldOp
   | gas
   | log (topics : Array Word) (data : ByteArray)
-  | call (kind : CallKind) (gas account : Word) (input : ByteArray) (store : Store)
+  | call (kind : CallKind) (gas : Word) (account : Address) (input : ByteArray) (store : Store)
   | create (value : Word) (salt : Option Word) (initcode : ByteArray) (store : Store)
   | ret (data : ByteArray) (store : Store)
   | revert (data : ByteArray)
   | invalid
-  | selfdestruct (beneficiary : Word) (store : Store)
+  | selfdestruct (beneficiary : Address) (store : Store)
   | ub (u : UB)
 
 def WorldOp.Resp : WorldOp → Type
@@ -57,7 +57,7 @@ def WorldOp.Resp : WorldOp → Type
   | .log .. => Unit
   | .call .staticcall .. => Bool × ByteArray
   | .call .. => Bool × ByteArray × State
-  | .create .. => Word × ByteArray × State
+  | .create .. => Address × ByteArray × State
   | .ret .. | .revert _ | .invalid | .selfdestruct .. | .ub _ => Empty
 
 abbrev WorldE : Effect where

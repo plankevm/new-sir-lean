@@ -14,7 +14,7 @@ inductive Outcome
   | ret (data : List UInt8)
   | revert (data : List UInt8)
   | invalid
-  | selfdestruct (beneficiary : Word)
+  | selfdestruct (beneficiary : Address)
   | ub (u : UB)
   | hostError (msg : String)
   | outOfFuel
@@ -24,7 +24,7 @@ structure World where
   storage : List (Word × Word) := []
   transient : List (Word × Word) := []
   logs : Array (List Word × List UInt8) := #[]
-  calls : Array (CallKind × Word × List UInt8) := #[]
+  calls : Array (CallKind × Address × List UInt8) := #[]
   callResult : Bool × ByteArray := (true, .empty)
   queries : Nat := 0
 
@@ -75,7 +75,7 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
     modify fun w => { w with calls := w.calls.push (kind, account, input.toList) }
     let w ← get
     pure w.callResult
-  | .create _ salt _ => pure ((if salt.isSome then 0xC2 else 0xC1 : Word), ByteArray.empty)
+  | .create _ salt _ => pure ((if salt.isSome then 0xC2 else 0xC1 : Address), ByteArray.empty)
   | .stop => throw .stop
   | .ret data => throw (.ret data.toList)
   | .revert data => throw (.revert data.toList)
@@ -110,7 +110,7 @@ def answerWorld (after : Store → State) : (op : WorldOp) → Except ExecOutcom
   | .call .staticcall .. => pure ((true, .empty) : Bool × ByteArray)
   | .call (.call _) _ _ _ st | .call (.callcode _) _ _ _ st | .call .delegatecall _ _ _ st =>
     pure ((true, .empty, after st) : Bool × ByteArray × State)
-  | .create _ salt _ st => pure (((if salt.isSome then 0xC2 else 0xC1 : Word), .empty, after st) : Word × ByteArray × State)
+  | .create _ salt _ st => pure (((if salt.isSome then 0xC2 else 0xC1 : Address), .empty, after st) : Address × ByteArray × State)
   | .ret data st => throw (.done (.ret data.toList) (some st))
   | .revert data => throw (.done (.revert data.toList) none)
   | .invalid => throw (.done .invalid none)

@@ -25,13 +25,13 @@ inductive CallKind
 /-- The frame's constants: the transaction, the block, the code being run, and whether the frame
 may change state. -/
 structure Env where
-  address : Word
-  origin : Word
-  caller : Word
+  address : Address
+  origin : Address
+  caller : Address
   callvalue : Word
   gasprice : Word
   chainid : Word
-  coinbase : Word
+  coinbase : Address
   timestamp : Word
   number : Word
   prevrandao : Word
@@ -126,21 +126,21 @@ def Choice.Resp : Choice → Type
 inductive HostOp
   | gas
   | selfbalance
-  | balance (account : Word)
-  | extcodehash (account : Word)
+  | balance (account : Address)
+  | extcodehash (account : Address)
   | sload (key : Word)
   | tload (key : Word)
   | sstore (key value : Word)
   | tstore (key value : Word)
-  | extcode (account : Word)
+  | extcode (account : Address)
   | log (topics : Array Word) (data : ByteArray)
-  | call (kind : CallKind) (gas account : Word) (input : ByteArray)
+  | call (kind : CallKind) (gas : Word) (account : Address) (input : ByteArray)
   | create (value : Word) (salt : Option Word) (initcode : ByteArray)
   | stop
   | ret (data : ByteArray)
   | revert (data : ByteArray)
   | invalid
-  | selfdestruct (beneficiary : Word)
+  | selfdestruct (beneficiary : Address)
   | ub (u : UB)
   deriving DecidableEq
 
@@ -151,7 +151,7 @@ def HostOp.Resp : HostOp → Type
   | .extcode _ => ByteArray
   | .log .. => Unit
   | .call .. => Bool × ByteArray
-  | .create .. => Word × ByteArray
+  | .create .. => Address × ByteArray
   | .stop | .ret _ | .revert _ | .invalid | .selfdestruct _ | .ub _ => Empty
 
 abbrev HostE : Effect where

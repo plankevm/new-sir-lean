@@ -120,6 +120,28 @@ def clz (x : Word) : Word := if x = 0 then 256 else ofNat (255 - x.toNat.log2)
 
 end Word
 
+/-- A 160-bit account address. -/
+abbrev Address := BitVec 160
+
+namespace Address
+
+def toWord (a : Address) : Word := a.setWidth 256
+
+/-- The low 160 bits, as the EVM reads an address operand. -/
+def ofWord (w : Word) : Address := w.setWidth 160
+
+@[simp] theorem ofWord_toWord (a : Address) : ofWord a.toWord = a := by
+  simp [ofWord, toWord]
+
+theorem toWord_injective : Function.Injective toWord := fun a b h => by
+  rw [← ofWord_toWord a, h, ofWord_toWord]
+
+theorem toWord_lt (a : Address) : a.toWord.toNat < 2 ^ 160 := by
+  simp only [toWord, BitVec.toNat_setWidth]
+  omega
+
+end Address
+
 /-- `len` bytes of `b` from `off`, zero past its end (calldata/code/returndata reads). -/
 def ByteArray.slicePad (b : ByteArray) (off len : Nat) : ByteArray :=
   ⟨(Array.range len).map fun i => if h : off + i < b.size then b[off + i] else 0⟩
