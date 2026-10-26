@@ -7,7 +7,7 @@ namespace SirTests.Audit
 
 open Lean Elab Command
 
-/-- Fails unless every declaration of the `Sir` library and of `SirTests.Same`
+/-- Fails unless every declaration of the `Host` and `Sir` libraries and of `SirTests.Same`
 and `SirTests.Safe` uses only `propext`, `Quot.sound` and `Classical.choice`;
 in particular no `sorryAx`. -/
 elab "#audit_axioms" : command => do
@@ -18,7 +18,7 @@ elab "#audit_axioms" : command => do
   for (name, _) in env.constants.toList do
     unless (env.getModuleIdxFor? name).any fun idx =>
         let mod := env.header.moduleNames[idx.toNat]!
-        mod.getRoot == `Sir || mod == `SirTests.Same ||
+        mod.getRoot == `Sir || mod.getRoot == `Host || mod == `SirTests.Same ||
           mod == `SirTests.Safe do continue
     checked := checked + 1
     for ax in ← liftCoreM (collectAxioms name) do

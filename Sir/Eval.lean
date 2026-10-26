@@ -7,6 +7,8 @@ internal calls are `CoFree.fix` frames and blocks are `CoFree.iter` iterations. 
 
 namespace Sir
 
+open Host
+
 open CoFree (perform)
 
 abbrev CallI := FunctionId × Array Word
@@ -22,7 +24,7 @@ structure Ctx where
 
 def mem (op : MemOp) : CoFree EvalE (MemOp.Resp op) := perform (E := EvalE) (.inr (.inl op))
 
-def host (op : HostOp) : CoFree EvalE (HostOp.Resp op) := perform (E := EvalE) (.inr (.inr op))
+def host (op : HostOp Fault) : CoFree EvalE (HostOp.Resp op) := perform (E := EvalE) (.inr (.inr op))
 
 def fault {α : Type} (f : Fault) : CoFree EvalE α := do
   let e ← host (.fault f)
@@ -30,7 +32,7 @@ def fault {α : Type} (f : Fault) : CoFree EvalE α := do
 
 def malformed {α : Type} : CoFree EvalE α := fault .malformed
 
-def halt {α : Type} (op : HostOp) (h : HostOp.Resp op = Empty := by rfl) : CoFree EvalE α := do
+def halt {α : Type} (op : HostOp Fault) (h : HostOp.Resp op = Empty := by rfl) : CoFree EvalE α := do
   let e ← host op
   Empty.elim (h ▸ e)
 

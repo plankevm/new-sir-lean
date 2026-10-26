@@ -11,8 +11,8 @@ inductive constructor, `h → ∀ r, P r → C` therefore binds `r` over the con
 not part of the type's leading binder telescope and whose body is, at top level, a logical
 connective (`→`, `∧`, `∨`, `↔`), unless the binder ends at a closing bracket, so the reader sees
 where its scope ends. Fixes: `(∀ x, A → B)`, `∀ x, (A → B)`, or move `x` before the colon.
-Leading binders elsewhere are idiomatic and not flagged. On by default: every root module of the
-package imports this one, so all modules inherit it.
+Leading binders elsewhere are idiomatic and not flagged. On by default; a linter runs only in modules
+that import it, so `Audit` checks that every module of the package imports this one transitively.
 -/
 
 namespace Lint.BinderScope

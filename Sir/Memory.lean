@@ -8,6 +8,8 @@ moves byte states, so copying unwritten bytes is not itself a read. -/
 
 namespace Sir
 
+open Host
+
 open CoFree (perform)
 
 structure Allocation where
@@ -43,17 +45,17 @@ def live (m : FrameMem) : List MemRange :=
 
 end FrameMem
 
-def ub {α : Type} (u : UB) : CoFree Exec α := do
-  let e ← perform (E := Exec) (.fault (.ub u))
+def ub {α : Type} (u : UB) : CoFree (HostE Fault) α := do
+  let e ← perform (E := HostE Fault) (.fault (.ub u))
   Empty.elim e
 
-def handleMem : FrameMem → (op : SirE.Op) → CoFree Exec (FrameMem × SirE.Resp op)
+def handleMem : FrameMem → (op : SirE.Op) → CoFree (HostE Fault) (FrameMem × SirE.Resp op)
   | m, .inr op => do
-    let r ← perform (E := Exec) op
+    let r ← perform (E := HostE Fault) op
     pure (m, r)
   | m, .inl (.alloc zeroed size) =>
     if fits : ∃ start, MemRange.Placement ⟨start, size⟩ m.live then do
-      let ⟨start, _⟩ ← CoFree.choose (E := Exec) (.placement size m.live fits)
+      let ⟨start, _⟩ ← CoFree.choose (E := HostE Fault) (.placement size m.live fits)
       let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
       pure ({ m with allocs := m.allocs.push a }, Word.ofNat start)
     else ub (.outOfMemory size)
@@ -71,11 +73,17 @@ def handleMem : FrameMem → (op : SirE.Op) → CoFree Exec (FrameMem × SirE.Re
   | m, .inl .returnData => pure (m, m.returnData)
   | m, .inl (.setReturnData bytes) => pure ({ m with returnData := bytes }, ())
 
-/-- The semantics of an entry point: host interactions and placement choices. -/
-def exec (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
+/-- The semantics of an entry point with storage and the world left abstract. -/
+def execHost (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
+    CoFree (HostE Fault) Empty := do
+  let (_, res) ← CoFree.interpState handleMem (.sum (.empty nofun) .id) {} (runEntry p layout imm env e)
+  nomatch res
+
+/-- The semantics of an entry point started in state `s`: world interactions and placement
+choices. -/
+def exec (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) (s : State) :
     CoFree Exec Empty := do
-  let (_frame', res) ←
-    CoFree.interpState handleMem (.sum (.empty nofun) (.empty nofun)) {} (runEntry p layout imm env e)
+  let (_, res) ← Host.interpStore env s (execHost p layout imm env e)
   nomatch res
 
 end Sir

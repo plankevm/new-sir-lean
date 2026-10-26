@@ -3,30 +3,28 @@ import ITree.Same.Theorems
 
 namespace Sir
 
+open Host
+
 /-! ## Outcomes are the terminal operations -/
 
-theorem Outcome.op_resp_empty (o : Outcome) (r : HostOp.Resp o.op) : False := by
+theorem Outcome.op_resp_empty (o : Outcome) (r : WorldOp.Resp o.op) : False := by
   cases o <;> exact nomatch r
 
 theorem Outcome.op_injective {o₁ o₂ : Outcome} (h : o₁.op = o₂.op) : o₁ = o₂ := by
   cases o₁ <;> cases o₂ <;> simp_all [Outcome.op]
 
 /-- Every operation without an answer ends a run with some outcome. -/
-theorem Outcome.exists_op {op : HostOp} (h : HostOp.Resp op → False) :
+theorem Outcome.exists_op {op : WorldOp Fault} (h : WorldOp.Resp op → False) :
     ∃ o : Outcome, o.op = op := by
   cases op
-  case stop => exact ⟨.stop, rfl⟩
-  case ret d => exact ⟨.ret d, rfl⟩
+  case stop st => exact ⟨.stop st, rfl⟩
+  case ret d st => exact ⟨.ret d st, rfl⟩
   case revert d => exact ⟨.revert d, rfl⟩
   case invalid => exact ⟨.invalid, rfl⟩
-  case selfdestruct a => exact ⟨.selfdestruct a, rfl⟩
+  case selfdestruct a st => exact ⟨.selfdestruct a st, rfl⟩
   case fault f => exact ⟨.fault f, rfl⟩
-  all_goals first
-    | exact (h (0 : Word)).elim
-    | exact (h ()).elim
-    | exact (h ByteArray.empty).elim
-    | exact (h (true, ByteArray.empty)).elim
-    | exact (h ((0 : Word), ByteArray.empty)).elim
+  case call k _ _ _ _ => cases k <;> exact (h (by unfold WorldOp.Resp; exact default)).elim
+  all_goals exact (h (by unfold WorldOp.Resp; exact default)).elim
 
 /-! ## One step -/
 
@@ -40,7 +38,7 @@ theorem HasOutcome.congr (h : HasOutcome t o) (he : t.observe = t'.observe) : Ha
   | impure r hi h => exact .impure r (he ▸ hi) h
 
 /-- A run at its terminal operation has exactly that outcome. -/
-theorem HasOutcome.halt_iff {k : HostOp.Resp o.op → CoFree Exec Empty}
+theorem HasOutcome.halt_iff {k : WorldOp.Resp o.op → CoFree Exec Empty}
     (hk : t.observe = .impure o.op k) : HasOutcome t o' ↔ o' = o := by
   constructor
   · intro h
@@ -77,7 +75,7 @@ theorem HasOutcome.branch_iff {c : Choice} {k : Choice.Resp c → CoFree Exec Em
   · rintro ⟨r, h⟩; exact .branch r hb h
 
 /-- A host operation either ends the run with `o`, or some answer to it leads to `o`. -/
-theorem HasOutcome.impure_iff {op : HostOp} {k : HostOp.Resp op → CoFree Exec Empty}
+theorem HasOutcome.impure_iff {op : WorldOp Fault} {k : WorldOp.Resp op → CoFree Exec Empty}
     (hi : t.observe = .impure op k) :
     HasOutcome t o ↔ op = o.op ∨ ∃ r, HasOutcome (k r) o := by
   constructor
@@ -92,8 +90,8 @@ theorem HasOutcome.impure_iff {op : HostOp} {k : HostOp.Resp op → CoFree Exec 
     · exact .impure r hi h
 
 /-- A terminal operation gives the run an outcome. -/
-theorem HasOutcome.of_terminal {op : HostOp} {k : HostOp.Resp op → CoFree Exec Empty}
-    (hi : t.observe = .impure op k) (hop : HostOp.Resp op → False) : ∃ o, HasOutcome t o := by
+theorem HasOutcome.of_terminal {op : WorldOp Fault} {k : WorldOp.Resp op → CoFree Exec Empty}
+    (hi : t.observe = .impure op k) (hop : WorldOp.Resp op → False) : ∃ o, HasOutcome t o := by
   obtain ⟨o, rfl⟩ := Outcome.exists_op hop
   exact ⟨o, .halt hi⟩
 
@@ -112,10 +110,10 @@ theorem not_hasOutcome_spin : ¬HasOutcome (CoFree.spin : CoFree Exec Empty) o :
 steps, each taken with any one response. -/
 private theorem hasOutcome_of_sameFinite_impure {Ret : Empty → Empty → Prop}
     {R : CoFree Exec Empty → CoFree Exec Empty → Prop} {t₁ t₂ : CoFree Exec Empty}
-    {op : HostOp}
-    {k₁ : HostOp.Resp op → CoFree Exec Empty} (h : CoFree.SameFinite Ret R t₁ t₂)
+    {op : WorldOp Fault}
+    {k₁ : WorldOp.Resp op → CoFree Exec Empty} (h : CoFree.SameFinite Ret R t₁ t₂)
     (h₁ : t₁.observe = .impure op k₁)
-    (H : ∀ n (k₂ : HostOp.Resp op → CoFree Exec Empty), n.observe = .impure op k₂ →
+    (H : ∀ n (k₂ : WorldOp.Resp op → CoFree Exec Empty), n.observe = .impure op k₂ →
       (∀ r, R (k₁ r) (k₂ r)) → HasOutcome n o) : HasOutcome t₂ o := by
   induction h with
   | ret _ _ h => rw [h₁] at h; cases h
@@ -159,7 +157,7 @@ theorem Safe.of_same {t₁ t₂ : CoFree Exec Empty} (h : Safe t₁) (hs : CoFre
 theorem not_safe_of_hasOutcome_ub {u : UB} (h : HasOutcome t (.fault (.ub u))) : ¬Safe t :=
   fun hs => hs.1 u h
 
-theorem not_safe_of_ub {u : UB} {k : HostOp.Resp (.fault (.ub u)) → CoFree Exec Empty}
+theorem not_safe_of_ub {u : UB} {k : WorldOp.Resp (WorldOp.fault (Fault.ub u)) → CoFree Exec Empty}
     (h : t.observe = .impure (.fault (.ub u)) k) : ¬Safe t :=
   not_safe_of_hasOutcome_ub (HasOutcome.halt (o := .fault (.ub u)) h)
 
@@ -171,8 +169,8 @@ theorem not_safe_of_branch_ub {c : Choice} {k : Choice.Resp c → CoFree Exec Em
 
 /-- A run whose placements lead to different outcomes is unsafe, though it may have no UB. -/
 theorem not_safe_of_branch_outcomes {c : Choice} {k : Choice.Resp c → CoFree Exec Empty}
-    {r₁ r₂ : Choice.Resp c} {k₁ : HostOp.Resp o.op → CoFree Exec Empty}
-    {k₂ : HostOp.Resp o'.op → CoFree Exec Empty} (hb : t.observe = .branch c k)
+    {r₁ r₂ : Choice.Resp c} {k₁ : WorldOp.Resp o.op → CoFree Exec Empty}
+    {k₂ : WorldOp.Resp o'.op → CoFree Exec Empty} (hb : t.observe = .branch c k)
     (h₁ : (k r₁).observe = .impure o.op k₁) (h₂ : (k r₂).observe = .impure o'.op k₂)
     (hne : o ≠ o') : ¬Safe t := fun hs =>
   hne ((HasOutcome.halt_iff h₂).1 ((Deterministic.hasOutcome_branch hs.2 hb r₁ r₂).1 (.halt h₁)))

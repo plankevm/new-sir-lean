@@ -2,7 +2,7 @@ import SirTests.Host
 
 namespace SirTests.Examples
 
-open Sir
+open Sir Host
 
 def b8 : ByteSize := ⟨1, by decide⟩
 def b16 : ByteSize := ⟨2, by decide⟩
@@ -248,10 +248,66 @@ def checks : List (String × Bool) :=
       (run entryReturnsValues).1 == malformed),
     ("missing main faults", (run loopSum .main).1 == malformed) ]
 
+/-! Concrete storage (`exec`). -/
+
+/-- `sstore 0 5`, then `c`, then `sstore 1 (sload 0)`, `sstore 2 (balance 0xB)`. -/
+def storeAround (c : Expr VarId) (ops : Array Operation := #[]) : Program := initOnly #[
+  { ops := #[.let 1 (.const 0), .let 2 (.const 5), .stmt (.sstore 1 2), .let 10 (.const 0)] ++ ops ++
+      #[.let 3 c, .let 4 (.sload 1), .let 5 (.const 1), .stmt (.sstore 5 4), .let 6 (.const 0xB),
+        .let 7 (.balance 6), .let 8 (.const 2), .stmt (.sstore 8 7)],
+    control := .stop }]
+
+def transient : Program := initOnly #[
+  { ops := #[.let 1 (.const 0), .let 2 (.const 7), .stmt (.tstore 1 2), .let 3 (.tload 1),
+      .let 4 (.const 3), .stmt (.sstore 4 3)],
+    control := .stop }]
+
+def startState : State := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 1, fun _ => 0, fun _ => .empty⟩⟩
+
+/-- A callee that sets slot 0 to 9 and every balance to 3. -/
+def callee (st : Store) : State :=
+  ⟨{ st with storage := st.storage.set 0 9 }, ⟨fun _ => 3, fun _ => 0, fun _ => .empty⟩⟩
+
+def runS (p : Program) (env : Env := testEnv) : ExecOutcome :=
+  runExec env startState callee p noLayout (.ofWords p #[]) .init
+
+/-- The outcome, and slots `0..3` of the committed storage. -/
+def slots : ExecOutcome → Option (Outcome × List Word)
+  | .done o st => some (o, (st.map fun st => [0, 1, 2, 3].map st.storage).getD [])
+  | .outOfFuel => none
+
+def just (c : Expr VarId) : Program :=
+  initOnly #[{ ops := #[.let 10 (.const 0), .let 11 (.const 1), .let 3 c], control := .stop }]
+
+def staticEnv : Env := { testEnv with static := true }
+
+def worldChecks : List (String × Bool) :=
+  [ ("sload reads the frame's own sstore",
+      slots (runS (storeAround (.const 0))) == some (.stop, [5, 5, 1, 0])),
+    ("tload reads the frame's own tstore", slots (runS transient) == some (.stop, [0, 0, 0, 7])),
+    ("after a call, storage and world are what the callee left",
+      slots (runS (storeAround (.call 10 10 10 10 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+    ("after a callcode too",
+      slots (runS (storeAround (.callcode 10 10 10 10 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+    ("after a delegatecall too",
+      slots (runS (storeAround (.delegatecall 10 10 10 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+    ("after a create too (initcode may reenter)",
+      slots (runS (storeAround (.create 10 10 10))) == some (.stop, [9, 9, 3, 0])),
+    ("a staticcall changes nothing",
+      slots (runS (storeAround (.staticcall 10 10 10 10 10 10))) == some (.stop, [5, 5, 1, 0])),
+    ("a static frame halts at sstore", slots (runS (storeAround (.const 0)) staticEnv) == some (.invalid, [])),
+    ("a static frame halts at tstore", slots (runS transient staticEnv) == some (.invalid, [])),
+    ("a static frame halts at create", slots (runS (just (.create 10 10 10)) staticEnv) == some (.invalid, [])),
+    ("a static frame halts at a call with value",
+      slots (runS (just (.call 10 10 11 10 10 10 10)) staticEnv) == some (.invalid, [])),
+    ("a static frame may call without value, and the callee changes nothing",
+      slots (runS (just (.call 10 10 10 10 10 10 10)) staticEnv) == some (.stop, [0, 0, 0, 0])),
+    ("revert discards storage", slots (runS revert) == some (.revert [0xDE, 0xAD], [])) ]
+
 #eval show IO Unit from do
-  let failed := checks.filter (!·.2)
+  let failed := (checks ++ worldChecks).filter (!·.2)
   unless failed.isEmpty do
     throw (IO.userError s!"example checks failed: {failed.map (·.1)}")
-  IO.println s!"{checks.length} example checks passed"
+  IO.println s!"{checks.length + worldChecks.length} example checks passed"
 
 end SirTests.Examples

@@ -1,12 +1,13 @@
 import Sir
 
-/-! A concrete test host: a fixed `Env`, and `Host` operations answered from a small world, with
-deterministic placement (bump from `0x80`). Terminal operations end the run with an
-`Outcome`; the world survives because the state sits under the exception. -/
+/-! A concrete test host: a fixed `Env`, and the operations of `execHost` answered from a small
+world, with deterministic placement (bump from `0x80`). Terminal operations end the run with an
+`Outcome`; the world survives because the state sits under the exception. `runExec` runs `exec`
+instead, with storage made concrete by `Host.interpStore`. -/
 
 namespace SirTests
 
-open Sir
+open Sir Host
 
 inductive Outcome
   | stop
@@ -51,12 +52,13 @@ def testEnv : Env where
   blobhash _ := 7
   calldata := .empty
   code := .empty
+  static := false
 
 def countQuery (v : Word) : HostM Word := do
   modify fun w => { w with queries := w.queries + 1 }
   pure v
 
-def answer : (op : HostOp) → HostM (HostOp.Resp op)
+def answer : (op : HostOp Fault) → HostM (HostOp.Resp op)
   | .gas => countQuery 1000000
   | .selfbalance | .balance _ | .extcodehash _ => countQuery 7
   | .sload k => do
@@ -86,13 +88,45 @@ def place : (c : Choice) → HostM (Choice.Resp c)
   | .placement size live _ => do
     let start := live.foldl (fun s a => max s a.end) 0x80
     if h : MemRange.Placement ⟨start, size⟩ live then pure ⟨start, h⟩ else throw (.hostError "alloc")
+  | .choose _ pos => pure ⟨0, pos⟩
 
 def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
     (e : Entry) (fuel : Nat := 100000) : Outcome × World :=
-  match (CoFree.runM (E := Exec) answer place fuel (exec p layout imm env e)).run.run world with
+  match (CoFree.runM (E := HostE Fault) answer place fuel (execHost p layout imm env e)).run.run world with
   | (.ok none, w) => (.outOfFuel, w)
   | (.ok (some x), _) => nomatch x
   | (.error o, w) => (o, w)
+
+/-- How a run of `exec` ends, with the storage it commits. -/
+inductive ExecOutcome
+  | done (o : Outcome) (store : Option Store)
+  | outOfFuel
+
+/-- Answers `exec`'s world operations: the gas left is fixed, logs are dropped, and every call or
+creation answers `(true, empty)`, `0xC1` or `0xC2`, and leaves the state `after store`. -/
+def answerWorld (after : Store → State) : (op : WorldOp Fault) → Except ExecOutcome (WorldOp.Resp op)
+  | .gas => pure (1000000 : Word)
+  | .log .. => pure ()
+  | .call .staticcall .. => pure ((true, .empty) : Bool × ByteArray)
+  | .call (.call _) _ _ _ st | .call (.callcode _) _ _ _ st | .call .delegatecall _ _ _ st =>
+    pure ((true, .empty, after st) : Bool × ByteArray × State)
+  | .create _ salt _ st => pure (((if salt.isSome then 0xC2 else 0xC1 : Word), .empty, after st) : Word × ByteArray × State)
+  | .stop st => throw (.done .stop (some st))
+  | .ret data st => throw (.done (.ret data.toList) (some st))
+  | .revert data => throw (.done (.revert data.toList) none)
+  | .invalid => throw (.done .invalid none)
+  | .selfdestruct a st => throw (.done (.selfdestruct a) (some st))
+  | .fault f => throw (.done (.fault f) none)
+
+def runExec (env : Env) (s : State) (after : Store → State) (p : Program) (layout : Layout)
+    (imm : Immutables p) (e : Entry) (fuel : Nat := 100000) : ExecOutcome :=
+  let pick : (c : Choice) → Except ExecOutcome c.Resp := fun c => match place c |>.run.run {} with
+    | (.ok r, _) => pure r
+    | (.error o, _) => throw (.done o none)
+  match CoFree.runM (E := Exec) (answerWorld after) pick fuel (exec p layout imm env e s) with
+  | .ok none => .outOfFuel
+  | .ok (some x) => nomatch x
+  | .error o => o
 
 def noLayout : Layout where
   dataOffset _ d := BitVec.ofNat 256 (0x1000 + d.id)

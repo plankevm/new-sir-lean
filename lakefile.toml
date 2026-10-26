@@ -1,6 +1,6 @@
 name = "sir"
 version = "0.1.0"
-defaultTargets = ["ITree", "ITreeTests", "Sir", "SirTests", "Lint", "LintTests"]
+defaultTargets = ["ITree", "ITreeTests", "Host", "Sir", "SirTests", "Lint", "LintTests", "Audit"]
 
 [leanOptions]
 autoImplicit = false
@@ -13,6 +13,9 @@ name = "ITree"
 name = "ITreeTests"
 
 [[lean_lib]]
+name = "Host"
+
+[[lean_lib]]
 name = "Sir"
 
 [[lean_lib]]
@@ -23,3 +26,6 @@ name = "Lint"
 
 [[lean_lib]]
 name = "LintTests"
+
+[[lean_lib]]
+name = "Audit"
