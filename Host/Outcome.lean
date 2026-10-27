@@ -20,7 +20,7 @@ namespace Host
 
 /-- How a run ends. A run that commits (`ret`, `selfdestruct`) ends with the running account's
 storage and transient storage. -/
-inductive Outcome
+inductive Outcome : Type
   | ret (data : ByteArray) (store : Store)
   | revert (data : ByteArray)
   | invalid

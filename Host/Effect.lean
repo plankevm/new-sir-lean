@@ -1,5 +1,6 @@
 import ITree
 import Host.Word
+import Host.NatRange
 
 /-! The EVM host interface of one call frame, shared by every IR that compiles to the EVM.
 
@@ -44,38 +45,12 @@ structure Env where
   code : ByteArray
   static : Bool
 
-structure MemRange where
-  start : Nat
-  size : Nat
-  deriving DecidableEq
-
-namespace MemRange
-
-def «end» (a : MemRange) : Nat := a.start + a.size
-
-def Disjoint (a₁ a₂ : MemRange) : Prop := a₁.end ≤ a₂.start ∨ a₂.end ≤ a₁.start
-
-theorem Disjoint_imp_no_overlap : ∀ a₁ a₂, (Disjoint a₁ a₂) → (¬∃ x, a₁.start ≤ x ∧ x < a₁.end ∧
-a₂.start ≤ x ∧ x < a₂.end) := by
-  unfold Disjoint
-  intro disjoint
-  grind
-
-theorem no_overlap_imp_Disjoint_or_empty :
-  ∀ a₁ a₂, (¬∃ x, a₁.start ≤ x ∧ x < a₁.end ∧ a₂.start ≤ x ∧ x < a₂.end) →
-    (Disjoint a₁ a₂ ∨ a₁.size = 0 ∨ a₂.size = 0) := by
-  unfold Disjoint
-  intro a₁ a₂ no_overlap
-  refine Classical.byContradiction fun h => ?_
-  exact no_overlap ⟨max a₁.start a₂.start, by simp only [MemRange.end] at *; omega⟩
-
-instance {a₁ a₂ : MemRange} : Decidable (a₁.Disjoint a₂) := by unfold Disjoint; infer_instance
 
 /-- `[start, start + size)` fits in the address space and misses every live allocation `(start, size)`. -/
-def Placement (a' : MemRange) (live : List MemRange) : Prop :=
+def Placement (a' : NatRange) (live : List NatRange) : Prop :=
   a'.end ≤ Word.size ∧ ∀ a ∈ live, a.Disjoint a'
 
-instance (live : List MemRange) (a' : MemRange) : Decidable (Placement a' live) := by
+instance (live : List NatRange) (a' : NatRange) : Decidable (Placement a' live) := by
   unfold Placement; infer_instance
 
 universe u
@@ -83,7 +58,7 @@ universe u
 instance {α : Type u} (p : α → Prop) (l : List α) [DecidablePred p] : Decidable (∃ x ∈ l, p x) := by
   infer_instance
 
-instance {live : List MemRange} {size : Nat} : Decidable (∃ start, Placement ⟨start, size⟩ live) :=
+instance {live : List NatRange} {size : Nat} : Decidable (∃ start, Placement ⟨start, size⟩ live) :=
   if h : ∃ start ∈ 0 :: live.map (fun a => a.end), Placement ⟨start, size⟩ live
   then .isTrue (let ⟨start, _, h⟩ := h; ⟨start, h⟩)
   else .isFalse fun ⟨start, hs⟩ => h <| by
@@ -93,13 +68,11 @@ instance {live : List MemRange} {size : Nat} : Decidable (∃ start, Placement �
     | succ s ih =>
       if hc : s + 1 ∈ 0 :: live.map (fun a => a.end) then exact ⟨s + 1, hc, hs⟩
       else
-        refine ih ⟨by have := hs.1; simp only [MemRange.end] at *; omega, fun a ha => ?_⟩
+        refine ih ⟨by have := hs.1; simp only [NatRange.end] at *; omega, fun a ha => ?_⟩
         have := hs.2 a ha
         have : a.end ≠ s + 1 := fun e => hc (List.mem_cons_of_mem _ (List.mem_map.mpr ⟨a, ha, e⟩))
-        simp only [Disjoint, MemRange.end] at *
+        simp only [NatRange.Disjoint, NatRange.end] at *
         omega
-
-end MemRange
 
 /-- Undefined behavior: `malformed` for an ill-formed IR program, the rest reachable by well-formed
 programs depending on the values they compute. -/
@@ -115,12 +88,12 @@ inductive UB
 the placements that miss the `live` allocations; made only when some placement exists.
 `choose n`: one of `n` alternatives. -/
 inductive Choice
-  | placement (size : Nat) (live : List MemRange) (fits : ∃ start, MemRange.Placement ⟨start, size⟩ live)
+  | placement (size : Nat) (live : List NatRange) (fits : ∃ start, Placement ⟨start, size⟩ live)
   | choose (n : Nat) (pos : 0 < n)
   deriving DecidableEq
 
 def Choice.Resp : Choice → Type
-  | .placement size live _ => { start : Nat // MemRange.Placement ⟨start, size⟩ live }
+  | .placement size live _ => { start : Nat // Placement ⟨start, size⟩ live }
   | .choose n _ => Fin n
 
 inductive HostOp

@@ -1,4 +1,5 @@
 import Host.Word
+import Host.NatRange
 
 /-! The SIR AST: plankc's `sir-data` (`EthIRProgram`) minus static allocation and `freeptr`, with
 three structural changes. Each function owns its blocks, so a jump can only target a block of the
@@ -221,59 +222,32 @@ structure Function where
 
 structure Program where
   init : FunctionId
-  main : Option FunctionId
+  main : FunctionId
   functions : Array Function
   data : Array ByteArray := #[]
+  mainDatas : List (Fin data.size)
   immutables : Array ByteSize := #[]
 
-/-- The values `getimmutable` reads: fixed for a whole run, one per immutable, each fitting the
-immutable's declared size. -/
-structure Immutables (p : Program) where
-  values : (i : Fin p.immutables.size) → { v : Word // v.has_size p.immutables[i]}
+namespace Program
 
-instance {p : Program} : GetElem? (Immutables p) ImmutableId Word (fun _imm i => i.id <
-p.immutables.size) where
-  getElem imm i valid := (imm.values ⟨i.id, valid⟩).val
-  getElem? imm i :=
-    if h : i.id < p.immutables.size
-    then some <| imm.values ⟨i.id, h⟩
-    else .none
+def ValidDataId (p : Program) : DataId → Prop := fun id => id.id < p.data.size
 
+def ValidImmutableId (p : Program) : ImmutableId → Prop := fun id => id.id < p.immutables.size
 
-/-- Immutable `i` takes the low bytes of `ws[i]` (0 if absent). -/
-def Immutables.ofWords (p : Program) (ws : Array Word) : Immutables p where
-  values := fun i =>
-    match h: ws[i]? with
-    | none => ⟨0, by grind [Word.has_size]⟩
-    | some x => ⟨x.lowBits p.immutables[i].bits, by {
-      simp [Word.has_size]
-      exact (Word.lowBits_lt _ _)
-    }⟩
+end Program
 
 inductive Entry
   | init
   | main
   deriving DecidableEq, Repr
 
-/-- Facts about the compiled bytecode that SIR can observe. They are fixed by the compiler, not
-by the environment, so they are a parameter of the semantics rather than effects. -/
-structure Layout where
-  /-- Code offset of a data segment in the code object running `Entry`. -/
-  dataOffset : Entry → DataId → Word
-  runtimeStartOffset : Word
-  initEndOffset : Word
-  runtimeLength : Word
-  /-- Placeholder offsets of an immutable, relative to the start of the runtime code. -/
-  immutableRefs : ImmutableId → List Nat
+instance : GetElem? Program ImmutableId ByteSize Program.ValidImmutableId where
+  getElem p id valid := p.immutables[id.id]
+  getElem? p id := p.immutables[id.id]?
 
-/-- What the compiler must guarantee about a `Layout` for the init and runtime code it emits. -/
-def Layout.Consistent (p : Program) (l : Layout) (initCode runtimeCode : ByteArray) : Prop :=
-  l.initEndOffset.toNat = initCode.size ∧
-  l.runtimeStartOffset.toNat + l.runtimeLength.toNat ≤ initCode.size ∧
-  (∀ (d : DataId) (h : d.id < p.data.size),
-    initCode.slicePad (l.dataOffset .init d).toNat p.data[d.id].size = p.data[d.id] ∧
-    runtimeCode.slicePad (l.dataOffset .main d).toNat p.data[d.id].size = p.data[d.id]) ∧
-  (∀ (i : ImmutableId) (h : i.id < p.immutables.size), ∀ r ∈ l.immutableRefs i,
-    r + p.immutables[i.id].val ≤ l.runtimeLength.toNat)
+instance : GetElem? Program DataId ByteArray Program.ValidDataId where
+  getElem p id valid := p.data[id.id]
+  getElem? p id := p.data[id.id]?
+
 
 end Sir

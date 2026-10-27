@@ -1,8 +1,8 @@
 import ITree.Effect
 
-universe u w₁ w₂
+universe u v w₁ w₂
 
-inductive Step (E : Effect.{u}) (A : Type u) (S : Type w₁) : Type (max u w₁) where
+inductive Step (E : Effect.{u}) (ND : NonDeterminism.{v})  (A : Type u) (S : Type w₁) : Type (max u w₁) where
   | pure (value : A)
   | silent (next : S)
   | impure (op : E.Op) (next : E.Resp op → S)

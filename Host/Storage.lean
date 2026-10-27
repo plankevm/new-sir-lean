@@ -102,9 +102,11 @@ def handleHost (env : Env) (s : State) : (op : HostOp) → CoFree WorldE (State 
   | .call .delegatecall gas account input => do
     let (ok, out, s') ← world (.call .delegatecall gas account input s.store)
     pure (if env.static then s else s', (ok, out))
-  | .create value salt initcode => if env.static then halt .invalid else do
-    let (account, out, s') ← world (.create value salt initcode s.store)
-    pure (s', (account, out))
+  | .create value salt initcode => do
+      if env.static then
+        halt .invalid
+      let (account, out, s') ← world (.create value salt initcode s.store)
+      return (s', (account, out))
   | .stop => halt (.ret .empty s.store)
   | .ret data => halt (.ret data s.store)
   | .revert data => halt (.revert data)

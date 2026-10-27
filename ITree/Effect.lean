@@ -12,9 +12,11 @@ behavior instead. -/
 structure Effect : Type (u+1) where
   Op : Type u
   Resp : Op → Type u
-  BrOp : Type u := PEmpty
-  BrResp : BrOp → Type u := fun _ => PEmpty
-  brResp_nonempty : ∀ c, Nonempty (BrResp c) := by
+
+structure NonDeterminism : Type (u+1) where
+  Op : Type u := PEmpty
+  Resp : Op → Type u := fun _ => PEmpty
+  brResp_nonempty : ∀ c, Nonempty (Resp c) := by
     first | exact fun _ => inferInstance | exact nofun
 
 namespace Effect
@@ -24,22 +26,12 @@ abbrev sum (E F : Effect.{u}) : Effect.{u} where
   Resp
     | .inl op => E.Resp op
     | .inr op => F.Resp op
-  BrOp := E.BrOp ⊕ F.BrOp
-  BrResp
-    | .inl c => E.BrResp c
-    | .inr c => F.BrResp c
-  brResp_nonempty
-    | .inl c => E.brResp_nonempty c
-    | .inr c => F.brResp_nonempty c
 
 infixr:65 " ⊕ₑ " => Effect.sum
 
 abbrev lift (E : Effect.{u}) : Effect.{max u w} where
   Op := ULift E.Op
   Resp op := ULift (E.Resp op.down)
-  BrOp := ULift E.BrOp
-  BrResp c := ULift (E.BrResp c.down)
-  brResp_nonempty c := let ⟨r⟩ := E.brResp_nonempty c.down; ⟨⟨r⟩⟩
 
 abbrev Call (I O : Type u) : Effect.{u} where
   Op := I
