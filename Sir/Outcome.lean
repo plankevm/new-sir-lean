@@ -2,8 +2,8 @@ import Sir.Memory
 import Host.Outcome
 
 /-! Which SIR programs are safe. Outcomes and safety of a run are `Host`'s: a run of `exec` is a
-`CoFree Exec Empty` with `Exec = WorldE`, the same as any other IR's once its own effects are
-handled. -/
+`CoFree Exec SirND Empty` with `Exec = WorldE`, the same effects as any other IR's once its own
+are handled; `CoFree.Same` relates it to runs of other IRs whatever their nondeterminism. -/
 
 namespace Sir
 

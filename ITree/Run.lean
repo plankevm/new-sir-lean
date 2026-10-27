@@ -4,12 +4,12 @@ universe u v
 
 namespace CoFree
 
-variable {E : Effect.{u}} {A : Type u}
+variable {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type u}
 
 /-- Runs at most `fuel` steps, answering operations with `handle` and picking branches with
 `pick`. `none` means the fuel ran out. -/
 def runM {m : Type u → Type v} [Monad m] (handle : (op : E.Op) → m (E.Resp op))
-    (pick : (c : E.BrOp) → m (E.BrResp c)) : Nat → CoFree E A → m (Option A)
+    (pick : (c : N.Op) → m (N.Resp c)) : Nat → CoFree E N A → m (Option A)
   | 0, _ => Pure.pure none
   | fuel + 1, t => match t.observe with
     | .pure a => Pure.pure (some a)
@@ -19,8 +19,8 @@ def runM {m : Type u → Type v} [Monad m] (handle : (op : E.Op) → m (E.Resp o
 
 /-- Runs at most `fuel` steps, answering operations with `answer` and picking branches with
 `pick`. -/
-def run (answer : (op : E.Op) → E.Resp op) (pick : (c : E.BrOp) → E.BrResp c) :
-    Nat → CoFree E A → Option A
+def run (answer : (op : E.Op) → E.Resp op) (pick : (c : N.Op) → N.Resp c) :
+    Nat → CoFree E N A → Option A
   | 0, _ => none
   | fuel + 1, t => match t.observe with
     | .pure a => some a
@@ -28,17 +28,17 @@ def run (answer : (op : E.Op) → E.Resp op) (pick : (c : E.BrOp) → E.BrResp c
     | .impure op k => run answer pick fuel (k (answer op))
     | .branch c k => run answer pick fuel (k (pick c))
 
-inductive Event (E : Effect.{u}) : Type u
+inductive Event (E : Effect.{u}) (N : NonDeterminism.{u}) : Type u
   | silent
   | op (op : E.Op)
-  | branch (c : E.BrOp)
+  | branch (c : N.Op)
 
 /-- Like `run`, also recording every silent step, operation and branch. -/
-def trace (answer : (op : E.Op) → E.Resp op) (pick : (c : E.BrOp) → E.BrResp c) (fuel : Nat)
-    (t : CoFree E A) : Array (Event E) × Option A :=
+def trace (answer : (op : E.Op) → E.Resp op) (pick : (c : N.Op) → N.Resp c) (fuel : Nat)
+    (t : CoFree E N A) : Array (Event E N) × Option A :=
   go fuel t #[]
 where
-  go : Nat → CoFree E A → Array (Event E) → Array (Event E) × Option A
+  go : Nat → CoFree E N A → Array (Event E N) → Array (Event E N) × Option A
     | 0, _, events => (events, none)
     | fuel + 1, t, events => match t.observe with
       | .pure a => (events, some a)

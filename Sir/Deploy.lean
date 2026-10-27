@@ -23,7 +23,7 @@ open Host CoFree
 
 /-- Where the immutables are patched into the runtime code: every reference of every immutable,
 with the immutable's size. -/
-def Layout.slots (p : Program) (l : Layout) : List MemRange :=
+def Layout.slots (p : Program) (l : Layout) : List NatRange :=
   (List.finRange p.immutables.size).flatMap fun (i : Fin _) =>
     (l.immutableRefs ⟨i.val⟩).map fun r => ⟨r, p.immutables[i].val⟩
 
@@ -35,9 +35,9 @@ structure Code (p : Program) where
   main : ByteArray
   consistent : layout.Consistent p init main
   embedded : init.slicePad layout.runtimeStartOffset.toNat layout.runtimeLength.toNat = main
-  slotsDisjoint : (layout.slots p).Pairwise MemRange.Disjoint
+  slotsDisjoint : (layout.slots p).Pairwise NatRange.Disjoint
   dataOutsideSlots : ∀ (d : DataId) (h : d.id < p.data.size), ∀ s ∈ layout.slots p,
-    MemRange.Disjoint ⟨(layout.dataOffset .main d).toNat, p.data[d.id].size⟩ s
+    NatRange.Disjoint ⟨(layout.dataOffset .main d).toNat, p.data[d.id].size⟩ s
 
 namespace Code
 
@@ -66,12 +66,12 @@ end Code
 
 /-- `init` deploying from `c`, with constructor arguments `args` appended to its code. -/
 def runInit (p : Program) (c : Code p) (env : Env) (args : ByteArray) (s : State) :
-    CoFree Exec Outcome :=
+    CoFree Exec SirND Outcome :=
   catchHalt (exec p c.layout (.ofWords p #[]) { env with code := c.init ++ args } .init s)
 
 /-- `main` running the runtime code `code` that `init` returned from `c`. -/
 def runMain (p : Program) (c : Code p) (imm : Immutables p) (code : ByteArray) (env : Env)
-    (s : State) : CoFree Exec Outcome :=
+    (s : State) : CoFree Exec SirND Outcome :=
   catchHalt (exec p c.layout imm { env with code := code } .main s)
 
 /-- How the outcomes of `init` from `c₁` and `c₂` must agree. Returned runtime codes must both

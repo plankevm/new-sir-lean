@@ -10,7 +10,7 @@ open Lean Elab Command
 elab "#audit_axioms" : command => do
   let env ← getEnv
   let allowed := [``propext, ``Quot.sound, ``Classical.choice]
-  let roots := [`CoFree, `Step, `Effect]
+  let roots := [`CoFree, `Step, `Effect, `NonDeterminism]
   let mut bad : Array (Name × Name) := #[]
   let mut checked := 0
   for (name, info) in env.constants.toList do

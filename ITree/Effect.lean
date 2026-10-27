@@ -1,22 +1,24 @@
 import Lint.BinderScope
 universe u w
 
-/-- Operations `Op` with their responses `Resp`, and branches `BrOp` with theirs `BrResp`.
-An operation is answered by whoever runs or handles the program. A branch is a choice the
-program does not control and nobody handles: handlers pass it through, and equivalence
-(`CoFree.Same`) requires every response to behave the same. Without branches by default.
-
-Every branch has a response: a branch with none would be a silent step leading nowhere, which
-`CoFree.Same` would relate to every machine. A semantics that gets stuck emits undefined
-behavior instead. -/
+/-- Operations `Op` with their responses `Resp`, answered by whoever runs or handles the program. -/
 structure Effect : Type (u+1) where
   Op : Type u
   Resp : Op → Type u
 
+/-- Choices `Op` with their responses `Resp`: choices the program does not control and nobody
+handles. Handlers pass them through, and equivalence (`CoFree.Same`) treats them as unobserved
+steps that must behave the same for every response. Without choices by default.
+
+Every choice has a response: a choice with none would be a silent step leading nowhere, which
+`CoFree.Same` would relate to every machine. A semantics that gets stuck emits undefined
+behavior instead.
+
+Lives in the same universe as `Effect`: a machine's states must hold its choices' responses. -/
 structure NonDeterminism : Type (u+1) where
   Op : Type u := PEmpty
   Resp : Op → Type u := fun _ => PEmpty
-  brResp_nonempty : ∀ c, Nonempty (Resp c) := by
+  resp_nonempty : ∀ c, Nonempty (Resp c) := by
     first | exact fun _ => inferInstance | exact nofun
 
 namespace Effect
@@ -41,23 +43,46 @@ abbrev Call (I O : Type u) : Effect.{u} where
 abbrev Rec (I O : Type u) (E : Effect.{u}) : Effect.{u} :=
   Call I O ⊕ₑ E
 
-/-- How the branches of `E` are branches of `F`, for passing them through a handler or a
-renaming: the branch `c` becomes `op c`, whose responses come back through `resp`. -/
-structure BrMap (E F : Effect.{u}) : Type u where
-  op : E.BrOp → F.BrOp
-  resp : (c : E.BrOp) → F.BrResp (op c) → E.BrResp c
+end Effect
 
-namespace BrMap
+namespace NonDeterminism
 
-variable {E F G : Effect.{u}}
+/-- No choices. -/
+abbrev none : NonDeterminism.{u} := {}
 
-def id : BrMap E E := ⟨fun c => c, fun _ r => r⟩
+abbrev sum (N M : NonDeterminism.{u}) : NonDeterminism.{u} where
+  Op := N.Op ⊕ M.Op
+  Resp
+    | .inl c => N.Resp c
+    | .inr c => M.Resp c
+  resp_nonempty
+    | .inl c => N.resp_nonempty c
+    | .inr c => M.resp_nonempty c
 
-def inl : BrMap E (E ⊕ₑ F) := ⟨Sum.inl, fun _ r => r⟩
+infixr:65 " ⊕ₙ " => NonDeterminism.sum
 
-def inr : BrMap F (E ⊕ₑ F) := ⟨Sum.inr, fun _ r => r⟩
+abbrev lift (N : NonDeterminism.{u}) : NonDeterminism.{max u w} where
+  Op := ULift N.Op
+  Resp c := ULift (N.Resp c.down)
+  resp_nonempty c := let ⟨r⟩ := N.resp_nonempty c.down; ⟨⟨r⟩⟩
 
-def sum (b₁ : BrMap E G) (b₂ : BrMap F G) : BrMap (E ⊕ₑ F) G where
+/-- How the choices of `N` are choices of `M`, for passing them through a handler or a renaming:
+the choice `c` becomes `op c`, whose responses come back through `resp`. -/
+structure Map (N M : NonDeterminism.{u}) : Type u where
+  op : N.Op → M.Op
+  resp : (c : N.Op) → M.Resp (op c) → N.Resp c
+
+namespace Map
+
+variable {N M L : NonDeterminism.{u}}
+
+def id : Map N N := ⟨fun c => c, fun _ r => r⟩
+
+def inl : Map N (N ⊕ₙ M) := ⟨Sum.inl, fun _ r => r⟩
+
+def inr : Map M (N ⊕ₙ M) := ⟨Sum.inr, fun _ r => r⟩
+
+def sum (b₁ : Map N L) (b₂ : Map M L) : Map (N ⊕ₙ M) L where
   op
     | .inl c => b₁.op c
     | .inr c => b₂.op c
@@ -65,10 +90,12 @@ def sum (b₁ : BrMap E G) (b₂ : BrMap F G) : BrMap (E ⊕ₑ F) G where
     | .inl c => b₁.resp c
     | .inr c => b₂.resp c
 
-/-- `E` has no branches. -/
-def empty (h : E.BrOp → False) : BrMap E F :=
+/-- `N` has no choices. -/
+def empty (h : N.Op → False) : Map N M :=
   ⟨fun c => (h c).elim, fun c => (h c).elim⟩
 
-end BrMap
+def ofNone : Map .none M := empty nofun
 
-end Effect
+end Map
+
+end NonDeterminism

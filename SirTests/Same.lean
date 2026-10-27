@@ -12,37 +12,37 @@ open Sir Host CoFree
 /-! ## Stepping through a run -/
 
 /-- Follows at most `n` `silent` nodes. -/
-def skip {A : Type} : Nat → CoFree Exec A → CoFree Exec A
+def skip {A : Type} : Nat → CoFree Exec SirND A → CoFree Exec SirND A
   | 0, t => t
   | n + 1, t => match t.observe with
     | .silent t' => skip n t'
     | _ => t
 
-def headOp {A : Type} (t : CoFree Exec A) : Option (WorldOp) :=
+def headOp {A : Type} (t : CoFree Exec SirND A) : Option (WorldOp) :=
   match t.observe with
   | .impure op _ => some op
   | _ => none
 
 open Classical in
 /-- `t` after answering `r`, if `t` performs `op` next. -/
-noncomputable def resume {A : Type} (t : CoFree Exec A) (op : WorldOp) (r : WorldOp.Resp op) :
-    CoFree Exec A :=
+noncomputable def resume {A : Type} (t : CoFree Exec SirND A) (op : WorldOp) (r : WorldOp.Resp op) :
+    CoFree Exec SirND A :=
   match t.observe with
   | .impure op' k => if h : op' = op then k (h ▸ r) else t
   | _ => t
 
-def headBr {A : Type} (t : CoFree Exec A) : Option Choice :=
+def headBr {A : Type} (t : CoFree Exec SirND A) : Option Choice :=
   match t.observe with
   | .branch c _ => some c
   | _ => none
 
 /-- `t` after placing with `r`, if `t` branches on `c` next. -/
-def resumeBr {A : Type} (t : CoFree Exec A) (c : Choice) (r : Choice.Resp c) : CoFree Exec A :=
+def resumeBr {A : Type} (t : CoFree Exec SirND A) (c : Choice) (r : Choice.Resp c) : CoFree Exec SirND A :=
   match t.observe with
   | .branch c' k => if h : c' = c then k (h ▸ r) else t
   | _ => t
 
-theorem observe_of_headBr {A : Type} {t : CoFree Exec A} {c : Choice} (h : headBr t = some c) :
+theorem observe_of_headBr {A : Type} {t : CoFree Exec SirND A} {c : Choice} (h : headBr t = some c) :
     t.observe = .branch c (resumeBr t c) := by
   unfold headBr at h
   split at h
@@ -52,7 +52,7 @@ theorem observe_of_headBr {A : Type} {t : CoFree Exec A} {c : Choice} (h : headB
     simp only [hk, dite_true]
   next => cases h
 
-theorem observe_of_headOp {A : Type} {t : CoFree Exec A} {op : WorldOp} (h : headOp t = some op) :
+theorem observe_of_headOp {A : Type} {t : CoFree Exec SirND A} {op : WorldOp} (h : headOp t = some op) :
     t.observe = .impure op (resume t op) := by
   unfold headOp at h
   split at h
@@ -64,7 +64,7 @@ theorem observe_of_headOp {A : Type} {t : CoFree Exec A} {op : WorldOp} (h : hea
 
 variable {A B : Type} {RR : A → B → Prop}
 
-theorem same_skipL (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
+theorem same_skipL (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
     (h : Same RR (skip n t₁) t₂) : Same RR t₁ t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -74,7 +74,7 @@ theorem same_skipL (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     next t' ht => exact Same.silentL ht (ih h)
     next => exact h
 
-theorem same_skipR (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
+theorem same_skipR (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
     (h : Same RR t₁ (skip n t₂)) : Same RR t₁ t₂ := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -84,7 +84,7 @@ theorem same_skipR (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     next t' ht => exact Same.silentR ht (ih h)
     next => exact h
 
-theorem skipL_inv (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
+theorem skipL_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
     (h : Same RR t₁ t₂) : Same RR (skip n t₁) t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -94,7 +94,7 @@ theorem skipL_inv (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
     next t' ht => exact ih (Same.silentL_inv h ht)
     next => exact h
 
-theorem skipR_inv (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
+theorem skipR_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
     (h : Same RR t₁ t₂) : Same RR t₁ (skip n t₂) := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -109,7 +109,7 @@ theorem skipR_inv (n : Nat) {t₁ : CoFree Exec A} {t₂ : CoFree Exec B}
 def prog (blocks : Array Block) : Program :=
   { init := 0, main := none, functions := #[⟨0, .never, blocks⟩] }
 
-def run (p : Program) : CoFree Exec Empty :=
+def run (p : Program) : CoFree Exec SirND Empty :=
   exec p noLayout (Immutables.ofWords p #[]) testEnv .init default
 
 /-- The storage a run from the default state commits after storing `v` at `k`. -/
@@ -189,6 +189,18 @@ theorem mallocs_same_stops : Same Eq (run mallocs) (run stops) := by
 
 theorem mallocs_deterministic : Deterministic (run mallocs) :=
   (Deterministic.of_same mallocs_same_stops).1
+
+/-- What a compiler may emit for `mallocs`: it stops, with no allocation and so no choice. -/
+def stopsTarget : CoFree Exec .none Empty := CoFree.impure (stopOp default) nofun
+
+/-- A run with nondeterminism relates to one without: only operations are compared. -/
+theorem mallocs_same_stopsTarget : Same Eq (run mallocs) stopsTarget := by
+  apply same_skipL 100
+  refine Same.branchL _ (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
+    fun r => ?_
+  apply same_skipL 100
+  exact Same.impure (op := stopOp default) (observe_of_headOp (by kernel_rfl)) rfl
+    fun r => Empty.elim r
 
 theorem stores_same_jumpsThenStores : Same Eq (run (stores 1)) (run jumpsThenStores) := by
   apply same_skipL 100; apply same_skipR 100

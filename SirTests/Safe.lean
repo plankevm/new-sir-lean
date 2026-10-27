@@ -8,7 +8,7 @@ namespace SirTests.Safe
 
 open Sir Host CoFree SirTests.Same
 
-theorem hasOutcome_skip_iff (n : Nat) {t : CoFree Exec Empty} {o : Host.Outcome} :
+theorem hasOutcome_skip_iff (n : Nat) {t : CoFree Exec SirND Empty} {o : Host.Outcome} :
     HasOutcome (skip n t) o ↔ HasOutcome t o := by
   induction n generalizing t with
   | zero => exact .rfl
@@ -37,6 +37,10 @@ theorem stops_safe : Safe (run stops) :=
 theorem mallocs_safe : Safe (run mallocs) :=
   stops_safe.of_same (Same.symm_eq mallocs_same_stops)
 
+/-- Safety carries over to a target without nondeterminism. -/
+theorem stopsTarget_safe : Safe stopsTarget :=
+  mallocs_safe.of_same mallocs_same_stopsTarget
+
 theorem mallocs_outcome {o : Host.Outcome} : HasOutcome (run mallocs) o ↔ o = .ret .empty default :=
   (Same.hasOutcome_iff mallocs_same_stops).trans stops_outcome
 
@@ -59,7 +63,7 @@ theorem leaks_not_safe : ¬Safe (run leaks) :=
 
 def oneByte : Choice := .placement 1 [] ⟨0, by decide⟩
 
-def placementDecides : CoFree Exec Empty :=
+def placementDecides : CoFree Exec SirND Empty :=
   CoFree.branch oneByte fun r =>
     if r.1 = 0 then CoFree.impure (stopOp default) nofun else CoFree.impure .invalid nofun
 

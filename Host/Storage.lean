@@ -60,24 +60,19 @@ def WorldOp.Resp : WorldOp → Type
   | .create .. => Address × ByteArray × State
   | .ret .. | .revert _ | .invalid | .selfdestruct .. | .ub _ => Empty
 
-abbrev WorldE : Effect where
-  Op := WorldOp
-  Resp := WorldOp.Resp
-  BrOp := Choice
-  BrResp := Choice.Resp
-  brResp_nonempty := HostE.brResp_nonempty
+abbrev WorldE : Effect := { Op := WorldOp, Resp := WorldOp.Resp }
 
-variable {A : Type}
+variable {N : NonDeterminism} {A : Type}
 
-def world (op : WorldOp) : CoFree WorldE (WorldOp.Resp op) := CoFree.perform (E := WorldE) op
+def world (op : WorldOp) : CoFree WorldE N (WorldOp.Resp op) := CoFree.perform (E := WorldE) op
 
-def halt (op : WorldOp) (h : WorldOp.Resp op = Empty := by rfl) : CoFree WorldE A := do
+def halt (op : WorldOp) (h : WorldOp.Resp op = Empty := by rfl) : CoFree WorldE N A := do
   let e ← world op
   Empty.elim (h ▸ e)
 
 def State.setStore (s : State) (f : Store → Store) : State := { s with store := f s.store }
 
-def handleHost (env : Env) (s : State) : (op : HostOp) → CoFree WorldE (State × HostOp.Resp op)
+def handleHost (env : Env) (s : State) : (op : HostOp) → CoFree WorldE N (State × HostOp.Resp op)
   | .gas => do pure (s, ← world .gas)
   | .selfbalance => pure (s, s.world.balance env.address)
   | .balance a => pure (s, s.world.balance a)
@@ -114,7 +109,7 @@ def handleHost (env : Env) (s : State) : (op : HostOp) → CoFree WorldE (State 
   | .selfdestruct a => if env.static then halt .invalid else halt (.selfdestruct a s.store)
   | .ub u => halt (.ub u)
 
-def interpStore (env : Env) (s : State) (t : CoFree HostE A) : CoFree WorldE (State × A) :=
-  CoFree.interpState (E := HostE) (handleHost env) ⟨fun c => c, fun _ r => r⟩ s t
+def interpStore (env : Env) (s : State) (t : CoFree HostE N A) : CoFree WorldE N (State × A) :=
+  CoFree.interpState (E := HostE) (handleHost env) .id s t
 
 end Host

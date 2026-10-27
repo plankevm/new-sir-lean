@@ -87,12 +87,12 @@ def answer : (op : HostOp) → HostM (HostOp.Resp op)
 def place : (c : Choice) → HostM (Choice.Resp c)
   | .placement size live _ => do
     let start := live.foldl (fun s a => max s a.end) 0x80
-    if h : MemRange.Placement ⟨start, size⟩ live then pure ⟨start, h⟩ else throw (.hostError "alloc")
+    if h : Placement ⟨start, size⟩ live then pure ⟨start, h⟩ else throw (.hostError "alloc")
   | .choose _ pos => pure ⟨0, pos⟩
 
 def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
     (e : Entry) (fuel : Nat := 100000) : Outcome × World :=
-  match (CoFree.runM (E := HostE) answer place fuel (execHost p layout imm env e)).run.run world with
+  match (CoFree.runM (E := HostE) (N := SirND) answer place fuel (execHost p layout imm env e)).run.run world with
   | (.ok none, w) => (.outOfFuel, w)
   | (.ok (some x), _) => nomatch x
   | (.error o, w) => (o, w)
@@ -122,7 +122,7 @@ def runExec (env : Env) (s : State) (after : Store → State) (p : Program) (lay
   let pick : (c : Choice) → Except ExecOutcome c.Resp := fun c => match place c |>.run.run {} with
     | (.ok r, _) => pure r
     | (.error o, _) => throw (.done o none)
-  match CoFree.runM (E := Exec) (answerWorld after) pick fuel (exec p layout imm env e s) with
+  match CoFree.runM (E := Exec) (N := SirND) (answerWorld after) pick fuel (exec p layout imm env e s) with
   | .ok none => .outOfFuel
   | .ok (some x) => nomatch x
   | .error o => o
