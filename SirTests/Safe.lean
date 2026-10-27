@@ -37,6 +37,10 @@ theorem stops_safe : Safe (run stops) :=
 theorem mallocs_safe : Safe (run mallocs) :=
   stops_safe.of_same (Same.symm_eq mallocs_same_stops)
 
+/-- Safety carries over to a target without nondeterminism. -/
+theorem stopsTarget_safe : Safe stopsTarget :=
+  mallocs_safe.of_same mallocs_same_stopsTarget
+
 theorem mallocs_outcome {o : Host.Outcome} : HasOutcome (run mallocs) o ↔ o = .ret .empty default :=
   (Same.hasOutcome_iff mallocs_same_stops).trans stops_outcome
 

@@ -64,7 +64,7 @@ theorem observe_of_headOp {A : Type} {t : CoFree Exec SirND A} {op : WorldOp} (h
 
 variable {A B : Type} {RR : A → B → Prop}
 
-theorem same_skipL (n : Nat) {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec SirND B}
+theorem same_skipL (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
     (h : Same RR (skip n t₁) t₂) : Same RR t₁ t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -74,7 +74,7 @@ theorem same_skipL (n : Nat) {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec Si
     next t' ht => exact Same.silentL ht (ih h)
     next => exact h
 
-theorem same_skipR (n : Nat) {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec SirND B}
+theorem same_skipR (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
     (h : Same RR t₁ (skip n t₂)) : Same RR t₁ t₂ := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -84,7 +84,7 @@ theorem same_skipR (n : Nat) {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec Si
     next t' ht => exact Same.silentR ht (ih h)
     next => exact h
 
-theorem skipL_inv (n : Nat) {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec SirND B}
+theorem skipL_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
     (h : Same RR t₁ t₂) : Same RR (skip n t₁) t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -94,7 +94,7 @@ theorem skipL_inv (n : Nat) {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec Sir
     next t' ht => exact ih (Same.silentL_inv h ht)
     next => exact h
 
-theorem skipR_inv (n : Nat) {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec SirND B}
+theorem skipR_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
     (h : Same RR t₁ t₂) : Same RR t₁ (skip n t₂) := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -189,6 +189,18 @@ theorem mallocs_same_stops : Same Eq (run mallocs) (run stops) := by
 
 theorem mallocs_deterministic : Deterministic (run mallocs) :=
   (Deterministic.of_same mallocs_same_stops).1
+
+/-- What a compiler may emit for `mallocs`: it stops, with no allocation and so no choice. -/
+def stopsTarget : CoFree Exec .none Empty := CoFree.impure (stopOp default) nofun
+
+/-- A run with nondeterminism relates to one without: only operations are compared. -/
+theorem mallocs_same_stopsTarget : Same Eq (run mallocs) stopsTarget := by
+  apply same_skipL 100
+  refine Same.branchL _ (observe_of_headBr (c := .placement 32 [] ⟨0, by decide⟩) (by kernel_rfl))
+    fun r => ?_
+  apply same_skipL 100
+  exact Same.impure (op := stopOp default) (observe_of_headOp (by kernel_rfl)) rfl
+    fun r => Empty.elim r
 
 theorem stores_same_jumpsThenStores : Same Eq (run (stores 1)) (run jumpsThenStores) := by
   apply same_skipL 100; apply same_skipR 100
