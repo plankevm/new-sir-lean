@@ -12,10 +12,13 @@ inductive PrintRandBr | rand
 def PrintRand : Effect where
   Op := PrintRandOp
   Resp | .print _ => PUnit
-  BrOp := PrintRandBr
-  BrResp | .rand => Nat
 
-def print_rand : CoFree PrintRand Unit := do
+def Rand : NonDeterminism where
+  Op := PrintRandBr
+  Resp | .rand => Nat
+  resp_nonempty | .rand => ⟨(0 : Nat)⟩
+
+def print_rand : CoFree PrintRand Rand Unit := do
   let res ← choose PrintRandBr.rand
   perform (PrintRandOp.print res)
 
@@ -97,7 +100,7 @@ theorem nondet_unrelated_to_self : ∀ {Ret}, ¬Same Ret print_rand print_rand :
       | mutualUnobservedStep e => simp [ForallUnobserved, h0] at e
 
 /-- A branch whose responses print different numbers relates to neither output. -/
-theorem print_rand_not_print_zero : ∀ {Ret}, ¬Same Ret print_rand (perform (PrintRandOp.print 0)) := by
+theorem print_rand_not_print_zero : ∀ {Ret}, ¬Same Ret print_rand (perform (N := Rand) (PrintRandOp.print 0)) := by
   intro Ret h
   have ⟨k, hk, hkn⟩ := print_rand_observe2
   have ⟨_, h1⟩ := hkn 1
@@ -107,7 +110,7 @@ theorem print_rand_not_print_zero : ∀ {Ret}, ¬Same Ret print_rand (perform (P
 /-! Weak `Ret`: determinism is only up to `Ret ∘ Ret⁻¹`. -/
 
 /-- Returns a number the environment picks, with no visible operation. -/
-def rand_nat : CoFree PrintRand Nat := choose PrintRandBr.rand
+def rand_nat : CoFree PrintRand Rand Nat := choose PrintRandBr.rand
 
 /-- With a vacuous `Ret` the result's dependence on the branch is invisible. -/
 theorem rand_nat_same_true : Same (fun _ _ => True) rand_nat rand_nat :=
@@ -118,15 +121,32 @@ theorem rand_nat_not_same_eq : ¬Same Eq rand_nat rand_nat := fun h =>
     (Same.branchR_inv (Same.branchL_inv h rfl (0 : Nat)) rfl (1 : Nat)) rfl rfl
 
 /-- So `rand_nat` is `Eq`-related to nothing, though `True`-related to itself. -/
-theorem rand_nat_not_same_eq_any {m : CoFree PrintRand Nat} : ¬Same Eq rand_nat m :=
+theorem rand_nat_not_same_eq_any {N : NonDeterminism} {m : CoFree PrintRand N Nat} : ¬Same Eq rand_nat m :=
   fun h => rand_nat_not_same_eq (Deterministic.of_same h).1
 
 /-- A visible difference is not hidden by a vacuous `Ret`. -/
 theorem print_rand_not_same_true : ¬Same (fun _ _ => True) print_rand print_rand :=
   nondet_unrelated_to_self
 
-theorem print_rand_not_same_any {Ret : Unit → Unit → Prop} {m : CoFree PrintRand Unit} :
+theorem print_rand_not_same_any {Ret : Unit → Unit → Prop} {N : NonDeterminism} {m : CoFree PrintRand N Unit} :
     ¬Same Ret print_rand m :=
   Same.not_of_not_self_left fun _ => nondet_unrelated_to_self
+
+/-! Nondeterminism is not observed: the two sides may branch on different choices, or not at all. -/
+
+/-- Prints `n` whichever number the environment picks. -/
+def rand_then_print (n : Nat) : CoFree PrintRand Rand Unit :=
+  CoFree.branch PrintRandBr.rand fun _ => perform (PrintRandOp.print n)
+
+def print_det (n : Nat) : CoFree PrintRand .none Unit := perform (PrintRandOp.print n)
+
+theorem rand_then_print_same_det (n : Nat) : Same Eq (rand_then_print n) (print_det n) :=
+  Same.branch_const.mpr (Same.impure_iff.mpr fun _ => Same.ret rfl rfl rfl)
+
+theorem det_same_rand_then_print (n : Nat) : Same Eq (print_det n) (rand_then_print n) :=
+  Same.symm_eq (rand_then_print_same_det n)
+
+theorem rand_then_print_ne (n m : Nat) (h : n ≠ m) : ¬Same Eq (rand_then_print n) (print_det m) :=
+  fun hs => Same.impure_ne (fun e => h (by cases e; rfl)) (Same.branch_const.mp hs)
 
 end ITreeTests.Same

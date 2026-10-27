@@ -18,25 +18,25 @@ inductive LogOp
 
 abbrev Log : Effect := { Op := LogOp, Resp := fun | .emit _ => Unit }
 
-def emit (n : Nat) := perform (E := Log) (.emit n)
+def emit (n : Nat) := perform (E := Log) (N := .none) (.emit n)
 
-def bump : CoFree (Store ⊕ₑ Log) Unit := do
+def bump : CoFree (Store ⊕ₑ Log) .none Unit := do
   let n : Nat ← perform (E := Store ⊕ₑ Log) (.inl (.sload 0))
   perform (E := Store ⊕ₑ Log) (.inr (.emit n))
   perform (E := Store ⊕ₑ Log) (.inl (.sstore 0 (n + 1)))
 
 def storeInMap :
-    (Nat → Nat) → (op : (Store ⊕ₑ Log).Op) → CoFree Log ((Nat → Nat) × (Store ⊕ₑ Log).Resp op)
+    (Nat → Nat) → (op : (Store ⊕ₑ Log).Op) → CoFree Log .none ((Nat → Nat) × (Store ⊕ₑ Log).Resp op)
   | σ, .inl (.sload k) => pure (σ, σ k)
   | σ, .inl (.sstore k v) => pure (fun k' => if k' = k then v else σ k', ())
   | σ, .inr op => (perform (E := Log) op).bind fun r => pure (σ, r)
 
-def fib (n : Nat) : CoFree Log Nat :=
+def fib (n : Nat) : CoFree Log .none Nat :=
   iter (0, 1, 0) fun ((a, b, i) : Nat × Nat × Nat) => do
     emit a
     pure (if i < n then .repeat (b, a + b, i + 1) else .exit a)
 
-def fib' (n : Nat) : CoFree Log Nat := do
+def fib' (n : Nat) : CoFree Log .none Nat := do
   let mut (a, b, i) := (0, 1, 0)
   while i < n do
     emit a
@@ -44,14 +44,14 @@ def fib' (n : Nat) : CoFree Log Nat := do
     i := i + 1
   return a
 
-def countTo (n : Nat) : CoFree Log Nat := do
+def countTo (n : Nat) : CoFree Log .none Nat := do
   let mut i := 0
   while i < n do
     emit i
     i := i + 1
   return i
 
-def fact : Nat → CoFree Log Nat :=
+def fact : Nat → CoFree Log .none Nat :=
   fix fun fact n => match n with
     | 0 => pure 1
     | n + 1 => do
@@ -60,7 +60,8 @@ def fact : Nat → CoFree Log Nat :=
       pure ((n + 1) * r)
 
 /-- A level-1 program whose loop state is a level-0 tree: it re-emits every effect. -/
-def replay (t : CoFree.{0} Log Nat) : CoFree.{1} (Effect.lift.{0, 1} Log) (ULift.{1} Nat) :=
+def replay (t : CoFree.{0} Log .none Nat) :
+    CoFree.{1} (Effect.lift.{0, 1} Log) .none (ULift.{1} Nat) :=
   iter t fun t => match t.observe with
     | .pure n => pure (.exit ⟨n⟩)
     | .silent t' => pure (.repeat t')
@@ -68,26 +69,26 @@ def replay (t : CoFree.{0} Log Nat) : CoFree.{1} (Effect.lift.{0, 1} Log) (ULift
       pure (.repeat (k r.down))
     | .branch c _ => nomatch c
 
-def emitted {A : Type} (t : CoFree Log A) : Array Nat × Option A :=
-  let (events, result) := trace (E := Log) (fun _ => ()) nofun 10000 t
+def emitted {A : Type} (t : CoFree Log .none A) : Array Nat × Option A :=
+  let (events, result) := trace (E := Log) (N := .none) (fun _ => ()) nofun 10000 t
   (events.filterMap fun | .op (.emit n) => some n | _ => none, result)
 
-def silents {E : Effect.{0}} {A : Type} (answer : (op : E.Op) → E.Resp op)
-    (pick : (c : E.BrOp) → E.BrResp c) (t : CoFree E A) : Nat :=
+def silents {E : Effect.{0}} {N : NonDeterminism.{0}} {A : Type} (answer : (op : E.Op) → E.Resp op)
+    (pick : (c : N.Op) → N.Resp c) (t : CoFree E N A) : Nat :=
   ((trace answer pick 10000 t).1.filter fun | .silent => true | _ => false).size
 
 def checks : List (String × Bool) :=
-  let handled := interpState storeInMap (.sum (.empty nofun) .id) (fun _ => 0) bump
+  let handled := interpState storeInMap .id (fun _ => 0) bump
   let (bumpEvents, bumpResult) := emitted handled
   [ ("bump emits the stored value", bumpEvents == #[0]),
     ("bump increments slot 0", bumpResult.map (·.1 0) == some 1),
-    ("bump: one silent step per handled op", silents (E := Log) (fun _ => ()) nofun handled == 3),
+    ("bump: one silent step per handled op", silents (E := Log) (N := .none) (fun _ => ()) nofun handled == 3),
     ("fib 10", emitted (fib 10) == (#[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55], some 55)),
     ("fib' 10", emitted (fib' 10) == (#[0, 1, 1, 2, 3, 5, 8, 13, 21, 34], some 55)),
     ("countTo 4", emitted (countTo 4) == (#[0, 1, 2, 3], some 4)),
     ("fact 5", emitted (fact 5) == (#[1, 1, 2, 6, 24], some 120)),
     ("replay fib 10",
-      (run (E := Effect.lift.{0, 1} Log) (fun _ => ⟨()⟩) (fun ⟨c⟩ => nomatch c) 10000
+      (run (E := Effect.lift.{0, 1} Log) (N := .none) (fun _ => ⟨()⟩) nofun 10000
         (replay (fib 10))).map ULift.down
         == some 55) ]
 

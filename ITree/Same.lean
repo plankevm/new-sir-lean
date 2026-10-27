@@ -7,14 +7,16 @@ values related by `Ret`, ignoring finitely many unobserved steps on either side 
 unobserved step is a `silent` node or a `branch` node. A machine that runs unobserved forever is
 related only to another such machine.
 
-A branch is taken with each of its responses, on each side independently, and the two sides must
-agree for every pair of responses: it models a choice the environment makes that the program may
-not depend on (in SIR, where an allocation is placed). So `Same` is a partial equivalence, not an
+A branch is a choice of the machine's nondeterminism (`CoFree E N A`, choices `N`). It is
+taken with each of its responses, on each side independently, and the two sides must agree for
+every pair of responses: it models a choice the environment makes that the program may not
+depend on (in SIR, where an allocation is placed). The two sides may have different
+nondeterminism: only their operations are observed. So `Same` is a partial equivalence, not an
 equivalence: a program whose visible behavior depends on a branch's response is not related to
 itself. `Deterministic m` says that it is.
 
-Every branch has a response (`Effect.brResp_nonempty`); a branch with none would be vacuously
-related to every machine.
+Every branch has a response (`NonDeterminism.resp_nonempty`); a branch with none would be
+vacuously related to every machine.
 
 An operation with no response (`E.Resp op` empty) ends the run; two such operations are related
 exactly when they are the same operation, arguments included.
@@ -26,10 +28,10 @@ universe u
 
 namespace CoFree
 
-variable {E : Effect.{u}} {A B : Type u}
+variable {E : Effect.{u}} {N N₁ N₂ : NonDeterminism.{u}} {A B : Type u}
 
 /-- `m` takes an unobserved step, and `p` holds after it, whichever response a branch takes. -/
-def ForallUnobserved (m : CoFree E A) (p : CoFree E A → Prop) : Prop :=
+def ForallUnobserved (m : CoFree E N A) (p : CoFree E N A → Prop) : Prop :=
   match m.observe with
   | .silent m' => p m'
   | .branch _op c => ∀ res, p (c res)
@@ -40,8 +42,8 @@ def ForallUnobserved (m : CoFree E A) (p : CoFree E A → Prop) : Prop :=
 finitely many unobserved steps on one side in a row. -/
 inductive SameFinite
   (Ret : A → B → Prop)
-  (CoindRec : CoFree E A → CoFree E B → Prop)
-    : CoFree E A → CoFree E B → Prop
+  (CoindRec : CoFree E N₁ A → CoFree E N₂ B → Prop)
+    : CoFree E N₁ A → CoFree E N₂ B → Prop
   | ret {m₁ m₂} (a : A) (b : B) :
       m₁.observe = .pure a →
       m₂.observe = .pure b →
@@ -62,11 +64,11 @@ inductive SameFinite
       m₂.observe = .silent m₂' →
       SameFinite Ret CoindRec m₁ m₂' →
         SameFinite Ret CoindRec m₁ m₂
-  | branchL {m₁ m₂} (op : E.BrOp) {cₗ} :
+  | branchL {m₁ m₂} (op : N₁.Op) {cₗ} :
       m₁.observe = .branch op cₗ →
       (∀ res, SameFinite Ret CoindRec (cₗ res) m₂) →
         SameFinite Ret CoindRec m₁ m₂
-  | branchR {m₁ m₂} (op : E.BrOp) {cᵣ} :
+  | branchR {m₁ m₂} (op : N₂.Op) {cᵣ} :
       m₂.observe = .branch op cᵣ →
       (∀ res, SameFinite Ret CoindRec m₁ (cᵣ res)) →
         SameFinite Ret CoindRec m₁ m₂
@@ -76,12 +78,12 @@ inductive SameFinite
 
 /-- The greatest fixed point of `SameFinite`: some relation containing the pair is closed under
 `SameFinite`. -/
-def Same (Ret : A → B → Prop) (m₁ : CoFree E A) (m₂ : CoFree E B) : Prop :=
+def Same (Ret : A → B → Prop) (m₁ : CoFree E N₁ A) (m₂ : CoFree E N₂ B) : Prop :=
   ∃ CoindRec, CoindRec m₁ m₂ ∧ ∀ m₁' m₂', CoindRec m₁' m₂' → SameFinite Ret CoindRec m₁' m₂'
 
 /-- `m` is related to itself, with equal results. `Same` is only a partial equivalence: a machine
 whose visible behavior or result depends on a branch's response is not even related to itself. -/
-def Deterministic (m : CoFree E A) : Prop :=
+def Deterministic (m : CoFree E N A) : Prop :=
   Same Eq m m
 
 end CoFree
