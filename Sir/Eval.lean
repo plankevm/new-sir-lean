@@ -22,58 +22,58 @@ structure Ctx where
   immutables : Immutables program
   env : Env
 
-def mem (op : MemOp) : CoFree EvalE (MemOp.Resp op) := perform (E := EvalE) (.inr (.inl op))
+def mem (op : MemOp) : CoFree EvalE .none (MemOp.Resp op) := perform (E := EvalE) (.inr (.inl op))
 
-def host (op : HostOp) : CoFree EvalE (HostOp.Resp op) := perform (E := EvalE) (.inr (.inr op))
+def host (op : HostOp) : CoFree EvalE .none (HostOp.Resp op) := perform (E := EvalE) (.inr (.inr op))
 
-def halt {α : Type} (op : HostOp) (h : HostOp.Resp op = Empty := by rfl) : CoFree EvalE α := do
+def halt {α : Type} (op : HostOp) (h : HostOp.Resp op = Empty := by rfl) : CoFree EvalE .none α := do
   let e ← host op
   Empty.elim (h ▸ e)
 
 /-- A malformed program is UB, so it is never confused with a valid halt and `Safe` programs are
 well-formed. -/
-def malformed {α : Type} : CoFree EvalE α := halt (.ub .malformed)
+def malformed {α : Type} : CoFree EvalE .none α := halt (.ub .malformed)
 
-def lookup (l : Locals) (v : VarId) : CoFree EvalE Word := do
+def lookup (l : Locals) (v : VarId) : CoFree EvalE .none Word := do
   let some w := l[v]? | malformed
   pure w
 
-def lookupAll (l : Locals) (vs : Array VarId) : CoFree EvalE (Array Word) :=
+def lookupAll (l : Locals) (vs : Array VarId) : CoFree EvalE .none (Array Word) :=
   vs.mapM (lookup l)
 
-def assignAll (l : Locals) (vs : Array VarId) (ws : Array Word) : CoFree EvalE Locals := do
+def assignAll (l : Locals) (vs : Array VarId) (ws : Array Word) : CoFree EvalE .none Locals := do
   unless vs.size = ws.size do malformed
   pure ((vs.zip ws).foldl (fun l (v, w) => l.insert v w) l)
 
-def Ctx.requireEntry (ctx : Ctx) (e : Entry) : CoFree EvalE Unit :=
+def Ctx.requireEntry (ctx : Ctx) (e : Entry) : CoFree EvalE .none Unit :=
   unless ctx.entry = e do malformed
 
-def read (offset length : Word) : CoFree EvalE ByteArray :=
+def read (offset length : Word) : CoFree EvalE .none ByteArray :=
   mem (.read offset.toNat length.toNat)
 
-def write (offset : Word) (bytes : ByteArray) : CoFree EvalE Unit :=
+def write (offset : Word) (bytes : ByteArray) : CoFree EvalE .none Unit :=
   mem (.write offset.toNat bytes)
 
 def lengthOf (b : ByteArray) : Word := BitVec.ofNat 256 b.size
 
-def copyIn (src : ByteArray) (dst offset length : Word) : CoFree EvalE Unit :=
+def copyIn (src : ByteArray) (dst offset length : Word) : CoFree EvalE .none Unit :=
   write dst (src.slicePad offset.toNat length.toNat)
 
 def externalCall (kind : CallKind) (gas account argsOffset argsLength retOffset retLength : Word) :
-    CoFree EvalE Word := do
+    CoFree EvalE .none Word := do
   let input ← read argsOffset argsLength
   let (ok, out) : Bool × ByteArray ← host (.call kind gas (.ofWord account) input)
   mem (.setReturnData out)
   write retOffset (out.extract 0 (min retLength.toNat out.size))
   pure (Word.ofBool ok)
 
-def createContract (value offset length : Word) (salt : Option Word) : CoFree EvalE Word := do
+def createContract (value offset length : Word) (salt : Option Word) : CoFree EvalE .none Word := do
   let input ← read offset length
   let (account, out) : Address × ByteArray ← host (.create value salt input)
   mem (.setReturnData out)
   pure account.toWord
 
-def log (offset length : Word) (topics : Array Word) : CoFree EvalE Unit := do
+def log (offset length : Word) (topics : Array Word) : CoFree EvalE .none Unit := do
   let data ← read offset length
   host (.log topics data)
 
@@ -109,7 +109,7 @@ def TernOp.eval : TernOp → Word → Word → Word → Word
   | .addmod, a, b, n => Word.addmod a b n
   | .mulmod, a, b, n => Word.mulmod a b n
 
-def Query.eval (env : Env) : Query → CoFree EvalE Word
+def Query.eval (env : Env) : Query → CoFree EvalE .none Word
   | .gas => host .gas
   | .selfbalance => host .selfbalance
   | .address => pure env.address.toWord
@@ -126,7 +126,7 @@ def Query.eval (env : Env) : Query → CoFree EvalE Word
   | .basefee => pure env.basefee
   | .blobbasefee => pure env.blobbasefee
 
-def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE Word
+def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE .none Word
   | .unop op a => pure (op.eval a)
   | .binop op a b => pure (op.eval a b)
   | .ternop op a b c => pure (op.eval a b c)
@@ -173,7 +173,7 @@ def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE Word
     let some v := ctx.immutables[i]? | malformed
     pure v
 
-def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE Unit
+def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE .none Unit
   | .mstore size ptr v => write ptr (Word.toBytes size.val v)
   | .mcopy dst src length => mem (.copy dst.toNat src.toNat length.toNat)
   | .sstore k v => host (.sstore k v)
@@ -200,9 +200,9 @@ def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE Unit
       mem (.write (ptr.toNat + r) (Word.toBytes size.val v))
   | .noop => pure ()
 
-abbrev Call := FunctionId → Array Word → CoFree EvalE (Array Word)
+abbrev Call := FunctionId → Array Word → CoFree EvalE .none (Array Word)
 
-def execOp (ctx : Ctx) (call : Call) (l : Locals) : Operation → CoFree EvalE Locals
+def execOp (ctx : Ctx) (call : Call) (l : Locals) : Operation → CoFree EvalE .none Locals
   | .«let» x e => do
     let e ← e.resolve (lookup l)
     let w ← e.eval ctx
@@ -216,20 +216,20 @@ def execOp (ctx : Ctx) (call : Call) (l : Locals) : Operation → CoFree EvalE L
     s.exec ctx
     pure l
 
-def block (fn : Function) (b : BlockId) : CoFree EvalE Block := do
+def block (fn : Function) (b : BlockId) : CoFree EvalE .none Block := do
   let some blk := fn.blocks[b.id]? | malformed
   pure blk
 
 /-- Control transfer within `fn`: the source block's outputs become the target block's inputs. -/
 def jumpTo (fn : Function) (l : Locals) (src : Block) (target : BlockId) :
-    CoFree EvalE (IterStep (BlockId × Locals) (Array Word)) := do
+    CoFree EvalE .none (IterStep (BlockId × Locals) (Array Word)) := do
   let dst ← block fn target
   let values ← lookupAll l src.outputs
   let l ← assignAll l dst.inputs values
   pure (.repeat (target, l))
 
 def execControl (call : Call) (fn : Function) (l : Locals) (blk : Block) :
-    CoFree EvalE (IterStep (BlockId × Locals) (Array Word)) := do
+    CoFree EvalE .none (IterStep (BlockId × Locals) (Array Word)) := do
   let jump := jumpTo fn l blk
   let control ← blk.control.resolve (lookup l)
   match control with
@@ -256,7 +256,7 @@ def execControl (call : Call) (fn : Function) (l : Locals) (blk : Block) :
     let _ ← call g args
     malformed
 
-def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
+def evalFunction (ctx : Ctx) : CallI → CoFree SirE .none (Array Word) :=
   CoFree.fix fun callI (f, args) => do
     let call : Call := fun g args => callI (g, args)
     let some fn := ctx.program.functions[f.id]? | malformed
@@ -269,13 +269,13 @@ def evalFunction (ctx : Ctx) : CallI → CoFree SirE (Array Word) :=
         l ← execOp ctx call l op
       execControl call fn l blk
 
-def malformedTop {α : Type} : CoFree SirE α := do
+def malformedTop {α : Type} : CoFree SirE .none α := do
   nomatch ← perform (E := SirE) (.inr (.ub .malformed))
 
 /-- An entry point runs until a halting control; entry functions take no inputs and
 must not return. -/
 def runEntry (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
-    CoFree SirE Empty := do
+    CoFree SirE .none Empty := do
   let f? := match e with
     | .init => some p.init
     | .main => p.main

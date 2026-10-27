@@ -3,18 +3,19 @@ import ITree.Same
 
 /-! How a run ends, and which runs are safe.
 
-A run has type `CoFree WorldE Empty`: it never returns a value, it ends with a terminal
-operation (the frame halts, or undefined behavior). So that operation is its final result. Every
-IR's runs have this type once their own effects are handled, so these notions are shared.
+A run has type `CoFree WorldE N Empty`, for the nondeterminism `N` of whichever IR it comes
+from: it never returns a value, it ends with a terminal operation (the frame halts, or undefined
+behavior). So that operation is its final result. Every IR's runs have this type once their own
+effects are handled, so these notions are shared.
 
-Runs are compared with `CoFree.Same`. Branches (`Choice`) are unobserved steps of `Same`: each
-is answered with every possible response, on each side independently, and the runs must agree
-for every pair of responses. Every operation (gas, logs, calls, creations, the end of the run)
-is visible and must match exactly, in the same order. A terminal operation has no answer, so
-it ends the run and relates only to the same operation; in particular undefined behavior of
-different kinds, or with different arguments (which may mention placement-dependent addresses),
-is not related. A run whose visible behavior depends on a branch (say it stores a pointer whose
-placement was a branch) is not `CoFree.Deterministic`. -/
+Runs are compared with `CoFree.Same`, which relates runs of different nondeterminism. Branches
+are unobserved steps of `Same`: each is answered with every possible response, on each side
+independently, and the runs must agree for every pair of responses. Every operation (gas, logs,
+calls, creations, the end of the run) is visible and must match exactly, in the same order. A
+terminal operation has no answer, so it ends the run and relates only to the same operation; in
+particular undefined behavior of different kinds, or with different arguments (which may mention
+placement-dependent addresses), is not related. A run whose visible behavior depends on a branch
+(say it stores a pointer whose placement was a branch) is not `CoFree.Deterministic`. -/
 
 namespace Host
 
@@ -51,8 +52,10 @@ instance WorldOp.decidableHalts : (op : WorldOp) → Decidable (WorldOp.Resp op 
   | .create .. => .isFalse fun h => h (0, .empty, default)
   | .ret .. | .revert _ | .invalid | .selfdestruct .. | .ub _ => .isTrue Empty.elim
 
+variable {N : NonDeterminism}
+
 universe w in
-def catchStep {X : Type w} : Step WorldE Empty X → Step WorldE Outcome X
+def catchStep {X : Type w} : Step WorldE N Empty X → Step WorldE N Outcome X
   | .pure e => nomatch e
   | .silent x => .silent x
   | .impure op k => if h : WorldOp.Resp op → False then .pure (.ofOp op h) else .impure op k
@@ -61,12 +64,12 @@ def catchStep {X : Type w} : Step WorldE Empty X → Step WorldE Outcome X
 /-- `t` with its end made a returned value: a terminal operation returns its `Outcome`, every
 other step is kept. Terminal operations end a run without an answer, so two runs that halt with
 different data can only be related by `CoFree.Same` with a relation on the results of `catchHalt`. -/
-def catchHalt : CoFree WorldE Empty → CoFree WorldE Outcome
+def catchHalt : CoFree WorldE N Empty → CoFree WorldE N Outcome
   | ⟨S, J, s₀, step, target⟩ => ⟨S, J, s₀, fun s => catchStep (step s), fun j => catchHalt (target j)⟩
 
 /-- `t` ends with `o` for some answers to its operations and some branches, after finitely
 many steps. -/
-inductive HasOutcome : CoFree WorldE Empty → Outcome → Prop
+inductive HasOutcome : CoFree WorldE N Empty → Outcome → Prop
   | halt {t op k} (h : WorldOp.Resp op → False) :
       t.observe = .impure op k →
         HasOutcome t (.ofOp op h)
@@ -74,7 +77,7 @@ inductive HasOutcome : CoFree WorldE Empty → Outcome → Prop
       t.observe = .silent t' →
       HasOutcome t' o →
         HasOutcome t o
-  | branch {t c k o} (r : Choice.Resp c) :
+  | branch {t c k o} (r : N.Resp c) :
       t.observe = .branch c k →
       HasOutcome (k r) o →
         HasOutcome t o
@@ -86,7 +89,7 @@ inductive HasOutcome : CoFree WorldE Empty → Outcome → Prop
 /-- `t` reaches no undefined behavior, and does not depend on its branches (say, where its
 allocations are placed). The second half is not implied by the first: a run returning a pointer
 it allocated has no UB outcome, but different placements give it different outcomes. -/
-def Safe (t : CoFree WorldE Empty) : Prop :=
+def Safe (t : CoFree WorldE N Empty) : Prop :=
   (∀ u, ¬HasOutcome t (.ub u)) ∧ CoFree.Deterministic t
 
 end Host

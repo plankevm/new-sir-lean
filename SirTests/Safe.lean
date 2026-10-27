@@ -8,7 +8,7 @@ namespace SirTests.Safe
 
 open Sir Host CoFree SirTests.Same
 
-theorem hasOutcome_skip_iff (n : Nat) {t : CoFree Exec Empty} {o : Host.Outcome} :
+theorem hasOutcome_skip_iff (n : Nat) {t : CoFree Exec SirND Empty} {o : Host.Outcome} :
     HasOutcome (skip n t) o ↔ HasOutcome t o := by
   induction n generalizing t with
   | zero => exact .rfl
@@ -59,7 +59,7 @@ theorem leaks_not_safe : ¬Safe (run leaks) :=
 
 def oneByte : Choice := .placement 1 [] ⟨0, by decide⟩
 
-def placementDecides : CoFree Exec Empty :=
+def placementDecides : CoFree Exec SirND Empty :=
   CoFree.branch oneByte fun r =>
     if r.1 = 0 then CoFree.impure (stopOp default) nofun else CoFree.impure .invalid nofun
 

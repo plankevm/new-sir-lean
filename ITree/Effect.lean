@@ -94,6 +94,8 @@ def sum (b₁ : Map N L) (b₂ : Map M L) : Map (N ⊕ₙ M) L where
 def empty (h : N.Op → False) : Map N M :=
   ⟨fun c => (h c).elim, fun c => (h c).elim⟩
 
+def ofNone : Map .none M := empty nofun
+
 end Map
 
 end NonDeterminism

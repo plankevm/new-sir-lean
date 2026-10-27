@@ -45,17 +45,17 @@ def live (m : FrameMem) : List MemRange :=
 
 end FrameMem
 
-def ub {α : Type} (u : UB) : CoFree (HostE) α := do
+def ub {α : Type} (u : UB) : CoFree HostE SirND α := do
   let e ← perform (E := HostE) (.ub u)
   Empty.elim e
 
-def handleMem : FrameMem → (op : SirE.Op) → CoFree (HostE) (FrameMem × SirE.Resp op)
+def handleMem : FrameMem → (op : SirE.Op) → CoFree HostE SirND (FrameMem × SirE.Resp op)
   | m, .inr op => do
     let r ← perform (E := HostE) op
     pure (m, r)
   | m, .inl (.alloc zeroed size) =>
-    if fits : ∃ start, MemRange.Placement ⟨start, size⟩ m.live then do
-      let ⟨start, _⟩ ← CoFree.choose (E := HostE) (.placement size m.live fits)
+    if fits : ∃ start, Placement ⟨start, size⟩ m.live then do
+      let ⟨start, _⟩ ← CoFree.choose (E := HostE) (N := SirND) (.placement size m.live fits)
       let a : Allocation := ⟨start, .replicate size (if zeroed then some 0 else none)⟩
       pure ({ m with allocs := m.allocs.push a }, Word.ofNat start)
     else ub (.outOfMemory size)
@@ -75,14 +75,14 @@ def handleMem : FrameMem → (op : SirE.Op) → CoFree (HostE) (FrameMem × SirE
 
 /-- The semantics of an entry point with storage and the world left abstract. -/
 def execHost (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
-    CoFree (HostE) Empty := do
-  let (_, res) ← CoFree.interpState handleMem (.sum (.empty nofun) .id) {} (runEntry p layout imm env e)
+    CoFree HostE SirND Empty := do
+  let (_, res) ← CoFree.interpState handleMem .ofNone {} (runEntry p layout imm env e)
   nomatch res
 
 /-- The semantics of an entry point started in state `s`: world interactions and placement
 choices. -/
 def exec (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) (s : State) :
-    CoFree Exec Empty := do
+    CoFree Exec SirND Empty := do
   let (_, res) ← Host.interpStore env s (execHost p layout imm env e)
   nomatch res
 
