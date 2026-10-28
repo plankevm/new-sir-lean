@@ -83,7 +83,6 @@ def Same (Ret : A → B → Prop) (m₁ : CoFree E N₁ A) (m₂ : CoFree E N₂
 
 /-- `m` is related to itself, with equal results. `Same` is only a partial equivalence: a machine
 whose visible behavior or result depends on a branch's response is not even related to itself. -/
-def Deterministic (m : CoFree E N A) : Prop :=
-  Same Eq m m
+def Deterministic (m : CoFree E N A) : Prop := Same Eq m m
 
 end CoFree

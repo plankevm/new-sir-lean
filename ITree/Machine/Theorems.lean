@@ -23,13 +23,12 @@ theorem observe_atPos (m : CoFree E N A) (p : m.Pos) :
 @[simp] theorem observe_silent (m : CoFree E N A) : m.silent.observe = .silent m :=
   Proofs.observe_silent m
 
-@[simp] theorem observe_impure (op : E.Op) (k : E.Resp op → CoFree E N A) :
-    (impure op k).observe = .impure op k :=
-  Proofs.observe_impure op k
+@[simp] theorem observe_perform (op : E.Op) :
+    (perform op : CoFree E N _).observe = .impure op pure :=
+  Proofs.observe_perform op
 
-@[simp] theorem observe_branch (c : N.Op) (k : N.Resp c → CoFree E N A) :
-    (branch c k).observe = .branch c k :=
-  Proofs.observe_branch c k
+@[simp] theorem observe_branch (c : N.Op) : (branch c : CoFree E N _).observe = .branch c pure :=
+  Proofs.observe_branch c
 
 theorem observe_corec {S : Type u} (f : S → Step E N A S) (s : S) :
     (corec f s).observe = (f s).map (corec f) :=
@@ -59,33 +58,6 @@ theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E N (IterSte
       | .impure op k => .impure op fun r => (iter s g).startAt ⟨i, k r⟩
       | .branch c k => .branch c fun r => (iter s g).startAt ⟨i, k r⟩ :=
   Proofs.observe_iter_startAt s g i p
-
-section Interp
-
-variable {σ : Type u}
-
-theorem observe_interpAt_handler (h : σ → (op : E.Op) → CoFree F M (σ × E.Resp op))
-    (b : NonDeterminism.Map N M) (m : CoFree E N A) (op : E.Op) (k : E.Resp op → m.State ⊕ m.Jump) (s : σ)
-    (p : (h s op).Pos) :
-    (interpAt h b m (.handler op k s p)).observe =
-      match (h s op).stepAt p with
-      | .pure (s', r) => .silent (interpState h b s' (m.next (k r)))
-      | .silent p' => .silent (interpAt h b m (.handler op k s p'))
-      | .impure op' k' => .impure op' fun r => interpAt h b m (.handler op k s (k' r))
-      | .branch c k' => .branch c fun r => interpAt h b m (.handler op k s (k' r)) :=
-  Proofs.observe_interpAt_handler h b m op k s p
-
-theorem observe_interpState (h : σ → (op : E.Op) → CoFree F M (σ × E.Resp op))
-    (b : NonDeterminism.Map N M) (s : σ) (m : CoFree E N A) :
-    (interpState h b s m).observe =
-      match m.step m.initial with
-      | .pure a => .pure (s, a)
-      | .silent y => .silent (interpState h b s (m.next y))
-      | .impure op k => (interpAt h b m (.handler op k s (h s op).initPos)).observe
-      | .branch c k => .branch (b.op c) fun r => interpState h b s (m.next (k (b.resp c r))) :=
-  Proofs.observe_interpState h b s m
-
-end Interp
 
 theorem observe_fixFrom_startAt {I O : Type u} (body : I → CoFree (Effect.Call I O ⊕ₑ E) N O)
     (t : CoFree (Effect.Call I O ⊕ₑ E) N O) (c : Option I) (p : (fixCode body t c).Pos)

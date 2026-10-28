@@ -2,15 +2,9 @@ import ITree
 
 namespace ITreeTests.Examples
 
-open CoFree (perform iter fix interpState)
+open CoFree (perform iter fix)
 open CoFree (trace run)
 open Effect (Rec)
-
-inductive StoreOp
-  | sload (k : Nat)
-  | sstore (k v : Nat)
-
-abbrev Store : Effect := { Op := StoreOp, Resp := fun | .sload _ => Nat | .sstore _ _ => Unit }
 
 inductive LogOp
   | emit (n : Nat)
@@ -19,17 +13,6 @@ inductive LogOp
 abbrev Log : Effect := { Op := LogOp, Resp := fun | .emit _ => Unit }
 
 def emit (n : Nat) := perform (E := Log) (N := .none) (.emit n)
-
-def bump : CoFree (Store ⊕ₑ Log) .none Unit := do
-  let n : Nat ← perform (E := Store ⊕ₑ Log) (.inl (.sload 0))
-  perform (E := Store ⊕ₑ Log) (.inr (.emit n))
-  perform (E := Store ⊕ₑ Log) (.inl (.sstore 0 (n + 1)))
-
-def storeInMap :
-    (Nat → Nat) → (op : (Store ⊕ₑ Log).Op) → CoFree Log .none ((Nat → Nat) × (Store ⊕ₑ Log).Resp op)
-  | σ, .inl (.sload k) => pure (σ, σ k)
-  | σ, .inl (.sstore k v) => pure (fun k' => if k' = k then v else σ k', ())
-  | σ, .inr op => (perform (E := Log) op).bind fun r => pure (σ, r)
 
 def fib (n : Nat) : CoFree Log .none Nat :=
   iter (0, 1, 0) fun ((a, b, i) : Nat × Nat × Nat) => do
@@ -78,12 +61,7 @@ def silents {E : Effect.{0}} {N : NonDeterminism.{0}} {A : Type} (answer : (op :
   ((trace answer pick 10000 t).1.filter fun | .silent => true | _ => false).size
 
 def checks : List (String × Bool) :=
-  let handled := interpState storeInMap .id (fun _ => 0) bump
-  let (bumpEvents, bumpResult) := emitted handled
-  [ ("bump emits the stored value", bumpEvents == #[0]),
-    ("bump increments slot 0", bumpResult.map (·.1 0) == some 1),
-    ("bump: one silent step per handled op", silents (E := Log) (N := .none) (fun _ => ()) nofun handled == 3),
-    ("fib 10", emitted (fib 10) == (#[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55], some 55)),
+  [ ("fib 10", emitted (fib 10) == (#[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55], some 55)),
     ("fib' 10", emitted (fib' 10) == (#[0, 1, 1, 2, 3, 5, 8, 13, 21, 34], some 55)),
     ("countTo 4", emitted (countTo 4) == (#[0, 1, 2, 3], some 4)),
     ("fact 5", emitted (fact 5) == (#[1, 1, 2, 6, 24], some 120)),

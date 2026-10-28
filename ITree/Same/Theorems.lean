@@ -250,9 +250,9 @@ theorem Same.not_spin_pure {b : B} : ¬Same Ret (spin : CoFree E N₁ A) (CoFree
   Proofs.Same.not_spin_pure
 
 /-- Nor to one that performs an operation. -/
-theorem Same.not_spin_impure {op : E.Op} {k : E.Resp op → CoFree E N₂ B} :
-    ¬Same Ret (spin : CoFree E N₁ A) (CoFree.impure op k) :=
-  Proofs.Same.not_spin_impure
+theorem Same.not_spin_impure {m : CoFree E N₂ B} {op : E.Op} {k : E.Resp op → CoFree E N₂ B}
+    (hm : m.observe = .impure op k) : ¬Same Ret (spin : CoFree E N₁ A) m :=
+  Proofs.Same.not_spin_impure hm
 
 theorem Same.pure_iff {a : A} {b : B} :
     Same Ret (CoFree.pure a : CoFree E N₁ A) (CoFree.pure b : CoFree E N₂ B) ↔ Ret a b :=
@@ -267,38 +267,43 @@ theorem Same.silent_iff_right {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} 
     Same Ret m₁ (CoFree.silent m₂) ↔ Same Ret m₁ m₂ :=
   Proofs.Same.silent_iff_right
 
-theorem Same.impure_iff {op : E.Op} {k₁ : E.Resp op → CoFree E N₁ A}
-    {k₂ : E.Resp op → CoFree E N₂ B} :
-    Same Ret (CoFree.impure op k₁) (CoFree.impure op k₂) ↔ ∀ r, Same Ret (k₁ r) (k₂ r) :=
-  Proofs.Same.impure_iff
+theorem Same.impure_iff {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {op : E.Op}
+    {k₁ : E.Resp op → CoFree E N₁ A} {k₂ : E.Resp op → CoFree E N₂ B}
+    (h₁ : m₁.observe = .impure op k₁) (h₂ : m₂.observe = .impure op k₂) :
+    Same Ret m₁ m₂ ↔ ∀ r, Same Ret (k₁ r) (k₂ r) :=
+  Proofs.Same.impure_iff h₁ h₂
 
-theorem Same.impure_ne {op₁ op₂ : E.Op} {k₁ : E.Resp op₁ → CoFree E N₁ A}
-    {k₂ : E.Resp op₂ → CoFree E N₂ B} (hne : op₁ ≠ op₂) :
-    ¬Same Ret (CoFree.impure op₁ k₁) (CoFree.impure op₂ k₂) :=
-  Proofs.Same.impure_ne hne
+theorem Same.impure_ne {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {op₁ op₂ : E.Op}
+    {k₁ : E.Resp op₁ → CoFree E N₁ A} {k₂ : E.Resp op₂ → CoFree E N₂ B}
+    (h₁ : m₁.observe = .impure op₁ k₁) (h₂ : m₂.observe = .impure op₂ k₂) (hne : op₁ ≠ op₂) :
+    ¬Same Ret m₁ m₂ :=
+  Proofs.Same.impure_ne h₁ h₂ hne
 
 /-- An operation with no response ends the run (undefined behavior is one): it relates to itself,
 whatever the continuations. -/
-theorem Same.terminal {op : E.Op} (hop : E.Resp op → False) (k₁ : E.Resp op → CoFree E N₁ A)
-    (k₂ : E.Resp op → CoFree E N₂ B) : Same Ret (CoFree.impure op k₁) (CoFree.impure op k₂) :=
-  Proofs.Same.terminal hop k₁ k₂
+theorem Same.terminal {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {op : E.Op}
+    {k₁ : E.Resp op → CoFree E N₁ A} {k₂ : E.Resp op → CoFree E N₂ B} (hop : E.Resp op → False)
+    (h₁ : m₁.observe = .impure op k₁) (h₂ : m₂.observe = .impure op k₂) : Same Ret m₁ m₂ :=
+  Proofs.Same.terminal hop h₁ h₂
 
 /-- Two branches are related iff every pair of responses is. -/
-theorem Same.branch_iff {c₁ : N₁.Op} {c₂ : N₂.Op} {k₁ : N₁.Resp c₁ → CoFree E N₁ A}
-    {k₂ : N₂.Resp c₂ → CoFree E N₂ B} :
-    Same Ret (CoFree.branch c₁ k₁) (CoFree.branch c₂ k₂) ↔
-      ∀ r₁ r₂, Same Ret (k₁ r₁) (k₂ r₂) :=
-  Proofs.Same.branch_iff
+theorem Same.branch_iff {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {c₁ : N₁.Op} {c₂ : N₂.Op}
+    {k₁ : N₁.Resp c₁ → CoFree E N₁ A} {k₂ : N₂.Resp c₂ → CoFree E N₂ B}
+    (h₁ : m₁.observe = .branch c₁ k₁) (h₂ : m₂.observe = .branch c₂ k₂) :
+    Same Ret m₁ m₂ ↔ ∀ r₁ r₂, Same Ret (k₁ r₁) (k₂ r₂) :=
+  Proofs.Same.branch_iff h₁ h₂
 
 /-- A branch on the left is related iff every response is. -/
-theorem Same.branch_iff_left {c : N₁.Op} {k : N₁.Resp c → CoFree E N₁ A} {m₂ : CoFree E N₂ B} :
-    Same Ret (CoFree.branch c k) m₂ ↔ ∀ r, Same Ret (k r) m₂ :=
-  Proofs.Same.branch_iff_left
+theorem Same.branch_iff_left {m₁ : CoFree E N₁ A} {c : N₁.Op} {k : N₁.Resp c → CoFree E N₁ A}
+    {m₂ : CoFree E N₂ B} (h₁ : m₁.observe = .branch c k) :
+    Same Ret m₁ m₂ ↔ ∀ r, Same Ret (k r) m₂ :=
+  Proofs.Same.branch_iff_left h₁
 
 /-- A branch that ignores its response is invisible. -/
-theorem Same.branch_const {c : N₁.Op} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} :
-    Same Ret (CoFree.branch c fun _ => m₁) m₂ ↔ Same Ret m₁ m₂ :=
-  Proofs.Same.branch_const
+theorem Same.branch_const {m : CoFree E N₁ A} {c : N₁.Op} {m₁ : CoFree E N₁ A}
+    {m₂ : CoFree E N₂ B} (hm : m.observe = .branch c fun _ => m₁) :
+    Same Ret m m₂ ↔ Same Ret m₁ m₂ :=
+  Proofs.Same.branch_const hm
 
 /-- A machine whose visible behavior depends on a branch is not related to itself. -/
 theorem Same.not_refl_of_branch {Ret : A → A → Prop} {m : CoFree E N₁ A} {c : N₁.Op}
@@ -308,8 +313,8 @@ theorem Same.not_refl_of_branch {Ret : A → A → Prop} {m : CoFree E N₁ A} {
 
 /-- Divergence absorbs branches: branching into machines that all diverge is the same as
 diverging. -/
-theorem Same.spin_branch_spin {c : N₂.Op} :
-    Same Ret (spin : CoFree E N₁ A) (CoFree.branch c fun _ => (spin : CoFree E N₂ B)) :=
-  Proofs.Same.spin_branch_spin
+theorem Same.spin_branch_spin {m : CoFree E N₂ B} {c : N₂.Op}
+    (hm : m.observe = .branch c fun _ => spin) : Same Ret (spin : CoFree E N₁ A) m :=
+  Proofs.Same.spin_branch_spin hm
 
 end CoFree

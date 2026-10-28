@@ -19,7 +19,7 @@ def Rand : NonDeterminism where
   resp_nonempty | .rand => ⟨(0 : Nat)⟩
 
 def print_rand : CoFree PrintRand Rand Unit := do
-  let res ← choose PrintRandBr.rand
+  let res ← branch PrintRandBr.rand
   perform (PrintRandOp.print res)
 
 theorem print_rand_observe :
@@ -110,7 +110,7 @@ theorem print_rand_not_print_zero : ∀ {Ret}, ¬Same Ret print_rand (perform (N
 /-! Weak `Ret`: determinism is only up to `Ret ∘ Ret⁻¹`. -/
 
 /-- Returns a number the environment picks, with no visible operation. -/
-def rand_nat : CoFree PrintRand Rand Nat := choose PrintRandBr.rand
+def rand_nat : CoFree PrintRand Rand Nat := branch PrintRandBr.rand
 
 /-- With a vacuous `Ret` the result's dependence on the branch is invisible. -/
 theorem rand_nat_same_true : Same (fun _ _ => True) rand_nat rand_nat :=
@@ -136,17 +136,24 @@ theorem print_rand_not_same_any {Ret : Unit → Unit → Prop} {N : NonDetermini
 
 /-- Prints `n` whichever number the environment picks. -/
 def rand_then_print (n : Nat) : CoFree PrintRand Rand Unit :=
-  CoFree.branch PrintRandBr.rand fun _ => perform (PrintRandOp.print n)
+  (branch PrintRandBr.rand).bind fun _ => perform (PrintRandOp.print n)
 
 def print_det (n : Nat) : CoFree PrintRand .none Unit := perform (PrintRandOp.print n)
 
+theorem rand_then_print_observe (n : Nat) : ∃ k, (rand_then_print n).observe = .branch PrintRandBr.rand k ∧
+    ∀ r, (k r).observe = .impure (PrintRandOp.print n) CoFree.pure :=
+  ⟨_, (observe_bind _ _).trans rfl, fun _ => (observe_bind _ _).trans rfl⟩
+
 theorem rand_then_print_same_det (n : Nat) : Same Eq (rand_then_print n) (print_det n) :=
-  Same.branch_const.mpr (Same.impure_iff.mpr fun _ => Same.ret rfl rfl rfl)
+  let ⟨_, hb, hk⟩ := rand_then_print_observe n
+  (Same.branch_iff_left hb).mpr fun r => (Same.impure_iff (hk r) rfl).mpr fun _ => Same.ret rfl rfl rfl
 
 theorem det_same_rand_then_print (n : Nat) : Same Eq (print_det n) (rand_then_print n) :=
   Same.symm_eq (rand_then_print_same_det n)
 
 theorem rand_then_print_ne (n m : Nat) (h : n ≠ m) : ¬Same Eq (rand_then_print n) (print_det m) :=
-  fun hs => Same.impure_ne (fun e => h (by cases e; rfl)) (Same.branch_const.mp hs)
+  fun hs =>
+    let ⟨_, hb, hk⟩ := rand_then_print_observe n
+    Same.impure_ne (hk (0 : Nat)) rfl (fun e => h (by cases e; rfl)) ((Same.branch_iff_left hb).mp hs (0 : Nat))
 
 end ITreeTests.Same

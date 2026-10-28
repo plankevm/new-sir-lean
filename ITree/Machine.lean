@@ -59,11 +59,11 @@ def pure (a : A) : CoFree E N A :=
 def silent (m : CoFree E N A) : CoFree E N A :=
   ⟨PUnit, PUnit, ⟨⟩, fun _ => .silent (.inr ⟨⟩), fun _ => m⟩
 
-def impure (op : E.Op) (k : E.Resp op → CoFree E N A) : CoFree E N A :=
-  ⟨PUnit, E.Resp op, ⟨⟩, fun _ => .impure op .inr, k⟩
+def perform (op : E.Op) : CoFree E N (E.Resp op) :=
+  ⟨PUnit, E.Resp op, ⟨⟩, fun | .unit => .impure op .inr, pure⟩
 
-def branch (c : N.Op) (k : N.Resp c → CoFree E N A) : CoFree E N A :=
-  ⟨PUnit, N.Resp c, ⟨⟩, fun _ => .branch c .inr, k⟩
+def branch (c : N.Op) : CoFree E N (N.Resp c) :=
+  ⟨PUnit, N.Resp c, ⟨⟩, fun _ => .branch c .inr, pure⟩
 
 def corec {S : Type u} (f : S → Step E N A S) (s : S) : CoFree E N A :=
   ⟨S, PEmpty, s, fun s => (f s).map .inl, nofun⟩
@@ -134,57 +134,6 @@ def iter (s : S) (g : S → CoFree E N (IterStep S A)) : CoFree E N A where
   target := nofun
 
 end Iter
-
-/-! ### Handlers -/
-
-section Interp
-
-variable {σ : Type u}
-
-/-- States of a handled machine whose source has state type `S` and jump type `J`: running
-the source, or running the handler for `op` with the source's continuation `k` pending. -/
-inductive InterpState (h : σ → (op : E.Op) → CoFree F M (σ × E.Resp op)) (S J : Type u) : Type u
-  | source (s : σ) (x : S)
-  | handler (op : E.Op) (k : E.Resp op → S ⊕ J) (s : σ) (p : (h s op).Pos)
-
-/-- One step of the handler for `op` at position `p`. When it returns, the source resumes
-after one silent step. The handler's own branches stay branches. -/
-def interpHandle (h : σ → (op : E.Op) → CoFree F M (σ × E.Resp op)) {S J : Type u}
-    (op : E.Op) (k : E.Resp op → S ⊕ J) (s : σ) (p : (h s op).Pos) :
-    Step F M (σ × A) (InterpState h S J ⊕ (σ × J)) :=
-  match (h s op).stepAt p with
-  | .pure (s', r) => .silent (match k r with
-    | .inl x => .inl (.source s' x)
-    | .inr j => .inr (s', j))
-  | .silent p' => .silent (.inl (.handler op k s p'))
-  | .impure op' k' => .impure op' fun r => .inl (.handler op k s (k' r))
-  | .branch c k' => .branch c fun r => .inl (.handler op k s (k' r))
-
-/-- The handled machine, started at `st`. Source jumps hand off to the handled jump target.
-Source branches are not handled: they become branches of `M` through `b`. -/
-def interpAt (h : σ → (op : E.Op) → CoFree F M (σ × E.Resp op)) (b : NonDeterminism.Map N M) :
-    (m : CoFree E N A) → InterpState h m.State m.Jump → CoFree F M (σ × A)
-  | ⟨S, J, _, step, target⟩, st =>
-    { State := InterpState h S J
-      Jump := σ × J
-      initial := st
-      step := fun
-        | .source s x => match step x with
-          | .pure a => .pure (s, a)
-          | .silent (.inl x') => .silent (.inl (.source s x'))
-          | .silent (.inr j) => .silent (.inr (s, j))
-          | .impure op k => interpHandle h op k s (h s op).initPos
-          | .branch c k => .branch (b.op c) fun r => match k (b.resp c r) with
-            | .inl x' => .inl (.source s x')
-            | .inr j => .inr (s, j)
-        | .handler op k s p => interpHandle h op k s p
-      target := fun (s, j) => interpAt h b (target j) (.source s (target j).initial) }
-
-def interpState (h : σ → (op : E.Op) → CoFree F M (σ × E.Resp op)) (b : NonDeterminism.Map N M)
-    (s : σ) (m : CoFree E N A) : CoFree F M (σ × A) :=
-  interpAt h b m (.source s m.initial)
-
-end Interp
 
 /-! ### Recursion -/
 
