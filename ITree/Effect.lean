@@ -23,7 +23,7 @@ structure NonDeterminism : Type (u+1) where
 
 namespace Effect
 
-abbrev sum (E F : Effect.{u}) : Effect.{u} where
+def sum (E F : Effect.{u}) : Effect.{u} where
   Op := E.Op ⊕ F.Op
   Resp
     | .inl op => E.Resp op

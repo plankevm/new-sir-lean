@@ -4,11 +4,11 @@ import Lint.BinderScope
 universe u
 
 structure ByteSize where
-  bytes : Nat
-  valid : 1 ≤ bytes ∧ bytes ≤ 32 := by decide
+  toNat : Nat
+  valid : 1 ≤ toNat ∧ toNat ≤ 32 := by decide
   deriving DecidableEq
 
-def ByteSize.bits (s : ByteSize) : Nat := s.bytes * 8
+def ByteSize.asBits (s : ByteSize) : Nat := s.toNat * 8
 
 abbrev Word := BitVec 256
 
@@ -23,8 +23,8 @@ def ofNat (n : Nat) : Word := BitVec.ofNat bits n
 
 def size : Nat := 2^bits
 
-def has_size (x : Word) (s : ByteSize) : Prop :=
-  x.toNat < 2 ^ s.bits
+def HasSize (x : Word) (s : ByteSize) : Prop :=
+  x.toNat < 2 ^ s.asBits
 
 def lowBits (n : Nat) (w : Word) : Word := (w.setWidth n).setWidth bits
 

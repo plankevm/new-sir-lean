@@ -1,6 +1,6 @@
 import Host.Word
+import Host.Keccak
 import Host.NatRange
 import Host.Effect
-import Host.Storage
+import Host.World
 import Host.Outcome
-import Host.Outcome.Proofs

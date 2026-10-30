@@ -1,116 +1,43 @@
+import ITree
 import Std.Data.TreeMap
 import Sir.Effect
-import Sir.Keccak
+import Sir.Layout
+import Host.Effect
+import Host.Keccak
 
-/-! The evaluator: one `CoFree` program per entry point. It owns only control and locals;
-internal calls are `CoFree.fix` frames and blocks are `CoFree.iter` iterations. -/
+open CoFree
+open Host
 
 namespace Sir
 
-open Host
-open CoFree (perform)
+abbrev EvalE := HostE ⊕ₑ SirE
+abbrev SirM (α : Type) : Type 1 := CoFree EvalE .none α
 
-def MainImmutablesMap (p : Program) : Type := (i : Fin p.immutables.size) → { v : Word // v.has_size p.immutables[i] }
+abbrev Vars := Std.TreeMap VarId Word
 
-/-- The values `getimmutable` reads: fixed for a whole run, one per immutable, each fitting the
-immutable's declared size. -/
-inductive Immutables (p : Program) : Entry → Type
-  | init : Immutables p .init
-  | main : MainImmutablesMap p → Immutables p .main
+def ub {α : Type} (ub : UB) : SirM α := do nomatch ← perform (Sum.inr <| .ub ub)
+def malformed {α : Type} : SirM α := ub .malformed
 
-def Immutables.values {p : Program} : (imm : Immutables p .main) → MainImmutablesMap p
-  | .main m => m
+namespace Vars
 
-instance {p : Program} : GetElem? (Immutables p .main) ImmutableId Word (fun _ => p.ValidImmutableId) where
-  getElem imm i valid := (imm.values ⟨i.id, valid⟩).val
-  getElem? imm i :=
-    if h : i.id < p.immutables.size
-    then some <| imm.values ⟨i.id, h⟩
-    else .none
+def lookup (l : Vars) (v : VarId) : SirM Word := do
+  let some w := l[v]? | malformed
+  return w
 
-/-- Immutable `i` takes the low bytes of `ws[i]` (0 if absent). -/
-def Immutables.ofWords (p : Program) (ws : Array Word) (h : ws.size = p.immutables.size) : Immutables p .main :=
-  .main fun i =>
-    ⟨ws[i].lowBits p.immutables[i].bits, by {
-      simp [Word.has_size]
-      exact (Word.lowBits_lt _ _)
-    }⟩
+def lookupAll (l : Vars) (vs : Array VarId) : SirM (Array Word) := vs.mapM (lookup l)
 
+def assignAll (l₀ : Vars) (vs : Array VarId) (ws : Array Word) : SirM Vars := do
+  unless vs.size = ws.size do malformed
+  return (vs.zip ws).foldl (fun lᵢ (v, w) => lᵢ.insert v w) l₀
 
-abbrev MappingOffset (container bytes : ByteArray) : Type :=
-  { offset : UInt32 // ∀ i, (h : i < bytes.size) → some bytes[i] = container[offset.toNat + i]? }
+end Vars
 
-def MappingOffset.range {c b : ByteArray} (o : MappingOffset c b) : NatRange := ⟨o.val.toNat, b.size⟩
-
-def zeros (size : Nat) : ByteArray := ⟨Array.replicate size 0⟩
-
-/-- Facts about the compiled bytecode that SIR can observe. They are fixed by the compiler, not
-by the environment, so they are a parameter of the semantics rather than effects. -/
-structure Layout (p : Program) where
-  init : ByteArray
-  init_u32 : init.size < UInt32.size
-
-  main : ByteArray
-  main_u32 : main.size < UInt32.size
-
-  mainStartOffset : MappingOffset init main
-  initDataOffsets : (i : Fin p.data.size) → MappingOffset init p.data[i]
-  mainDataOffsets : (i : Fin p.data.size) → i ∈ p.mainDatas → MappingOffset main p.data[i]
-
-  immutableOffsets : (i : Fin p.immutables.size) → List (MappingOffset main (zeros p.immutables[i].bytes))
-
-  atLeastOne_immOffsets : ∀ i, (immutableOffsets i).length > 0
-  no_imm_imm_overlap :
-    ∀ i i',
-    ∀ mo : Fin (immutableOffsets i).length,
-    ∀ mo' : Fin (immutableOffsets i').length,
-      (i = i' ∧ mo ≍ mo') ∨
-      NatRange.Disjoint
-        (immutableOffsets i)[mo].range
-        (immutableOffsets i')[mo'].range
-  no_imm_data_overlap :
-    ∀ data im h,
-    ∀ imo ∈ immutableOffsets im,
-      NatRange.Disjoint
-        imo.range
-        (mainDataOffsets data h).range
-
-
-structure Ctx  where
+structure Context where
   program : Program
   layout : Layout program
-  entry : Entry
-  immutables : Immutables program
+  env : Env
+  immutables : Immutables program env.mode.kind
 
-abbrev CallI := FunctionId × Array Word
-abbrev EvalE := Effect.Rec CallI (Array Word) SirE
-abbrev Locals := Std.TreeMap VarId Word
-
-def mem (op : MemOp) : CoFree EvalE .none (MemOp.Resp op) := perform (E := EvalE) (.inr (.inl op))
-
-def host (op : HostOp) : CoFree EvalE .none (HostOp.Resp op) := perform (E := EvalE) (.inr (.inr op))
-
-def halt {α : Type} (op : HostOp) (h : HostOp.Resp op = Empty := by rfl) : CoFree EvalE .none α := do
-  let e ← host op
-  Empty.elim (h ▸ e)
-
-/-- A malformed program is UB, so it is never confused with a valid halt and `Safe` programs are
-well-formed. -/
-def malformed {α : Type} : CoFree EvalE .none α := halt (.ub .malformed)
-
-def lookup (l : Locals) (v : VarId) : CoFree EvalE .none Word := do
-  let some w := l[v]? | malformed
-  pure w
-
-def lookupAll (l : Locals) (vs : Array VarId) : CoFree EvalE .none (Array Word) :=
-  vs.mapM (lookup l)
-
-def assignAll (l : Locals) (vs : Array VarId) (ws : Array Word) : CoFree EvalE .none Locals := do
-  unless vs.size = ws.size do malformed
-  pure ((vs.zip ws).foldl (fun l (v, w) => l.insert v w) l)
-
-def Ctx.requireEntry (ctx : Ctx) (e : Entry) : CoFree EvalE .none Unit :=
-  unless ctx.entry = e do malformed
 
 def read (offset length : Word) : CoFree EvalE .none ByteArray :=
   mem (.read offset.toNat length.toNat)
@@ -173,7 +100,7 @@ def TernOp.eval : TernOp → Word → Word → Word → Word
   | .addmod, a, b, n => Word.addmod a b n
   | .mulmod, a, b, n => Word.mulmod a b n
 
-def Query.eval (env : Env) : Query → CoFree EvalE .none Word
+def Query.eval (env : Env) : Query → SirM Word
   | .gas => host .gas
   | .selfbalance => host .selfbalance
   | .address => pure env.address.toWord
@@ -190,7 +117,7 @@ def Query.eval (env : Env) : Query → CoFree EvalE .none Word
   | .basefee => pure env.basefee
   | .blobbasefee => pure env.blobbasefee
 
-def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE .none Word
+def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .unop op a => pure (op.eval a)
   | .binop op a b => pure (op.eval a b)
   | .ternop op a b c => pure (op.eval a b c)
@@ -237,8 +164,8 @@ def Expr.eval (ctx : Ctx) : Expr Word → CoFree EvalE .none Word
     let some v := ctx.immutables[i]? | malformed
     pure v
 
-def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE .none Unit
-  | .mstore size ptr v => write ptr (Word.toBytes size.val v)
+def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
+  | .mstore size ptr v => write ptr (Word.toBytes size.toNat v)
   | .mcopy dst src length => mem (.copy dst.toNat src.toNat length.toNat)
   | .sstore k v => host (.sstore k v)
   | .tstore k v => host (.tstore k v)
@@ -264,21 +191,6 @@ def Stmt.exec (ctx : Ctx) : Stmt Word → CoFree EvalE .none Unit
       mem (.write (ptr.toNat + r) (Word.toBytes size.val v))
   | .noop => pure ()
 
-abbrev Call := FunctionId → Array Word → CoFree EvalE .none (Array Word)
-
-def execOp (ctx : Ctx) (call : Call) (l : Locals) : Operation → CoFree EvalE .none Locals
-  | .«let» x e => do
-    let e ← e.resolve (lookup l)
-    let w ← e.eval ctx
-    pure (l.insert x w)
-  | .icall f ins outs => do
-    let args ← lookupAll l ins
-    let results ← call f args
-    assignAll l outs results
-  | .stmt s => do
-    let s ← s.resolve (lookup l)
-    s.exec ctx
-    pure l
 
 def block (fn : Function) (b : BlockId) : CoFree EvalE .none Block := do
   let some blk := fn.blocks[b.id]? | malformed
@@ -320,31 +232,27 @@ def execControl (call : Call) (fn : Function) (l : Locals) (blk : Block) :
     let _ ← call g args
     malformed
 
-def evalFunction (ctx : Ctx) : CallI → CoFree SirE .none (Array Word) :=
-  CoFree.fix fun callI (f, args) => do
-    let call : Call := fun g args => callI (g, args)
-    let some fn := ctx.program.functions[f.id]? | malformed
-    let entry ← block fn fn.entry
-    let l ← assignAll ∅ entry.inputs args
-    CoFree.iter (fn.entry, l) fun (b, l) => do
-      let blk ← block fn b
-      let mut l := l
-      for op in blk.ops do
-        l ← execOp ctx call l op
-      execControl call fn l blk
+abbrev CallI := FunctionId × Array Word
+abbrev CallO  := Array Word
+abbrev CallE := Effect.Rec CallI CallO EvalE
 
-def malformedTop {α : Type} : CoFree SirE .none α := do
-  nomatch ← perform (E := SirE) (.inr (.ub .malformed))
-
-/-- An entry point runs until a halting control; entry functions take no inputs and
-must not return. -/
-def runEntry (p : Program) (layout : Layout) (imm : Immutables p) (env : Env) (e : Entry) :
-    CoFree SirE .none Empty := do
-  let f? := match e with
-    | .init => some p.init
-    | .main => p.main
-  let some f := f? | malformedTop
-  let _ ← evalFunction ⟨p, layout, e, imm, env⟩ (f, #[])
-  malformedTop
+def run (p : Program) (layout : Layout p) (env : Env) (imm : Immutables p env.mode.kind) : SirM Empty := do
+  let evalFn : CallI → SirM CallO := CoFree.fix fun evalFn (fn, args) => do
+    let some fn := p[fn]? | malformed
+    let mut some block := fn[fn.entry]? | malformed
+    let mut vars ← Vars.assignAll ∅ block.inputs args
+    let mut ctx : Context := ⟨p, layout, env, imm⟩
+    repeat
+      for op in block.ops do
+        match ← liftM (op.resolve vars.lookup) with
+        | .«let» out expr =>
+            let value ← expr.eval ctx
+            vars := vars.insert out value
+        | .icall fn args outs =>
+            let results ← evalFn (fn, args)
+            vars ← vars.assignAll outs results
+        | .stmt s => s.exec ctx
+  let _ ← evalFn (p[env.mode.kind], #[])
+  malformed -- top-level entry point function returned
 
 end Sir

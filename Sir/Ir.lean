@@ -1,5 +1,6 @@
 import Host.Word
 import Host.NatRange
+import Host.Effect
 
 /-! The SIR AST: plankc's `sir-data` (`EthIRProgram`) minus static allocation and `freeptr`, with
 three structural changes. Each function owns its blocks, so a jump can only target a block of the
@@ -114,10 +115,10 @@ inductive Stmt (α : Type)
   | setImmutable (immutable : ImmutableId) (runtimePtr value : α)
   | noop
 
-inductive Operation
-  | «let» (out : VarId) (e : Expr VarId)
-  | icall (function : FunctionId) (ins outs : Array VarId)
-  | stmt (s : Stmt VarId)
+inductive Operation (α : Type)
+  | «let» (out : VarId) (e : Expr α )
+  | icall (function : FunctionId) (ins : Array α) (outs : Array VarId)
+  | stmt (s : Stmt α)
 
 /-- How a block ends. Block ids are local to the enclosing function. -/
 inductive Control (α : Type)
@@ -191,6 +192,11 @@ def Stmt.resolve (l : VarId → m Word) : Stmt VarId → m (Stmt Word)
   | .setImmutable i p v => do return .setImmutable i (← l p) (← l v)
   | .noop => pure .noop
 
+def Operation.resolve (l : VarId → m Word) : Operation VarId → m (Operation Word)
+  | .«let» out expr => do let expr ← expr.resolve l; return .let out expr
+  | .icall fn ins outs => do let ins ← ins.mapM l; return .icall fn ins outs
+  | .stmt s => do return .stmt (← s.resolve l)
+
 def Control.resolve (l : VarId → m Word) : Control VarId → m (Control Word)
   | .iret => pure .iret
   | .continuesTo t => pure (.continuesTo t)
@@ -208,7 +214,7 @@ end resolve
 structure Block where
   inputs : Array VarId := #[]
   outputs : Array VarId := #[]
-  ops : Array Operation := #[]
+  ops : Array (Operation VarId) := #[]
   control : Control VarId
 
 inductive ReturnKind
@@ -220,6 +226,10 @@ structure Function where
   returns : ReturnKind
   blocks : Array Block
 
+instance : GetElem? Function BlockId Block (fun fn bi => bi.id < fn.blocks.size) where
+  getElem fn bid v := fn.blocks[bid.id]
+  getElem? fn bid := fn.blocks[bid.id]?
+
 structure Program where
   init : FunctionId
   main : FunctionId
@@ -230,16 +240,26 @@ structure Program where
 
 namespace Program
 
-def ValidDataId (p : Program) : DataId → Prop := fun id => id.id < p.data.size
-
-def ValidImmutableId (p : Program) : ImmutableId → Prop := fun id => id.id < p.immutables.size
+def ValidFunctionId (p : Program) (id : FunctionId) : Prop := id.id < p.functions.size
+def ValidDataId (p : Program) (id : DataId) : Prop := id.id < p.data.size
+def ValidImmutableId (p : Program) (id : ImmutableId) : Prop := id.id < p.immutables.size
 
 end Program
 
-inductive Entry
-  | init
-  | main
-  deriving DecidableEq, Repr
+instance : GetElem? Program Host.ExecutionModeKind FunctionId (fun _ _ => True) where
+  getElem p
+    | .creation, _ => p.init
+    | .call, _ => p.main
+  getElem? p
+    | .creation => some p.init
+    | .call => some p.main
+  getElem! p
+    | .creation => p.init
+    | .call => p.main
+
+instance : GetElem? Program FunctionId Function Program.ValidFunctionId where
+  getElem p id valid := p.functions[id.id]
+  getElem? p id := p.functions[id.id]?
 
 instance : GetElem? Program ImmutableId ByteSize Program.ValidImmutableId where
   getElem p id valid := p.immutables[id.id]
@@ -248,6 +268,5 @@ instance : GetElem? Program ImmutableId ByteSize Program.ValidImmutableId where
 instance : GetElem? Program DataId ByteArray Program.ValidDataId where
   getElem p id valid := p.data[id.id]
   getElem? p id := p.data[id.id]?
-
 
 end Sir

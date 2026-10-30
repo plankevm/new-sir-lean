@@ -1,29 +1,23 @@
 import ITree
 import Host.Word
 import Host.NatRange
+import Host.World
+import Host.Outcome
 
-/-! The EVM host interface of one call frame, shared by every IR that compiles to the EVM.
-
-`Env` holds what stays fixed for the whole frame, so reading it is pure. `HostE` is everything
-else the frame asks of the outside: gas, its own storage and transient storage, the rest of the
-world (balances, code), calls, creations, logs, and how the frame ends. It is the same for every
-IR, so runs of different IRs can be related. A frame ends normally (`stop`, `ret`,
-`selfdestruct`), by reverting, by an exceptional halt (`invalid`: every EVM exceptional halt
-looks the same from outside), or with undefined behavior (`ub`), which an IR may reach and the
-EVM never does; a malformed IR program is UB, never a valid halt. `Host.Storage` makes storage
-and the world concrete.
-
-The host has no nondeterminism of its own: an IR's choices (say, where SIR places an allocation)
-are its own `NonDeterminism`, which every handler here passes through untouched. -/
+open CoFree
 
 namespace Host
 
-inductive CallKind
-  | call (value : Word)
-  | callcode (value : Word)
-  | delegatecall
-  | staticcall
-  deriving DecidableEq, Repr
+inductive ExecutionModeKind : Type | creation | call
+
+inductive ExecutionMode : Type
+  | creation (constructorData : ByteArray)
+  | call (static : Bool) (calldata : ByteArray)
+
+def ExecutionMode.kind : ExecutionMode → ExecutionModeKind
+  | creation _ => .creation
+  | call _ _ => .call
+  
 
 /-- The frame's constants: the transaction, the block, the code being run, and whether the frame
 may change state. -/
@@ -43,51 +37,80 @@ structure Env where
   blobbasefee : Word
   blockhash : Word → Word
   blobhash : Word → Word
-  calldata : ByteArray
-  code : ByteArray
-  static : Bool
+  mode : ExecutionMode
 
-/-- Undefined behavior: `malformed` for an ill-formed IR program, the rest reachable by well-formed
-programs depending on the values they compute. -/
-inductive UB
-  | malformed
-  | switchNoMatch
-  | memoryOutOfBounds (offset length : Nat)
-  | uninitializedRead (offset length : Nat)
-  | outOfMemory (size : Nat)
-  deriving DecidableEq, Repr
+def Env.static (e : Env) : Bool := match e.mode with
+  | .creation _ => false
+  | .call static _ => static
+
+def Env.calldata (e : Env) : ByteArray := match e.mode with
+  | .creation _ => ⟨#[]⟩
+  | .call _ cd => cd
 
 inductive HostOp
   | gas
   | selfbalance
   | balance (account : Address)
+  | extcode (account : Address)
   | extcodehash (account : Address)
   | sload (key : Word)
   | tload (key : Word)
   | sstore (key value : Word)
   | tstore (key value : Word)
-  | extcode (account : Address)
   | log (topics : Array Word) (data : ByteArray)
   | call (kind : CallKind) (gas : Word) (account : Address) (input : ByteArray)
   | create (value : Word) (salt : Option Word) (initcode : ByteArray)
-  | stop
-  | ret (data : ByteArray)
-  | revert (data : ByteArray)
-  | invalid
-  | selfdestruct (beneficiary : Address)
-  | ub (u : UB)
-  deriving DecidableEq
+  | halt (outcome : Outcome)
 
 def HostOp.Resp : HostOp → Type
   | .gas | .selfbalance | .balance _ | .extcodehash _ => Word
+  | .extcode _ => ByteArray
   | .sload _ | .tload _ => Word
   | .sstore .. | .tstore .. => Unit
-  | .extcode _ => ByteArray
   | .log .. => Unit
   | .call .. => Bool × ByteArray
   | .create .. => Address × ByteArray
-  | .stop | .ret _ | .revert _ | .invalid | .selfdestruct _ | .ub _ => Empty
+  | .halt _ => Empty
 
-abbrev HostE : Effect := { Op := HostOp, Resp := HostOp.Resp }
+
+abbrev HostE : Effect := ⟨HostOp, HostOp.Resp⟩
+
+variable {N : NonDeterminism}
+
+def host (op: HostE.Op) : CoFree HostE N (HostE.Resp op)
+  := CoFree.perform (E := HostE) op
+
+def gas := host (N := N) .gas
+def selfbalance := host (N := N) .selfbalance
+def balance (a : Address) := host (N := N) <| .balance a
+def extcodehash (a : Address) := host (N := N) <| .extcodehash a
+def extcode (a : Address) := host (N := N) <| .extcode a
+
+def sload (k : Word) := host (N := N) <| .sload k
+def tload (k : Word) := host (N := N) <| .tload k
+def sstore (k v : Word) := host (N := N) <| .sstore k v
+def tstore (k v : Word) := host (N := N) <| .tstore k v
+
+def log0 (data : ByteArray) := host (N := N) <| .log #[] data
+def log1 (data : ByteArray) (t₀ : Word) := host (N := N) <| .log #[t₀] data
+def log2 (data : ByteArray) (t₀ t₁ : Word) := host (N := N) <| .log #[t₀, t₁] data
+def log3 (data : ByteArray) (t₀ t₁ t₂ : Word) := host (N := N) <| .log #[t₀, t₁, t₂] data
+def log4 (data : ByteArray) (t₀ t₁ t₂ t₃ : Word) := host (N := N) <| .log #[t₀, t₁, t₂, t₃] data
+
+def call (gas : Word) (a : Address) (value : Word) (input : ByteArray) :=
+  host (N := N) <| .call (.call value) gas a input
+def staticcall (gas : Word) (a : Address) (input : ByteArray) :=
+  host (N := N) <| .call .staticcall gas a input
+def delegatecall (gas : Word) (a : Address) (input : ByteArray) :=
+  host (N := N) <| .call .delegatecall gas a input
+def callcode (gas : Word) (a : Address) (value : Word) (input : ByteArray) :=
+  host (N := N) <| .call (.callcode value) gas a input
+
+def create (value : Word) (code : ByteArray) :=
+  host (N := N) <| .create value none code
+def create2 (value salt : Word) (code : ByteArray) :=
+  host (N := N) <| .create value (some salt) code
+
+def halt (outcome : Outcome) := host (N := N) <| .halt outcome
 
 end Host

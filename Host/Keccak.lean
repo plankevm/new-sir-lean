@@ -2,7 +2,7 @@ import Host.Word
 
 /-! Keccak-256 (the pre-standard padding used by the EVM), in pure Lean. -/
 
-namespace Sir.Keccak
+namespace Host.Keccak
 
 def roundConstants : Array UInt64 := #[
   0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000,
@@ -52,6 +52,6 @@ def hash (m : ByteArray) : ByteArray :=
       if i.val < rate / 8 then st[i]! ^^^ lane p (blk * rate + 8 * i.val) else st[i]!)
   ⟨(Array.range 32).map fun i => (state[i / 8]! >>> (8 * (i % 8)).toUInt64).toUInt8⟩
 
-end Sir.Keccak
+end Host.Keccak
 
-def Word.keccak256 (m : ByteArray) : Word := Word.ofBytes (Sir.Keccak.hash m)
+def Word.keccak256 (m : ByteArray) : Word := Word.ofBytes (Host.Keccak.hash m)

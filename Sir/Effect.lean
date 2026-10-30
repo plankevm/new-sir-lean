@@ -1,39 +1,42 @@
 import Host
+import ITree.Effect
+import ITree.Machine
 import Sir.Ir
 
-/-! The effects of a SIR run.
-
-The evaluator reads `Env` and emits `SirE = Mem ⊕ₑ HostE`, deterministically. `Env` holds what
-stays fixed for the whole frame, so reading it is pure: equivalence can ignore, reorder or drop
-those reads. `Mem` (allocation, byte reads/writes, the return data buffer) is frame-local and
-handled by `Sir.Memory`, which places each allocation by a branch (`Choice.placement`): SIR's own
-nondeterminism `SirND`. `HostE` is the shared EVM host interface (`Host.Effect`), which knows
-nothing of `SirND` and passes it through; `Host.interpStore` then makes storage and the world
-concrete, leaving `Exec`: gas, logs, calls, creations and the end of the frame. -/
 
 namespace Sir
 
-open Host
+open CoFree
 
-inductive MemOp
+inductive UB
+  | malformed
+  | switchNoMatch
+  | memoryOutOfBounds (offset length : Nat)
+  | uninitializedRead (offset length : Nat)
+  | outOfMemory (size : Nat)
+  deriving DecidableEq, Repr
+
+structure MemCopy where
+  dst : Nat
+  src : Nat
+  length : Nat
+
+inductive SirOp
   | alloc (zeroed : Bool) (size : Nat)
   | read (offset length : Nat)
   | write (offset : Nat) (bytes : ByteArray)
-  | copy (dst src length : Nat)
-  | returnData
-  | setReturnData (bytes : ByteArray)
+  | copy (copy : MemCopy)
+  | ub (ub : UB)
 
-def MemOp.Resp : MemOp → Type
+def SirOp.Resp : SirOp → Type
   | .alloc .. => Word
-  | .read .. => ByteArray
+  | .read _ length => { b : ByteArray // b.size = length }
   | .write .. => Unit
   | .copy .. => Unit
-  | .returnData => ByteArray
-  | .setReturnData _ => Unit
+  | .ub _ => Empty
 
-abbrev Mem : Effect := { Op := MemOp, Resp := MemOp.Resp }
 
-abbrev SirE : Effect := Mem ⊕ₑ HostE
+abbrev SirE : Effect := ⟨SirOp, SirOp.Resp⟩
 
 /-- `[start, start + size)` fits in the address space and misses every live allocation `(start, size)`. -/
 def Placement (a' : NatRange) (live : List NatRange) : Prop :=
@@ -42,11 +45,8 @@ def Placement (a' : NatRange) (live : List NatRange) : Prop :=
 instance (live : List NatRange) (a' : NatRange) : Decidable (Placement a' live) := by
   unfold Placement; infer_instance
 
-instance {α : Type} (p : α → Prop) (l : List α) [DecidablePred p] : Decidable (∃ x ∈ l, p x) := by
-  infer_instance
-
 instance {live : List NatRange} {size : Nat} : Decidable (∃ start, Placement ⟨start, size⟩ live) :=
-  if h : ∃ start ∈ 0 :: live.map (fun a => a.end), Placement ⟨start, size⟩ live
+  if h : ∃ start ∈ 0 :: live.map (·.end), Placement ⟨start, size⟩ live
   then .isTrue (let ⟨start, _, h⟩ := h; ⟨start, h⟩)
   else .isFalse fun ⟨start, hs⟩ => h <| by
     -- A placement at neither 0 nor a live end slides down by one and stays a placement.
@@ -61,26 +61,17 @@ instance {live : List NatRange} {size : Nat} : Decidable (∃ start, Placement �
         simp only [NatRange.Disjoint, NatRange.end] at *
         omega
 
-/-- A choice nobody controls. `placement`: where a new allocation of `size` bytes goes, among
-the placements that miss the `live` allocations; made only when some placement exists.
-`choose n`: one of `n` alternatives. -/
 inductive Choice
   | placement (size : Nat) (live : List NatRange) (fits : ∃ start, Placement ⟨start, size⟩ live)
-  | choose (n : Nat) (pos : 0 < n)
   deriving DecidableEq
 
 def Choice.Resp : Choice → Type
   | .placement size live _ => { start : Nat // Placement ⟨start, size⟩ live }
-  | .choose n _ => Fin n
 
 abbrev SirND : NonDeterminism where
   Op := Choice
   Resp := Choice.Resp
   resp_nonempty
     | .placement _ _ ⟨start, h⟩ => ⟨⟨start, h⟩⟩
-    | .choose _ pos => ⟨⟨0, pos⟩⟩
-
-/-- What a run emits once `Mem`, storage and the world are handled. -/
-abbrev Exec : Effect := WorldE
 
 end Sir
