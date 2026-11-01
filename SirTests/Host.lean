@@ -108,7 +108,7 @@ def answerWorld (after : Store → State) : (op : WorldOp) → Except ExecOutcom
   | .gas => pure (1000000 : Word)
   | .log .. => pure ()
   | .call .staticcall .. => pure ((true, .empty) : Bool × ByteArray)
-  | .call (.call _) _ _ _ st | .call (.callcode _) _ _ _ st | .call .delegatecall _ _ _ st =>
+  | .call (.call _) _ _ _ st | .call .delegatecall _ _ _ st =>
     pure ((true, .empty, after st) : Bool × ByteArray × State)
   | .create _ salt _ st => pure (((if salt.isSome then 0xC2 else 0xC1 : Address), .empty, after st) : Address × ByteArray × State)
   | .ret data st => throw (.done (.ret data.toList) (some st))

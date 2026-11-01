@@ -6,7 +6,6 @@ namespace Host
 
 inductive CallKind
   | call (value : Word)
-  | callcode (value : Word)
   | delegatecall
   | staticcall
   deriving DecidableEq, Repr

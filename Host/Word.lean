@@ -26,6 +26,8 @@ def size : Nat := 2^bits
 def HasSize (x : Word) (s : ByteSize) : Prop :=
   x.toNat < 2 ^ s.asBits
 
+instance (x : Word) : DecidablePred (x.HasSize) := by unfold HasSize; infer_instance
+
 def lowBits (n : Nat) (w : Word) : Word := (w.setWidth n).setWidth bits
 
 private def mkD : Nat → List Word
@@ -62,12 +64,14 @@ theorem lowBits_lt (n : Nat) (w : Word) : (Word.lowBits n w).toNat < 2 ^ n := by
 def ofBool (b : Bool) : Word := if b then 1 else 0
 
 /-- The low `n` bytes of `w`, big-endian. -/
-def toBytes (n : Nat) (w : Word) : ByteArray :=
-  ⟨(Array.range n).map fun i => (w.toNat >>> (8 * (n - 1 - i))).toUInt8⟩
+def toBytes (n : ByteSize) (w : Word) : ByteArray :=
+  ⟨(Array.range n.toNat).map fun i => (w.toNat >>> (8 * (n.toNat - 1 - i))).toUInt8⟩
 
 /-- Big-endian bytes as a word, keeping the low 256 bits. -/
 def ofBytes (b : ByteArray) : Word :=
   ofNat (b.data.foldl (fun acc x => acc * 256 + x.toNat) 0)
+
+def ofU32 (x : UInt32) : Word := x.toBitVec.setWidth bits
 
 def div (a b : Word) : Word := if b = 0 then 0 else a / b
 

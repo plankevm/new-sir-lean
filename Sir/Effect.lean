@@ -9,28 +9,29 @@ namespace Sir
 open CoFree
 
 inductive UB
-  | malformed
+  | malformed (reason : String)
   | switchNoMatch
+  | illegalOverflow
   | memoryOutOfBounds (offset length : Nat)
   | uninitializedRead (offset length : Nat)
   | outOfMemory (size : Nat)
   deriving DecidableEq, Repr
 
 structure MemCopy where
-  dst : Nat
-  src : Nat
-  length : Nat
+  dst : Word
+  src : Word
+  length : Word
 
 inductive SirOp
-  | alloc (zeroed : Bool) (size : Nat)
-  | read (offset length : Nat)
-  | write (offset : Nat) (bytes : ByteArray)
+  | alloc (zeroed : Bool) (size : Word)
+  | read (offset length : Word)
+  | write (offset : Word) (bytes : ByteArray)
   | copy (copy : MemCopy)
   | ub (ub : UB)
 
 def SirOp.Resp : SirOp → Type
   | .alloc .. => Word
-  | .read _ length => { b : ByteArray // b.size = length }
+  | .read .. => ByteArray
   | .write .. => Unit
   | .copy .. => Unit
   | .ub _ => Empty

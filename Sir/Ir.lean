@@ -88,13 +88,12 @@ inductive Expr (α : Type)
   | create (value offset length : α)
   | create2 (value offset length salt : α)
   | call (gas account value argsOffset argsLength retOffset retLength : α)
-  | callcode (gas account value argsOffset argsLength retOffset retLength : α)
   | delegatecall (gas account argsOffset argsLength retOffset retLength : α)
   | staticcall (gas account argsOffset argsLength retOffset retLength : α)
   | dataOffset (data : DataId)
-  | runtimeStartOffset
+  | mainStartOffset
+  | mainLength
   | initEndOffset
-  | runtimeLength
   | getImmutable (immutable : ImmutableId)
 
 /-- Operations with no output, over operands of type `α`, in EVM stack order. -/
@@ -112,7 +111,7 @@ inductive Stmt (α : Type)
   | log2 (offset length topic0 topic1 : α)
   | log3 (offset length topic0 topic1 topic2 : α)
   | log4 (offset length topic0 topic1 topic2 topic3 : α)
-  | setImmutable (immutable : ImmutableId) (runtimePtr value : α)
+  | setImmutable (immutable : ImmutableId) (mainCodePtr value : α)
   | noop
 
 inductive Operation (α : Type)
@@ -163,16 +162,14 @@ def Expr.resolve (l : VarId → m Word) : Expr VarId → m (Expr Word)
   | .create2 v o n s => do return .create2 (← l v) (← l o) (← l n) (← l s)
   | .call g a v ao an ro rn =>
     do return .call (← l g) (← l a) (← l v) (← l ao) (← l an) (← l ro) (← l rn)
-  | .callcode g a v ao an ro rn =>
-    do return .callcode (← l g) (← l a) (← l v) (← l ao) (← l an) (← l ro) (← l rn)
   | .delegatecall g a ao an ro rn =>
     do return .delegatecall (← l g) (← l a) (← l ao) (← l an) (← l ro) (← l rn)
   | .staticcall g a ao an ro rn =>
     do return .staticcall (← l g) (← l a) (← l ao) (← l an) (← l ro) (← l rn)
   | .dataOffset d => pure (.dataOffset d)
-  | .runtimeStartOffset => pure .runtimeStartOffset
+  | .mainStartOffset => pure .mainStartOffset
+  | .mainLength => pure .mainLength
   | .initEndOffset => pure .initEndOffset
-  | .runtimeLength => pure .runtimeLength
   | .getImmutable i => pure (.getImmutable i)
 
 def Stmt.resolve (l : VarId → m Word) : Stmt VarId → m (Stmt Word)
@@ -243,6 +240,12 @@ namespace Program
 def ValidFunctionId (p : Program) (id : FunctionId) : Prop := id.id < p.functions.size
 def ValidDataId (p : Program) (id : DataId) : Prop := id.id < p.data.size
 def ValidImmutableId (p : Program) (id : ImmutableId) : Prop := id.id < p.immutables.size
+
+instance {p : Program} : DecidablePred p.ValidImmutableId := by
+  unfold ValidImmutableId; infer_instance
+
+instance {p : Program} : DecidablePred p.ValidDataId := by
+  unfold ValidDataId; infer_instance
 
 end Program
 

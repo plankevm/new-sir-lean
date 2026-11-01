@@ -5,7 +5,6 @@ import Sir.Layout
 import Host.Effect
 import Host.Keccak
 
-open CoFree
 open Host
 
 namespace Sir
@@ -15,19 +14,27 @@ abbrev SirM (α : Type) : Type 1 := CoFree EvalE .none α
 
 abbrev Vars := Std.TreeMap VarId Word
 
-def ub {α : Type} (ub : UB) : SirM α := do nomatch ← perform (Sum.inr <| .ub ub)
-def malformed {α : Type} : SirM α := ub .malformed
+private def sir_op (op : SirE.Op) : SirM (SirE.Resp op) := CoFree.perform (E := EvalE) (Sum.inr op)
+def alloc_zeroed (size : Word) := sir_op (.alloc true size)
+def alloc_uninit (size : Word) := sir_op (.alloc false size)
+def mem.read (offset len : Word) := sir_op (.read offset len)
+def mem.write (offset : Word) (bytes : ByteArray) := sir_op (.write offset bytes)
+def mem.copy (copy : MemCopy)  := sir_op (.copy copy)
+def ub {α : Type} (ub : UB) : SirM α := do nomatch ← sir_op (.ub ub)
+def malformed {α : Type} (reason : String) := ub (α := α) <| .malformed reason
+def returndata : SirM ByteArray := do Host.returndata (N := .none)
+def returndata.size : SirM Word := (·.size) <$> returndata
 
 namespace Vars
 
 def lookup (l : Vars) (v : VarId) : SirM Word := do
-  let some w := l[v]? | malformed
+  let some w := l[v]? | malformed "undefined var"
   return w
 
 def lookupAll (l : Vars) (vs : Array VarId) : SirM (Array Word) := vs.mapM (lookup l)
 
 def assignAll (l₀ : Vars) (vs : Array VarId) (ws : Array Word) : SirM Vars := do
-  unless vs.size = ws.size do malformed
+  unless vs.size = ws.size do malformed "var assign arity mismatch"
   return (vs.zip ws).foldl (fun lᵢ (v, w) => lᵢ.insert v w) l₀
 
 end Vars
@@ -38,35 +45,19 @@ structure Context where
   env : Env
   immutables : Immutables program env.mode.kind
 
+def Context.checkStateful (ctx : Context) : SirM Unit :=
+  unless ctx.env.static do Host.halt (N := .none) .invalid
 
-def read (offset length : Word) : CoFree EvalE .none ByteArray :=
-  mem (.read offset.toNat length.toNat)
+def Context.code (ctx : Context) : ByteArray := match hmode : ctx.env.mode with
+  | .creation ctorData => ctx.layout.init ++ ctorData
+  | .call a b =>
+      let imms := ctx.immutables
+      have h_eq : ctx.env.mode.kind = .call := by simp [ExecutionMode.kind, hmode]
+      let immMain := (h_eq ▸ imms).getMain
+      ctx.layout.withSetImmutables immMain ++ immMain.tail
 
-def write (offset : Word) (bytes : ByteArray) : CoFree EvalE .none Unit :=
-  mem (.write offset.toNat bytes)
-
-def lengthOf (b : ByteArray) : Word := BitVec.ofNat 256 b.size
-
-def copyIn (src : ByteArray) (dst offset length : Word) : CoFree EvalE .none Unit :=
+def mem.writeFromSlice (dst : Word) (src : ByteArray) (offset length : Word) : SirM Unit :=
   write dst (src.slicePad offset.toNat length.toNat)
-
-def externalCall (kind : CallKind) (gas account argsOffset argsLength retOffset retLength : Word) :
-    CoFree EvalE .none Word := do
-  let input ← read argsOffset argsLength
-  let (ok, out) : Bool × ByteArray ← host (.call kind gas (.ofWord account) input)
-  mem (.setReturnData out)
-  write retOffset (out.extract 0 (min retLength.toNat out.size))
-  pure (Word.ofBool ok)
-
-def createContract (value offset length : Word) (salt : Option Word) : CoFree EvalE .none Word := do
-  let input ← read offset length
-  let (account, out) : Address × ByteArray ← host (.create value salt input)
-  mem (.setReturnData out)
-  pure account.toWord
-
-def log (offset length : Word) (topics : Array Word) : CoFree EvalE .none Unit := do
-  let data ← read offset length
-  host (.log topics data)
 
 def UnOp.eval : UnOp → Word → Word
   | .iszero, a => Word.iszero a
@@ -101,8 +92,8 @@ def TernOp.eval : TernOp → Word → Word → Word → Word
   | .mulmod, a, b, n => Word.mulmod a b n
 
 def Query.eval (env : Env) : Query → SirM Word
-  | .gas => host .gas
-  | .selfbalance => host .selfbalance
+  | .gas => Host.gas (N := .none)
+  | .selfbalance => Host.selfbalance (N := .none)
   | .address => pure env.address.toWord
   | .origin => pure env.origin.toWord
   | .caller => pure env.caller.toWord
@@ -117,6 +108,21 @@ def Query.eval (env : Env) : Query → SirM Word
   | .basefee => pure env.basefee
   | .blobbasefee => pure env.blobbasefee
 
+def log (ctx : Context) (offset len : Word) (topics : Array Word) : SirM Unit := do
+  ctx.checkStateful 
+  Host.log (N := .none) (← mem.read offset len) topics
+
+def execCall (ctx : Context) (ck : CallKind) (gas to inOff inLen outOff outLen : Word) : SirM Word := do
+  match ck with
+  | .call value => do unless value = 0 do ctx.checkStateful
+  | .staticcall | .delegatecall => pure ()
+  let input ← mem.read inOff inLen
+  let succ : Bool ← Host.host (N := .none) <| .call ck gas (.ofWord to) input
+  let retSize ← returndata.size
+  let copiedOutLen := if retSize ≤ outLen then retSize else outLen
+  mem.writeFromSlice outOff (← returndata) 0 copiedOutLen
+  return .ofBool succ
+
 def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .unop op a => pure (op.eval a)
   | .binop op a b => pure (op.eval a b)
@@ -124,125 +130,124 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .const v => pure v
   | .copy x => pure x
   | .query q => q.eval ctx.env
-  | .balance a => host (.balance (.ofWord a))
-  | .extcodehash a => host (.extcodehash (.ofWord a))
+  | .balance a => Host.balance (N := .none) (.ofWord a)
+  | .extcodehash a => Host.extcodehash (N := .none) (.ofWord a)
   | .blockhash n => pure (ctx.env.blockhash n)
   | .blobhash i => pure (ctx.env.blobhash i)
-  | .sload k => host (.sload k)
-  | .tload k => host (.tload k)
-  | .calldataload offset => pure (Word.ofBytes (ctx.env.calldata.slicePad offset.toNat 32))
-  | .calldatasize => pure (lengthOf ctx.env.calldata)
-  | .codesize => pure (lengthOf ctx.env.code)
-  | .extcodesize a => do
-    let code ← host (.extcode (.ofWord a))
-    pure (lengthOf code)
-  | .returndatasize => do
-    let data ← mem .returnData
-    pure (lengthOf data)
-  | .keccak256 offset length => do
-    let data ← read offset length
-    pure (Word.keccak256 data)
-  | .malloc size => mem (.alloc true size.toNat)
-  | .mallocany size => mem (.alloc false size.toNat)
-  | .mload size ptr => do
-    let bytes ← mem (.read ptr.toNat size.val)
-    pure (Word.ofBytes bytes)
-  | .create v offset length => createContract v offset length none
-  | .create2 v offset length salt => createContract v offset length (some salt)
-  | .call g a v ao an ro rn => externalCall (.call v) g a ao an ro rn
-  | .callcode g a v ao an ro rn => externalCall (.callcode v) g a ao an ro rn
-  | .delegatecall g a ao an ro rn => externalCall .delegatecall g a ao an ro rn
-  | .staticcall g a ao an ro rn => externalCall .staticcall g a ao an ro rn
+  | .sload k => Host.persistent.load (N := .none) k
+  | .tload k => Host.transient.load (N := .none) k
+  | .calldataload offset => ctx.env.calldata.slicePad offset.toNat 32 |> Word.ofBytes |> pure
+  | .calldatasize => pure ctx.env.calldata.size
+  | .codesize => pure ctx.code.size
+  | .extcodesize a => (·.size) <$> Host.extcode (N := .none) (.ofWord a)
+  | .returndatasize => returndata.size
+  | .keccak256 offset length => Word.keccak256 <$> mem.read offset length
+  | .malloc size => alloc_zeroed size
+  | .mallocany size => alloc_uninit size
+  | .mload size ptr => Word.ofBytes <$> mem.read ptr (Word.ofNat size.toNat)
+  | .create value offset length => do
+      ctx.checkStateful
+      let code ← mem.read offset length
+      let a ← Host.create (N := .none) value code
+      return a.toWord
+  | .create2 value offset length salt => do
+      ctx.checkStateful
+      let code ← mem.read offset length
+      let a ← Host.create2 (N := .none) value salt code
+      return a.toWord
+  | .call gas to value inOff inLen outOff outLen =>
+      execCall ctx (.call value) gas to inOff inLen outOff outLen
+  | .delegatecall gas to inOff inLen outOff outLen => do
+      execCall ctx .delegatecall gas to inOff inLen outOff outLen
+  | .staticcall gas to inOff inLen outOff outLen => do
+      execCall ctx .staticcall gas to inOff inLen outOff outLen
   | .dataOffset d => do
-    unless d.id < ctx.program.data.size do malformed
-    pure (ctx.layout.dataOffset ctx.entry d)
-  | .runtimeStartOffset => do ctx.requireEntry .init; pure ctx.layout.runtimeStartOffset
-  | .initEndOffset => do ctx.requireEntry .init; pure ctx.layout.initEndOffset
-  | .runtimeLength => pure ctx.layout.runtimeLength
-  | .getImmutable i => do
-    ctx.requireEntry .main
-    let some v := ctx.immutables[i]? | malformed
-    pure v
+      let i :=
+        ← if hvalid : ctx.program.ValidDataId d
+        then pure ⟨d.id, hvalid⟩
+        else malformed "undefined data id"
+      match henv : ctx.env.mode with
+      | .creation _ => pure <| (.ofU32 ·.val) <| ctx.layout.initDataOffsets i
+      | .call _ _ => do
+          if hmd : i ∈ ctx.program.mainDatas then
+            return (.ofU32 ·.val) <| ctx.layout.mainDataOffsets i hmd
+          else malformed "data not defined in main"
+  | .mainStartOffset => do
+      unless (ctx.env.mode.kind = .creation) do malformed "accessing main start outside of init"
+      return .ofU32 ctx.layout.mainStartOffset.val
+  | .mainLength => pure ctx.layout.main.size
+  | .initEndOffset => do
+      unless (ctx.env.mode.kind = .creation) do malformed "accessing init end offset outside of init"
+      return ctx.layout.init.size
+  | .getImmutable id => do
+      let henv : { p : Bool × ByteArray // ctx.env.mode = .call p.1 p.2 }
+        ← match henv : ctx.env.mode with
+        | .creation _ => malformed "getting immutable in init"
+        | .call a b => pure ⟨(a, b), henv⟩
+      let i : Fin ctx.program.immutables.size
+        ← if hvalid : id.id < ctx.program.immutables.size
+        then pure ⟨id.id, hvalid⟩
+        else malformed "invalid immutable id"
+      let imms := ctx.immutables
+      have heq : ctx.env.mode.kind = .call := by simp [ExecutionMode.kind, henv.property]
+      return (heq ▸ imms).getMain.slots[i]
+
 
 def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
-  | .mstore size ptr v => write ptr (Word.toBytes size.toNat v)
-  | .mcopy dst src length => mem (.copy dst.toNat src.toNat length.toNat)
-  | .sstore k v => host (.sstore k v)
-  | .tstore k v => host (.tstore k v)
-  | .calldatacopy dst offset length => copyIn ctx.env.calldata dst offset length
-  | .codecopy dst offset length => copyIn ctx.env.code dst offset length
+  | .mstore size ptr v => mem.write ptr (Word.toBytes size v)
+  | .mcopy dst src length => mem.copy { dst, src, length }
+  | .sstore k v => do ctx.checkStateful; persistent.store (N := .none) k v
+  | .tstore k v => do ctx.checkStateful; transient.store (N := .none) k v
+  | .calldatacopy dst offset length => mem.writeFromSlice dst ctx.env.calldata offset length
+  | .codecopy dst offset length => mem.writeFromSlice dst ctx.code offset length
   | .extcodecopy a dst offset length => do
-    let code ← host (.extcode (.ofWord a))
-    copyIn code dst offset length
+      let code ← Host.extcode (N := .none) (.ofWord a)
+      mem.writeFromSlice dst code offset length
   | .returndatacopy dst offset length => do
-    let data ← mem .returnData
-    unless offset.toNat + length.toNat ≤ data.size do halt .invalid
-    copyIn data dst offset length
-  | .log0 offset length => log offset length #[]
-  | .log1 offset length t0 => log offset length #[t0]
-  | .log2 offset length t0 t1 => log offset length #[t0, t1]
-  | .log3 offset length t0 t1 t2 => log offset length #[t0, t1, t2]
-  | .log4 offset length t0 t1 t2 t3 => log offset length #[t0, t1, t2, t3]
-  | .setImmutable i ptr v => do
-    ctx.requireEntry .init
-    unless ctx.program.main.isSome do malformed
-    let some size := ctx.program.immutables[i.id]? | malformed
-    for r in ctx.layout.immutableRefs i do
-      mem (.write (ptr.toNat + r) (Word.toBytes size.val v))
+      unless (offset.toNat + length.toNat ≤ (← returndata).size)
+        do Host.halt (N := .none) .invalid
+      mem.writeFromSlice dst (← returndata) offset length
+  | .log0 offset length => log ctx offset length #[]
+  | .log1 offset length t0 => log ctx offset length #[t0]
+  | .log2 offset length t0 t1 => log ctx offset length #[t0, t1]
+  | .log3 offset length t0 t1 t2 => log ctx offset length #[t0, t1, t2]
+  | .log4 offset length t0 t1 t2 t3 => log ctx offset length #[t0, t1, t2, t3]
+  | .setImmutable id ptr v => do
+      unless (ctx.env.mode.kind = .creation) do malformed "setting immutable outside of init"
+      let i : Fin _ ←
+        if h : ctx.program.ValidImmutableId id
+        then pure ⟨id.id, h⟩
+        else malformed "invalid immutable id"
+      unless v.HasSize ctx.program.immutables[i] do malformed "immutable value too large for slot"
+      for ⟨offset, _⟩ in ctx.layout.immutableOffsets i do
+        -- Unsure if overflow UB here to making it explicit
+        let slotPtr := ptr + Word.ofU32 offset
+        unless (ptr ≤ slotPtr) do ub .illegalOverflow
+        mem.write slotPtr (v.toBytes ctx.program.immutables[i])
   | .noop => pure ()
-
-
-def block (fn : Function) (b : BlockId) : CoFree EvalE .none Block := do
-  let some blk := fn.blocks[b.id]? | malformed
-  pure blk
-
-/-- Control transfer within `fn`: the source block's outputs become the target block's inputs. -/
-def jumpTo (fn : Function) (l : Locals) (src : Block) (target : BlockId) :
-    CoFree EvalE .none (IterStep (BlockId × Locals) (Array Word)) := do
-  let dst ← block fn target
-  let values ← lookupAll l src.outputs
-  let l ← assignAll l dst.inputs values
-  pure (.repeat (target, l))
-
-def execControl (call : Call) (fn : Function) (l : Locals) (blk : Block) :
-    CoFree EvalE .none (IterStep (BlockId × Locals) (Array Word)) := do
-  let jump := jumpTo fn l blk
-  let control ← blk.control.resolve (lookup l)
-  match control with
-  | .iret => do
-    let .values n := fn.returns | malformed
-    let rs ← lookupAll l blk.outputs
-    unless rs.size = n do malformed
-    pure (.exit rs)
-  | .continuesTo t => jump t
-  | .branches c nonZero zero => jump (if c ≠ 0 then nonZero else zero)
-  | .switch c cases fallback => do
-    let some t := (cases.find? (·.1 == c)).map (·.2) <|> fallback | halt (.ub .switchNoMatch)
-    jump t
-  | .stop => halt .stop
-  | .return offset length => do
-    let data ← read offset length
-    halt (.ret data)
-  | .revert offset length => do
-    let data ← read offset length
-    halt (.revert data)
-  | .invalid => halt .invalid
-  | .selfdestruct a => halt (.selfdestruct (.ofWord a))
-  | .icallNever g args => do
-    let _ ← call g args
-    malformed
 
 abbrev CallI := FunctionId × Array Word
 abbrev CallO  := Array Word
 abbrev CallE := Effect.Rec CallI CallO EvalE
 
+def evalSwitch (cond : Word) (cases : Array (Word × BlockId)) (fallback : Option BlockId)
+  : SirM BlockId := do
+  for (value, dst) in cases do
+    if value = cond then
+      return dst
+  let some fallback := fallback | ub .switchNoMatch
+  return fallback
+
 def run (p : Program) (layout : Layout p) (env : Env) (imm : Immutables p env.mode.kind) : SirM Empty := do
+  let ctx : Context := ⟨p, layout, env, imm⟩
   let evalFn : CallI → SirM CallO := CoFree.fix fun evalFn (fn, args) => do
-    let some fn := p[fn]? | malformed
-    let mut some block := fn[fn.entry]? | malformed
-    let mut vars ← Vars.assignAll ∅ block.inputs args
-    let mut ctx : Context := ⟨p, layout, env, imm⟩
+    let .some fn := p[fn]? | malformed "undefined function"
+    let mut inputs := args
+    let mut bi := fn.entry
+    let mut vars : Vars := ∅
     repeat
+      let .some block := fn[bi]? | malformed "undefined block"
+      vars ← vars.assignAll block.inputs inputs
       for op in block.ops do
         match ← liftM (op.resolve vars.lookup) with
         | .«let» out expr =>
@@ -252,7 +257,26 @@ def run (p : Program) (layout : Layout p) (env : Env) (imm : Immutables p env.mo
             let results ← evalFn (fn, args)
             vars ← vars.assignAll outs results
         | .stmt s => s.exec ctx
+      let ctrl ← liftM (block.control.resolve vars.lookup)
+      bi ← match ctrl with
+        | .iret => return ← vars.lookupAll block.outputs
+        | .continuesTo dst => pure dst
+        | .branches cond nonZero zero => pure (if cond ≠ 0 then nonZero else zero)
+        | .switch cond cases fallback => evalSwitch cond cases fallback
+        | .stop => Host.stop (N := .none)
+        | .return offset length => do
+            let data ← mem.read offset length
+            Host.return (N := .none) data
+        | .revert offset length => do
+            let data ← mem.read offset length
+            Host.halt (N := .none) (.revert data)
+        | .invalid => Host.halt (N := .none) .invalid
+        | .selfdestruct a => Host.halt (N := .none) (.selfdestruct (.ofWord a))
+        | .icallNever fn args => do
+            let _ ← evalFn (fn, args)
+            malformed "icall never returned"
+      inputs ← vars.lookupAll block.outputs
   let _ ← evalFn (p[env.mode.kind], #[])
-  malformed -- top-level entry point function returned
+  malformed "top-level entry point returned"
 
 end Sir

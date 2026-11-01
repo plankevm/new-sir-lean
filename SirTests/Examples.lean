@@ -287,8 +287,6 @@ def worldChecks : List (String × Bool) :=
     ("tload reads the frame's own tstore", slots (runS transient) == some (.ret [], [0, 0, 0, 7])),
     ("after a call, storage and world are what the callee left",
       slots (runS (storeAround (.call 10 10 10 10 10 10 10))) == some (.ret [], [9, 9, 3, 0])),
-    ("after a callcode too",
-      slots (runS (storeAround (.callcode 10 10 10 10 10 10 10))) == some (.ret [], [9, 9, 3, 0])),
     ("after a delegatecall too",
       slots (runS (storeAround (.delegatecall 10 10 10 10 10 10))) == some (.ret [], [9, 9, 3, 0])),
     ("after a create too (initcode may reenter)",

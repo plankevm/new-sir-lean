@@ -8,7 +8,7 @@ open CoFree
 
 namespace Host
 
-inductive ExecutionModeKind : Type | creation | call
+inductive ExecutionModeKind : Type | creation | call deriving DecidableEq
 
 inductive ExecutionMode : Type
   | creation (constructorData : ByteArray)
@@ -47,9 +47,16 @@ def Env.calldata (e : Env) : ByteArray := match e.mode with
   | .creation _ => ⟨#[]⟩
   | .call _ cd => cd
 
+inductive SimplifiedOutcome : Type
+  | ret (data : ByteArray)
+  | revert (data : ByteArray)
+  | invalid
+  | selfdestruct (beneficiary : Address)
+
 inductive HostOp
   | gas
   | selfbalance
+  | returndata
   | balance (account : Address)
   | extcode (account : Address)
   | extcodehash (account : Address)
@@ -60,16 +67,19 @@ inductive HostOp
   | log (topics : Array Word) (data : ByteArray)
   | call (kind : CallKind) (gas : Word) (account : Address) (input : ByteArray)
   | create (value : Word) (salt : Option Word) (initcode : ByteArray)
-  | halt (outcome : Outcome)
+  | halt (outcome : SimplifiedOutcome)
+
 
 def HostOp.Resp : HostOp → Type
-  | .gas | .selfbalance | .balance _ | .extcodehash _ => Word
+  | .gas | .selfbalance => Word
+  | .returndata => ByteArray
+  | .balance _ | .extcodehash _ => Word
   | .extcode _ => ByteArray
   | .sload _ | .tload _ => Word
   | .sstore .. | .tstore .. => Unit
   | .log .. => Unit
-  | .call .. => Bool × ByteArray
-  | .create .. => Address × ByteArray
+  | .call .. => Bool
+  | .create .. => Address
   | .halt _ => Empty
 
 
@@ -82,20 +92,17 @@ def host (op: HostE.Op) : CoFree HostE N (HostE.Resp op)
 
 def gas := host (N := N) .gas
 def selfbalance := host (N := N) .selfbalance
+def returndata := host (N := N) .returndata
 def balance (a : Address) := host (N := N) <| .balance a
 def extcodehash (a : Address) := host (N := N) <| .extcodehash a
 def extcode (a : Address) := host (N := N) <| .extcode a
 
-def sload (k : Word) := host (N := N) <| .sload k
-def tload (k : Word) := host (N := N) <| .tload k
-def sstore (k v : Word) := host (N := N) <| .sstore k v
-def tstore (k v : Word) := host (N := N) <| .tstore k v
+def persistent.load (k : Word) := host (N := N) <| .sload k
+def transient.load (k : Word) := host (N := N) <| .tload k
+def persistent.store (k v : Word) := host (N := N) <| .sstore k v
+def transient.store (k v : Word) := host (N := N) <| .tstore k v
 
-def log0 (data : ByteArray) := host (N := N) <| .log #[] data
-def log1 (data : ByteArray) (t₀ : Word) := host (N := N) <| .log #[t₀] data
-def log2 (data : ByteArray) (t₀ t₁ : Word) := host (N := N) <| .log #[t₀, t₁] data
-def log3 (data : ByteArray) (t₀ t₁ t₂ : Word) := host (N := N) <| .log #[t₀, t₁, t₂] data
-def log4 (data : ByteArray) (t₀ t₁ t₂ t₃ : Word) := host (N := N) <| .log #[t₀, t₁, t₂, t₃] data
+def log (data : ByteArray) (topics : Array Word) := host (N := N) <| .log topics data
 
 def call (gas : Word) (a : Address) (value : Word) (input : ByteArray) :=
   host (N := N) <| .call (.call value) gas a input
@@ -103,14 +110,14 @@ def staticcall (gas : Word) (a : Address) (input : ByteArray) :=
   host (N := N) <| .call .staticcall gas a input
 def delegatecall (gas : Word) (a : Address) (input : ByteArray) :=
   host (N := N) <| .call .delegatecall gas a input
-def callcode (gas : Word) (a : Address) (value : Word) (input : ByteArray) :=
-  host (N := N) <| .call (.callcode value) gas a input
 
 def create (value : Word) (code : ByteArray) :=
   host (N := N) <| .create value none code
 def create2 (value salt : Word) (code : ByteArray) :=
   host (N := N) <| .create value (some salt) code
 
-def halt (outcome : Outcome) := host (N := N) <| .halt outcome
+def halt {α : Type} (outcome : SimplifiedOutcome) : CoFree HostE N α := do nomatch ← host (N := N) <| .halt outcome
+def stop {α : Type} : CoFree HostE N α := do nomatch ← host (N := N) <| .halt <| .ret .empty
+def «return» (data : ByteArray) {α : Type} : CoFree HostE N α := do nomatch ← host (N := N) <| .halt <| .ret data
 
 end Host

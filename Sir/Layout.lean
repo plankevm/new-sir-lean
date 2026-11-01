@@ -3,7 +3,9 @@ import Host.Effect
 
 namespace Sir
 
-def MainImmutablesMap (p : Program) : Type := (i : Fin p.immutables.size) → { v : Word // v.HasSize p.immutables[i] }
+structure MainImmutablesMap (p : Program) : Type where
+  slots : Vector Word p.immutables.size
+  tail : ByteArray
 
 /-- The values `getimmutable` reads: fixed for a whole run, one per immutable, each fitting the
 immutable's declared size. -/
@@ -11,23 +13,13 @@ inductive Immutables (p : Program) : Host.ExecutionModeKind → Type
   | init : Immutables p .creation
   | main : MainImmutablesMap p → Immutables p .call
 
-def Immutables.values {p : Program} : (imm : Immutables p .call) → MainImmutablesMap p
+def Immutables.getMain {p : Program} : (imm : Immutables p .call) → MainImmutablesMap p
   | .main m => m
 
-instance {p : Program} : GetElem? (Immutables p .call) ImmutableId Word (fun _ => p.ValidImmutableId) where
-  getElem imm i valid := (imm.values ⟨i.id, valid⟩).val
-  getElem? imm i :=
-    if h : i.id < p.immutables.size
-    then some <| imm.values ⟨i.id, h⟩
-    else .none
 
-/-- Immutable `i` takes the low bytes of `ws[i]` (0 if absent). -/
-def Immutables.ofWords (p : Program) (ws : Array Word) (h : ws.size = p.immutables.size) : Immutables p .call :=
-  .main fun i =>
-    ⟨ws[i].lowBits p.immutables[i].asBits, by {
-      simp [Word.HasSize]
-      exact (Word.lowBits_lt _ _)
-    }⟩
+instance {p : Program} : GetElem? (Immutables p .call) ImmutableId Word (fun _ => p.ValidImmutableId) where
+  getElem imm i valid := imm.getMain.slots[i.id]
+  getElem? imm i := imm.getMain.slots[i.id]?
 
 abbrev MappingOffset (container bytes : ByteArray) : Type :=
   { offset : UInt32 // ∀ i, (h : i < bytes.size) → container[offset.toNat + i]? = some bytes[i] }
@@ -66,5 +58,15 @@ structure Layout (p : Program) where
       NatRange.Disjoint
         imo.range
         (mainDataOffsets data h).range
+
+
+def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutablesMap p) : ByteArray
+:= Id.run do
+  let mut main := l.main
+  for imm in List.finRange p.immutables.size do
+    let value := imms.slots[imm].toBytes p.immutables[imm]
+    for offset in l.immutableOffsets imm do
+      main := ByteArray.copySlice value 0 main offset.val.toNat value.size
+  return main
 
 end Sir
