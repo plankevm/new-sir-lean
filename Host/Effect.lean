@@ -117,7 +117,5 @@ def create2 (value salt : Word) (code : ByteArray) :=
   host (N := N) <| .create value (some salt) code
 
 def halt {α : Type} (outcome : SimplifiedOutcome) : CoFree HostE N α := do nomatch ← host (N := N) <| .halt outcome
-def stop {α : Type} : CoFree HostE N α := do nomatch ← host (N := N) <| .halt <| .ret .empty
-def «return» (data : ByteArray) {α : Type} : CoFree HostE N α := do nomatch ← host (N := N) <| .halt <| .ret data
 
 end Host

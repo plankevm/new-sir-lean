@@ -204,7 +204,7 @@ def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
       let code ← Host.extcode (N := .none) (.ofWord a)
       mem.writeFromSlice dst code offset length
   | .returndatacopy dst offset length => do
-      unless (offset.toNat + length.toNat ≤ (← returndata).size)
+      unless (offset.toNat + length.toNat ≤ (← returndata.size))
         do Host.halt (N := .none) .invalid
       mem.writeFromSlice dst (← returndata) offset length
   | .log0 offset length => log ctx offset length #[]
@@ -238,45 +238,48 @@ def evalSwitch (cond : Word) (cases : Array (Word × BlockId)) (fallback : Optio
   let some fallback := fallback | ub .switchNoMatch
   return fallback
 
+def evalFn (ctx : Context) : CallI → SirM CallO := CoFree.fix fun evalFn (fn, args) => do
+  let .some fn := ctx.program[fn]? | malformed "undefined function"
+  let mut inputs := args
+  let mut bi := fn.entry
+  let mut vars : Vars := ∅
+  repeat
+    let .some block := fn[bi]? | malformed "undefined block"
+    vars ← vars.assignAll block.inputs inputs
+    for op in block.ops do
+      match ← liftM (op.resolve vars.lookup) with
+      | .«let» out expr =>
+          let value ← expr.eval ctx
+          vars := vars.insert out value
+      | .stmt s => s.exec ctx
+      | .icall fn args outs =>
+          let results ← evalFn (fn, args)
+          vars ← vars.assignAll outs results
+    let ctrl ← liftM (block.control.resolve vars.lookup)
+    bi ← match ctrl with
+      | .iret => return ← vars.lookupAll block.outputs
+      | .continuesTo dst => pure dst
+      | .branches cond nonZero zero => pure (if cond ≠ 0 then nonZero else zero)
+      | .switch cond cases fallback => evalSwitch cond cases fallback
+      | .stop => Host.halt (N := .none) (.ret .empty)
+      | .return offset length => do
+          let data ← mem.read offset length
+          Host.halt (N := .none) (.ret data)
+      | .revert offset length => do
+          let data ← mem.read offset length
+          Host.halt (N := .none) (.revert data)
+      | .invalid => Host.halt (N := .none) .invalid
+      | .selfdestruct a => Host.halt (N := .none) (.selfdestruct (.ofWord a))
+      | .icallNever fn args => do
+          let _ ← evalFn (fn, args)
+          malformed "icall never returned"
+    inputs ← vars.lookupAll block.outputs
+
+
 def run (p : Program) (layout : Layout p) (env : Env) (imm : Immutables p env.mode.kind) : SirM Empty := do
-  let ctx : Context := ⟨p, layout, env, imm⟩
-  let evalFn : CallI → SirM CallO := CoFree.fix fun evalFn (fn, args) => do
-    let .some fn := p[fn]? | malformed "undefined function"
-    let mut inputs := args
-    let mut bi := fn.entry
-    let mut vars : Vars := ∅
-    repeat
-      let .some block := fn[bi]? | malformed "undefined block"
-      vars ← vars.assignAll block.inputs inputs
-      for op in block.ops do
-        match ← liftM (op.resolve vars.lookup) with
-        | .«let» out expr =>
-            let value ← expr.eval ctx
-            vars := vars.insert out value
-        | .icall fn args outs =>
-            let results ← evalFn (fn, args)
-            vars ← vars.assignAll outs results
-        | .stmt s => s.exec ctx
-      let ctrl ← liftM (block.control.resolve vars.lookup)
-      bi ← match ctrl with
-        | .iret => return ← vars.lookupAll block.outputs
-        | .continuesTo dst => pure dst
-        | .branches cond nonZero zero => pure (if cond ≠ 0 then nonZero else zero)
-        | .switch cond cases fallback => evalSwitch cond cases fallback
-        | .stop => Host.stop (N := .none)
-        | .return offset length => do
-            let data ← mem.read offset length
-            Host.return (N := .none) data
-        | .revert offset length => do
-            let data ← mem.read offset length
-            Host.halt (N := .none) (.revert data)
-        | .invalid => Host.halt (N := .none) .invalid
-        | .selfdestruct a => Host.halt (N := .none) (.selfdestruct (.ofWord a))
-        | .icallNever fn args => do
-            let _ ← evalFn (fn, args)
-            malformed "icall never returned"
-      inputs ← vars.lookupAll block.outputs
-  let _ ← evalFn (p[env.mode.kind], #[])
-  malformed "top-level entry point returned"
+  let ctx := ⟨p, layout, env, imm⟩
+  let entryFn := p[env.mode.kind]
+  let _ ← evalFn ctx (entryFn, #[])
+  malformed "top-level entry point returned instead of terminating"
 
 end Sir
