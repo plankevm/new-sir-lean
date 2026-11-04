@@ -7,8 +7,9 @@ import SirTests
 import Lint
 import LintTests
 
-/-! Package-wide gate: a linter runs only in modules that import it, so every module of the
-package must have `Lint.BinderScope` among its transitive imports. -/
+/-! Package-wide gates: a linter runs only in modules that import it, so every module of the
+package must have `Lint.BinderScope` among its transitive imports; and every declaration of
+the package may depend only on the standard axioms. -/
 
 namespace Audit
 
@@ -55,5 +56,32 @@ elab "#audit_lint_imports" : command => do
   logInfo m!"lint import audit: all {mods.size} modules import Lint.BinderScope"
 
 #audit_lint_imports
+
+/-- Modules additionally allowed the axioms `native_decide`/`bv_decide` add (named
+`<decl>._native.<tactic>.ax_<n>`, see `Lean.Meta.nativeEqTrue`). A declaration in another
+module that cites such a check still fails. No module uses them yet. -/
+def nativeModules : List Name := []
+
+/-- Fails unless every declaration of every package module uses only `propext`, `Quot.sound`
+and `Classical.choice` (plus native-evaluation axioms in `nativeModules`); in particular
+no `sorryAx`. -/
+elab "#audit_axioms" : command => do
+  let env ← getEnv
+  let allowed := [``propext, ``Quot.sound, ``Classical.choice]
+  let mods : Std.HashSet Name := .ofArray (← packageModules)
+  let mut bad : Array MessageData := #[]
+  let mut checked : Nat := 0
+  for (name, _) in env.constants.toList do
+    let some idx := env.getModuleIdxFor? name | continue
+    let mod := env.header.moduleNames[idx.toNat]!
+    unless mods.contains mod do continue
+    checked := checked + 1
+    for ax in ← liftCoreM (collectAxioms name) do
+      unless allowed.contains ax || (ax.components.contains `_native && nativeModules.contains mod) do
+        bad := bad.push m!"{name} ({mod}) uses {ax}"
+  unless bad.isEmpty do throwError m!"disallowed axioms:{indentD (MessageData.joinSep bad.toList "\n")}"
+  logInfo m!"axiom audit: {checked} declarations use only propext, Quot.sound, Classical.choice"
+
+#audit_axioms
 
 end Audit

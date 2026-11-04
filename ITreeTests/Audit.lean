@@ -5,27 +5,6 @@ namespace ITreeTests.Audit
 
 open Lean Elab Command
 
-/-- Fails unless every library theorem uses only `propext`, `Quot.sound` and
-`Classical.choice`. -/
-elab "#audit_axioms" : command => do
-  let env ← getEnv
-  let allowed := [``propext, ``Quot.sound, ``Classical.choice]
-  let roots := [`CoFree, `Step, `Effect, `NonDeterminism]
-  let mut bad : Array (Name × Name) := #[]
-  let mut checked := 0
-  for (name, info) in env.constants.toList do
-    unless roots.contains name.getRoot do continue
-    unless (env.getModuleIdxFor? name).any fun idx =>
-        (env.header.moduleNames[idx.toNat]!).getRoot == `ITree do continue
-    unless info matches .thmInfo _ do continue
-    checked := checked + 1
-    for ax in ← liftCoreM (collectAxioms name) do
-      unless allowed.contains ax do bad := bad.push (name, ax)
-  unless bad.isEmpty do throwError m!"disallowed axioms: {bad}"
-  logInfo m!"axiom audit: {checked} theorems use only propext, Quot.sound, Classical.choice"
-
-#audit_axioms
-
 /-- The head constant of a theorem's proof term, under its binders. -/
 private def proofHead : Expr → Option Name
   | .lam _ _ b _ => proofHead b
