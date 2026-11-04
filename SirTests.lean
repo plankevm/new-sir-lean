@@ -4,3 +4,4 @@ import SirTests.Same
 import SirTests.Safe
 import SirTests.Deploy
 import SirTests.Placement
+import SirTests.MemoryInterp

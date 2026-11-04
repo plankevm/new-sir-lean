@@ -24,11 +24,11 @@ exactly when they are the same operation, arguments included.
 With no branches, `Same` is the usual weak bisimulation ("equivalence up to taus"), and is
 reflexive. -/
 
-universe u
+universe u v
 
 namespace CoFree
 
-variable {E : Effect.{u}} {N N₁ N₂ : NonDeterminism.{u}} {A B : Type u}
+variable {E : Effect.{u}} {N N₁ N₂ : NonDeterminism.{u}} {A B : Type v}
 
 /-- `m` takes an unobserved step, and `p` holds after it, whichever response a branch takes. -/
 def ForallUnobserved (m : CoFree E N A) (p : CoFree E N A → Prop) : Prop :=

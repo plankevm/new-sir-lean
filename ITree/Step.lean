@@ -1,9 +1,9 @@
 import ITree.Effect
 
-universe u w₁ w₂
+universe u v w₁ w₂
 
-inductive Step (E : Effect.{u}) (N : NonDeterminism.{u}) (A : Type u) (S : Type w₁) :
-    Type (max u w₁) where
+inductive Step (E : Effect.{u}) (N : NonDeterminism.{u}) (A : Type v) (S : Type w₁) :
+    Type (max u v w₁) where
   | pure (value : A)
   | silent (next : S)
   | impure (op : E.Op) (next : E.Resp op → S)
@@ -11,7 +11,7 @@ inductive Step (E : Effect.{u}) (N : NonDeterminism.{u}) (A : Type u) (S : Type 
 
 namespace Step
 
-variable {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type u}
+variable {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type v}
 
 def map {S : Type w₁} {T : Type w₂} (f : S → T) : Step E N A S → Step E N A T
   | .pure a => .pure a

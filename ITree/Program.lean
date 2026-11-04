@@ -2,13 +2,13 @@ import ITree.Machine
 
 /-! The program-writing surface over `CoFree` machines: `do` notation, loops, recursion, handlers. -/
 
-universe u
+universe u v
 
 namespace CoFree
 
-variable {E F : Effect.{u}} {N M : NonDeterminism.{u}} {A : Type u}
+variable {E F : Effect.{u}} {N M : NonDeterminism.{u}} {A : Type v}
 
-instance : Monad (CoFree.{u} E N) where
+instance : Monad (CoFree.{u, v} E N) where
   pure := CoFree.pure
   bind := CoFree.bind
 
@@ -16,7 +16,7 @@ instance : Monad (CoFree.{u} E N) where
 /-- Runs silently forever. -/
 def spin : CoFree E N A := ⟨PUnit, PEmpty, PUnit.unit, fun _ => .silent (.inl PUnit.unit), nofun⟩
 
-instance : ForIn (CoFree.{u} E N) Lean.Loop Unit where
+instance : ForIn (CoFree.{u, v} E N) Lean.Loop Unit where
   forIn _ init f := iter init fun b => (f ⟨⟩ b).bind fun
     | .yield b => pure (.repeat b)
     | .done b => pure (.exit b)

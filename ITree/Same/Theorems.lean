@@ -1,10 +1,10 @@
 import ITree.Same.Proofs
 
-universe u
+universe u v
 
 namespace CoFree
 
-variable {E : Effect.{u}} {N N₁ N₂ N₃ : NonDeterminism.{u}} {A B C D : Type u} {Ret : A → B → Prop}
+variable {E : Effect.{u}} {N N₁ N₂ N₃ : NonDeterminism.{u}} {A B C D : Type v} {Ret : A → B → Prop}
   {RA : A → B → Prop} {RB : B → C → Prop}
 
 /-! ## Unobserved steps -/

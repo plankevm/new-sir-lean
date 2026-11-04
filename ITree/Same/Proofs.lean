@@ -2,11 +2,11 @@ import ITree.Same
 import ITree.Program
 import ITree.Machine.Theorems
 
-universe u
+universe u v
 
 namespace CoFree.Proofs
 
-variable {E : Effect.{u}} {N N₁ N₂ N₃ : NonDeterminism.{u}} {A B C D : Type u}
+variable {E : Effect.{u}} {N N₁ N₂ N₃ : NonDeterminism.{u}} {A B C D : Type v}
 
 /-! ## Unobserved steps -/
 
@@ -569,7 +569,7 @@ theorem step_map_id (s : Step E N A (CoFree E N A)) : s.map (fun n => n) = s := 
 
 /-- Successors given as a map out of a step, related pointwise. -/
 theorem lockstep_of_map {Q : CoFree E N₁ A → CoFree E N₁ A → Prop} {x x' : CoFree E N₁ A}
-    {T : Type (u+1)} {st : Step E N₁ A T} {φ ψ : T → CoFree E N₁ A}
+    {T : Type (max (u+1) (v+1))} {st : Step E N₁ A T} {φ ψ : T → CoFree E N₁ A}
     (h : x.observe = st.map φ) (h' : x'.observe = st.map ψ) (hc : ∀ t, Q (φ t) (ψ t)) :
     ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) :=

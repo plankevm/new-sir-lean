@@ -1,10 +1,10 @@
 import ITree.Machine.Proofs
 
-universe u w w'
+universe u v w w'
 
 namespace CoFree
 
-variable {E F : Effect.{u}} {N M : NonDeterminism.{u}} {A B : Type u}
+variable {E F : Effect.{u}} {N M : NonDeterminism.{u}} {A B : Type v}
 
 /-! ## Positions -/
 
@@ -43,7 +43,7 @@ theorem observe_mapOps (e : Effect.Map E F) (nd : NonDeterminism.Map N M) (m : C
       | .branch c k => .branch (nd.op c) fun r => (k (nd.resp c r)).mapOps e nd :=
   Proofs.observe_mapOps e nd m
 
-theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E N (IterStep S A)) (i : S)
+theorem observe_iter_startAt {S : Type v} (s : S) (g : S → CoFree E N (IterStep S A)) (i : S)
     (p : (g i).Pos) :
     ((iter s g).startAt ⟨i, p⟩).observe =
       match (g i).stepAt p with

@@ -1,6 +1,6 @@
 import ITree.Step
 
-universe u w w'
+universe u v w w'
 
 inductive IterStep (S A : Type u) : Type u
   | «repeat» (s : S)
@@ -8,16 +8,17 @@ inductive IterStep (S A : Type u) : Type u
 
 /-- A machine performing operations of `E` and branching on choices of `N`: its own states, plus
 jumps that hand control to another machine for good. -/
-structure CoFree (E : Effect.{u}) (N : NonDeterminism.{u}) (A : Type u) : Type (u+1) where
-  State : Type u
-  Jump : Type u
+structure CoFree (E : Effect.{u}) (N : NonDeterminism.{u}) (A : Type v) :
+    Type (max (u+1) (v+1)) where
+  State : Type (max u v)
+  Jump : Type (max u v)
   initial : State
   step : State → Step E N A (State ⊕ Jump)
   target : Jump → CoFree E N A
 
 namespace CoFree
 
-variable {E F : Effect.{u}} {N M : NonDeterminism.{u}} {A B : Type u}
+variable {E F : Effect.{u}} {N M : NonDeterminism.{u}} {A B : Type v}
 
 def startAt (m : CoFree E N A) (s : m.State) : CoFree E N A :=
   { m with initial := s }
@@ -35,7 +36,7 @@ A position is a state of the machine or of any machine reachable through jumps. 
 whose own states must remember where a sub-machine is (loops, recursion, handlers) store
 positions, because machines themselves are too large to be states. -/
 
-def Pos : CoFree E N A → Type u
+def Pos : CoFree E N A → Type (max u v)
   | ⟨S, _, _, _, target⟩ => S ⊕ (Σ j, Pos (target j))
 
 def initPos : (m : CoFree E N A) → m.Pos
@@ -70,7 +71,7 @@ def branch (c : N.Op) : CoFree E N (N.Resp c) :=
 
 /-! ### Bind: the source's states, then a hand-off to the continuation -/
 
-def bindTrans (g : A → CoFree E N B) {S J : Type u} (step : S → Step E N A (S ⊕ J)) (s : S) :
+def bindTrans (g : A → CoFree E N B) {S J : Type (max u v)} (step : S → Step E N A (S ⊕ J)) (s : S) :
     Step E N B (S ⊕ (J ⊕ (Σ a, (g a).State ⊕ (g a).Jump))) :=
   match step s with
   | .pure a => ((g a).step (g a).initial).map fun p => .inr (.inr ⟨a, p⟩)
@@ -110,11 +111,24 @@ def mapOps (e : Effect.Map E F) (nd : NonDeterminism.Map N M) : CoFree E N A →
     target j := mapOps e nd (target j)
   }
 
+/-- The same machine with its result, and so its states, one universe up: lets a `do` block whose
+mutable state is itself a machine call machines of the level below. -/
+def up : CoFree.{u, v} E N A → CoFree.{u, max v w} E N (ULift.{w} A)
+  | ⟨State, Jump, initial, step, target⟩ => {
+    State := ULift.{w} State, Jump := ULift.{w} Jump, initial := ⟨initial⟩,
+    step := fun s => match step s.down with
+      | .pure a => .pure ⟨a⟩
+      | .silent x => .silent (x.elim (.inl ⟨·⟩) (.inr ⟨·⟩))
+      | .impure op k => .impure op fun r => (k r).elim (.inl ⟨·⟩) (.inr ⟨·⟩)
+      | .branch c k => .branch c fun r => (k r).elim (.inl ⟨·⟩) (.inr ⟨·⟩)
+    target j := up (target j.down)
+  }
+
 /-! ### Loops -/
 
 section Iter
 
-variable {S : Type u}
+variable {S : Type v}
 
 /-- Runs `g s`; `.repeat s'` restarts at `g s'` after one silent step, `.exit a` returns `a`.
 The state is the current index and a position in its body. -/

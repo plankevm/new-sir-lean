@@ -1,10 +1,10 @@
 import ITree.Step
 
-universe u w₁ w₂ w₃
+universe u v w₁ w₂ w₃
 
 namespace Step.Proofs
 
-variable {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type u}
+variable {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type v}
 
 theorem map_pure {S : Type w₁} {T : Type w₂} (f : S → T) (a : A) :
     (Step.pure a : Step E N A S).map f = .pure a := rfl

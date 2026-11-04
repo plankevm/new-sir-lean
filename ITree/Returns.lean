@@ -1,10 +1,10 @@
 import ITree.Machine
 
-universe u
+universe u v
 
 namespace CoFree
 
-variable {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type u}
+variable {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type v}
 
 /-- `m` returns `a` for some answers to its operations and some responses to its branches, after
 finitely many steps. -/
