@@ -86,42 +86,50 @@ def write (m : MemState) {offset : Word} {length : Nat} (bytes : ByteArray)
 
 end MemState
 
-def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB where
-  State := MemState × sir.Pos
-  Jump := PEmpty
-  initial := (#[], sir.initPos)
-  step := fun (mem, pos) => match sir.stepAt pos with
-    | .pure a => nomatch a
-    | .silent pos' => .silent <| .inl (mem, pos')
-    | .impure (.inl hostOp) k => .impure hostOp fun r => .inl (mem, k r)
-    | .impure (.inr sirOp) k => match sirOp with
-      | .ub ub => .pure ub
-      | .alloc kind size =>
-        if h : ∃ a', ValidAlloc mem.live.toList size.toNat a'
-        then .branch (.alloc size mem.live.toList h) fun ⟨a', _⟩ =>
-          let a' := match kind with
-            | .zeroed => { a' with bytes := ⟨.replicate a'.size 0⟩ }
-            | .uninitialized => a'
-          let mem' := if size > 0 then mem.push a' else mem
-          .inl (mem', k a'.start)
-        else .pure (.outOfMemory size)
-      | .read offset len =>
-        if len = 0 then .silent <| .inl (mem, k .empty) else
-        match mem.inBounds offset len.toNat with
-        | some r => .silent <| .inl (mem, k (mem.read r))
-        | none => .pure (.memoryOutOfBounds offset len.toNat)
-      | .write offset bytes =>
-        if bytes.size = 0 then .silent <| .inl (mem, k ()) else
-        match mem.inBounds offset bytes.size with
-        | some r => .silent <| .inl (mem.write bytes r, k ())
-        | none => .pure (.memoryOutOfBounds offset bytes.size)
-      | .copy ⟨dst, src, len⟩ =>
-        if len = 0 then .silent <| .inl (mem, k ()) else
-        match mem.inBounds src len.toNat, mem.inBounds dst len.toNat with
-        | some r, some w => .silent <| .inl (mem.write (mem.read r) w, k ())
-        | none, _ => .pure (.memoryOutOfBounds src len.toNat)
-        | _, none => .pure (.memoryOutOfBounds dst len.toNat)
-    | .branch c _ => nomatch c
-  target := nofun
+def memStep {X : Type} (mem : MemState) : Step EvalE .none Empty X → Step HostE MemoryND UB (MemState × X)
+  | .silent x => .silent (mem, x)
+  | .impure (.inl hostOp) k => .impure hostOp fun r => (mem, k r)
+  | .impure (.inr sirOp) k => match sirOp with
+    | .ub ub => .pure ub
+    | .alloc kind size =>
+      if h : ∃ a', ValidAlloc mem.live.toList size.toNat a'
+      then .branch (.alloc size mem.live.toList h) fun ⟨a', _⟩ =>
+        let a' := match kind with
+          | .zeroed => { a' with bytes := ⟨.replicate a'.size 0⟩ }
+          | .uninitialized => a'
+        let mem' := if size > 0 then mem.push a' else mem
+        (mem', k a'.start)
+      else .pure (.outOfMemory size)
+    | .read offset len =>
+      if len = 0 then .silent (mem, k .empty) else
+      match mem.inBounds offset len.toNat with
+      | some r => .silent (mem, k (mem.read r))
+      | none => .pure (.memoryOutOfBounds offset len.toNat)
+    | .write offset bytes =>
+      if bytes.size = 0 then .silent (mem, k ()) else
+      match mem.inBounds offset bytes.size with
+      | some r => .silent (mem.write bytes r, k ())
+      | none => .pure (.memoryOutOfBounds offset bytes.size)
+    | .copy ⟨dst, src, len⟩ =>
+      if len = 0 then .silent (mem, k ()) else
+      match mem.inBounds src len.toNat, mem.inBounds dst len.toNat with
+      | some r, some w => .silent (mem.write (mem.read r) w, k ())
+      | none, _ => .pure (.memoryOutOfBounds src len.toNat)
+      | _, none => .pure (.memoryOutOfBounds dst len.toNat)
+  | .pure a => nomatch a
+  | .branch c _ => nomatch c
+
+def interpMemFrom (mem : MemState) : SirM Empty → CoFree HostE MemoryND UB
+  | ⟨S, J, s₀, step, target⟩ => {
+    State := MemState × S
+    Jump := MemState × J
+    initial := (mem, s₀)
+    step := fun (mem, s) => (memStep mem (step s)).map fun
+      | (mem', .inl s') => .inl (mem', s')
+      | (mem', .inr j) => .inr (mem', j)
+    target := fun (mem', j) => interpMemFrom mem' (target j)
+  }
+
+def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB := interpMemFrom #[] sir
 
 end Sir
