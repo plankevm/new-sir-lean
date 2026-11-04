@@ -65,9 +65,6 @@ def perform (op : E.Op) : CoFree E N (E.Resp op) :=
 def branch (c : N.Op) : CoFree E N (N.Resp c) :=
   ⟨PUnit, N.Resp c, ⟨⟩, fun _ => .branch c .inr, pure⟩
 
-def corec {S : Type u} (f : S → Step E N A S) (s : S) : CoFree E N A :=
-  ⟨S, PEmpty, s, fun s => (f s).map .inl, nofun⟩
-
 /-! ### Bind: the source's states, then a hand-off to the continuation -/
 
 def bindTrans (g : A → CoFree E N B) {S J : Type u} (step : S → Step E N A (S ⊕ J)) (s : S) :
@@ -99,19 +96,16 @@ def bindStep (g : A → CoFree E N B) : Step E N A (CoFree E N A) → Step E N B
   | .impure op k => .impure op fun r => (k r).bind g
   | .branch c k => .branch c fun r => (k r).bind g
 
-/-! ### Renaming operations and branches -/
-
-def mapStep {X : Type w} (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
-    (b : NonDeterminism.Map N M) : Step E N A X → Step F M A X
-  | .pure a => .pure a
-  | .silent x => .silent x
-  | .impure op k => .impure (f op) fun r => k (g op r)
-  | .branch c k => .branch (b.op c) fun r => k (b.resp c r)
-
-def mapOps (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
-    (b : NonDeterminism.Map N M) : CoFree E N A → CoFree F M A
-  | ⟨S, J, s₀, step, target⟩ =>
-    ⟨S, J, s₀, fun s => mapStep f g b (step s), fun j => mapOps f g b (target j)⟩
+def mapOps (e : Effect.Map E F) (nd : NonDeterminism.Map N M) : CoFree E N A →  CoFree F M A
+  | ⟨State, Jump, initial, step, target⟩ => {
+    State, Jump, initial,
+    step := fun s => match step s with
+      | .pure a => .pure a
+      | .silent x => .silent x
+      | .impure op k => .impure (e.op op) fun r => k (e.resp op r)
+      | .branch c k => .branch (nd.op c) fun r => k (nd.resp c r)
+    target j := mapOps e nd (target j)
+  }
 
 /-! ### Loops -/
 

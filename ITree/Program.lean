@@ -27,10 +27,13 @@ def fix {I O : Type u} (f : (I → CoFree (Effect.Rec I O E) N O) → I → CoFr
   let body := f fun j => perform (E := Effect.Rec I O E) (.inl j)
   fixFrom body (body i)
 
+instance : MonadLift (CoFree.{u} E .none) (CoFree.{u} E N) where
+  monadLift := mapOps .id .ofNone
+
 instance : MonadLift (CoFree.{u} E N) (CoFree (E ⊕ₑ F) N) where
-  monadLift t := mapOps (F := E ⊕ₑ F) Sum.inl (fun _ r => r) .id t
+  monadLift := mapOps ⟨Sum.inl, (fun _ r => r)⟩ .id
 
 instance : MonadLift (CoFree.{u} F N) (CoFree (E ⊕ₑ F) N) where
-  monadLift t := mapOps (F := E ⊕ₑ F) Sum.inr (fun _ r => r) .id t
+  monadLift := mapOps ⟨Sum.inr, (fun _ r => r)⟩ .id
 
 end CoFree

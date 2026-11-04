@@ -38,11 +38,6 @@ theorem observe_perform (op : E.Op) : (perform op : CoFree E N _).observe = .imp
 
 theorem observe_branch (c : N.Op) : (branch c : CoFree E N _).observe = .branch c pure := rfl
 
-theorem observe_corec {S : Type u} (f : S → Step E N A S) (s : S) :
-    (corec f s).observe = (f s).map (corec f) := by
-  simp only [observe, corec, Step.map_map]
-  rfl
-
 theorem observe_bind (m : CoFree E N A) (g : A → CoFree E N B) :
     (m.bind g).observe = bindStep g m.observe := by
   obtain ⟨S, J, s₀, step, target⟩ := m
@@ -73,10 +68,6 @@ theorem observe_bind (m : CoFree E N A) (g : A → CoFree E N B) :
       rfl
     · rfl
 
-theorem mapStep_map {X : Type w} {Y : Type w'} (f : E.Op → F.Op)
-    (g : (op : E.Op) → F.Resp (f op) → E.Resp op) (b : NonDeterminism.Map N M) (h : X → Y)
-    (x : Step E N A X) : mapStep f g b (x.map h) = (mapStep f g b x).map h := by
-  cases x <;> rfl
 
 theorem observe_mapOps (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
     (b : NonDeterminism.Map N M) (m : CoFree E N A) :

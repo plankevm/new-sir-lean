@@ -30,10 +30,6 @@ theorem observe_atPos (m : CoFree E N A) (p : m.Pos) :
 @[simp] theorem observe_branch (c : N.Op) : (branch c : CoFree E N _).observe = .branch c pure :=
   Proofs.observe_branch c
 
-theorem observe_corec {S : Type u} (f : S → Step E N A S) (s : S) :
-    (corec f s).observe = (f s).map (corec f) :=
-  Proofs.observe_corec f s
-
 theorem observe_bind (m : CoFree E N A) (g : A → CoFree E N B) :
     (m.bind g).observe = bindStep g m.observe :=
   Proofs.observe_bind m g

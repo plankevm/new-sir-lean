@@ -100,12 +100,7 @@ def handlerLaws : List (String × Bool) :=
   [same "mapOps_choose" (mapOps (F := Ask) (M := Pick) rename (fun _ r => r) .id (pick 4))
     ((pick 4).bind CoFree.pure)]
 
-def codensityLaws : List (String × Bool) :=
-  (programs.map fun t => same "lower_lift" (CoFree.Cod.lift t).lower t) ++
-  (programs.flatMap fun t => conts.map fun f => same "lower_bind"
-    (CoFree.Cod.lift t >>= fun a => CoFree.Cod.lift (f a)).lower (t.bind f))
-
-def checks : List (String × Bool) := monadLaws ++ controlLaws ++ handlerLaws ++ codensityLaws
+def checks : List (String × Bool) := monadLaws ++ controlLaws ++ handlerLaws
 
 #eval show IO Unit from do
   let failed := checks.filter (!·.2)

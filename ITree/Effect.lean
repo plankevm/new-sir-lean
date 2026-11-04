@@ -16,8 +16,8 @@ behavior instead.
 
 Lives in the same universe as `Effect`: a machine's states must hold its choices' responses. -/
 structure NonDeterminism : Type (u+1) where
-  Op : Type u := PEmpty
-  Resp : Op → Type u := fun _ => PEmpty
+  Op : Type u
+  Resp : Op → Type u
   resp_nonempty : ∀ c, Nonempty (Resp c) := by
     first | exact fun _ => inferInstance | exact nofun
 
@@ -30,6 +30,14 @@ def sum (E F : Effect.{u}) : Effect.{u} where
     | .inr op => F.Resp op
 
 infixr:65 " ⊕ₑ " => Effect.sum
+
+structure Map (E F : Effect.{u}) : Type u where
+  op : E.Op → F.Op
+  resp : (c : E.Op) → F.Resp (op c) → E.Resp c
+
+variable {E F : Effect.{u}}
+
+def Map.id : Map E E := ⟨fun c => c, fun _ r => r⟩
 
 abbrev lift (E : Effect.{u}) : Effect.{max u w} where
   Op := ULift E.Op
@@ -48,7 +56,7 @@ end Effect
 namespace NonDeterminism
 
 /-- No choices. -/
-abbrev none : NonDeterminism.{u} := {}
+abbrev none : NonDeterminism.{u} := ⟨PEmpty, nofun, nofun⟩
 
 abbrev sum (N M : NonDeterminism.{u}) : NonDeterminism.{u} where
   Op := N.Op ⊕ M.Op
