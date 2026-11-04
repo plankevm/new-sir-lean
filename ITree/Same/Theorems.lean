@@ -236,6 +236,68 @@ theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoF
     Same Ret' (m₁.bind f) (m₂.bind g) :=
   Proofs.Same.bind h hfg
 
+/-! ## Monad laws
+
+The laws hold up to `Same` on either side, for any relation, with no determinism assumption:
+each rewrites a machine into one that takes the same steps. Since `Same` is reflexive only on
+deterministic machines, the laws as equations (`Same Eq lhs rhs`) hold exactly when a side is
+deterministic. -/
+
+theorem Same.pure_bind_left_iff {a : C} {f : C → CoFree E N₁ A} {y : CoFree E N₂ B} :
+    Same Ret (pure a >>= f) y ↔ Same Ret (f a) y :=
+  Proofs.Same.pure_bind_left_iff
+
+theorem Same.pure_bind_right_iff {x : CoFree E N₁ A} {b : C} {g : C → CoFree E N₂ B} :
+    Same Ret x (pure b >>= g) ↔ Same Ret x (g b) :=
+  Proofs.Same.pure_bind_right_iff
+
+theorem Same.bind_pure_left_iff {m : CoFree E N₁ A} {y : CoFree E N₂ B} :
+    Same Ret (m >>= pure) y ↔ Same Ret m y :=
+  Proofs.Same.bind_pure_left_iff
+
+theorem Same.bind_pure_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ B} :
+    Same Ret x (m >>= pure) ↔ Same Ret x m :=
+  Proofs.Same.bind_pure_right_iff
+
+theorem Same.bind_assoc_left_iff {m : CoFree E N₁ C} {f : C → CoFree E N₁ D}
+    {g : D → CoFree E N₁ A} {y : CoFree E N₂ B} :
+    Same Ret (m >>= f >>= g) y ↔ Same Ret (m >>= fun c => f c >>= g) y :=
+  Proofs.Same.bind_assoc_left_iff
+
+theorem Same.bind_assoc_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ C}
+    {f : C → CoFree E N₂ D} {g : D → CoFree E N₂ B} :
+    Same Ret x (m >>= f >>= g) ↔ Same Ret x (m >>= fun c => f c >>= g) :=
+  Proofs.Same.bind_assoc_right_iff
+
+theorem Deterministic.bind {m : CoFree E N A} {f : A → CoFree E N B} (hm : Deterministic m)
+    (hf : ∀ a, Deterministic (f a)) : Deterministic (m >>= f) :=
+  Proofs.Deterministic.bind hm hf
+
+theorem Deterministic.pure_bind_iff {a : A} {f : A → CoFree E N B} :
+    Same Eq (pure a >>= f) (f a) ↔ Deterministic (f a) :=
+  Proofs.Deterministic.pure_bind_iff
+
+theorem Deterministic.bind_pure_iff {m : CoFree E N A} : Same Eq (m >>= pure) m ↔ Deterministic m :=
+  Proofs.Deterministic.bind_pure_iff
+
+theorem Deterministic.bind_assoc_iff {m : CoFree E N A} {f : A → CoFree E N B}
+    {g : B → CoFree E N C} :
+    Same Eq (m >>= f >>= g) (m >>= fun a => f a >>= g) ↔ Deterministic (m >>= f >>= g) :=
+  Proofs.Deterministic.bind_assoc_iff
+
+theorem Deterministic.pure_bind {a : A} {f : A → CoFree E N B} (h : Deterministic (f a)) :
+    Same Eq (pure a >>= f) (f a) :=
+  Proofs.Deterministic.pure_bind h
+
+theorem Deterministic.bind_pure {m : CoFree E N A} (h : Deterministic m) :
+    Same Eq (m >>= pure) m :=
+  Proofs.Deterministic.bind_pure h
+
+theorem Deterministic.bind_assoc {m : CoFree E N A} {f : A → CoFree E N B}
+    {g : B → CoFree E N C} (hm : Deterministic m) (hf : ∀ a, Deterministic (f a))
+    (hg : ∀ b, Deterministic (g b)) : Same Eq (m >>= f >>= g) (m >>= fun a => f a >>= g) :=
+  Proofs.Deterministic.bind_assoc hm hf hg
+
 /-! ## Sanity checks of the definition -/
 
 @[simp]

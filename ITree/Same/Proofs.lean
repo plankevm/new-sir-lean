@@ -558,6 +558,209 @@ theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoF
     exact .mutualUnobservedStep (forallUnobserved_bind (forallUnobserved_mono h fun n₁ h =>
       forallUnobserved_bind (forallUnobserved_mono h fun n₂ h => .inl ⟨n₁, n₂, h, rfl, rfl⟩)))
 
+/-! ## Monad laws -/
+
+section MonadLaws
+
+variable {Ret : A → B → Prop}
+
+theorem step_map_id (s : Step E N A (CoFree E N A)) : s.map (fun n => n) = s := by
+  cases s <;> rfl
+
+/-- Successors given as a map out of a step, related pointwise. -/
+theorem lockstep_of_map {Q : CoFree E N₁ A → CoFree E N₁ A → Prop} {x x' : CoFree E N₁ A}
+    {T : Type (u+1)} {st : Step E N₁ A T} {φ ψ : T → CoFree E N₁ A}
+    (h : x.observe = st.map φ) (h' : x'.observe = st.map ψ) (hc : ∀ t, Q (φ t) (ψ t)) :
+    ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+      x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) :=
+  ⟨st.map fun t => ⟨(φ t, ψ t), hc t⟩, by rw [h, Step.map_map], by rw [h', Step.map_map]⟩
+
+theorem lockstep_of_eq {Q : CoFree E N₁ A → CoFree E N₁ A → Prop} {x x' : CoFree E N₁ A}
+    (hrefl : ∀ n, Q n n) (h : x.observe = x'.observe) :
+    ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+      x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) :=
+  lockstep_of_map (st := x'.observe) (h.trans (step_map_id _).symm) (step_map_id _).symm hrefl
+
+theorem lockstep_flip {Q : CoFree E N₁ A → CoFree E N₁ A → Prop}
+    (hQ : ∀ x x', Q x x' → ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+      x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2)) :
+    ∀ x x', Q x' x → ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.2 p.1},
+      x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) := fun _ _ hx =>
+  let ⟨s, h, h'⟩ := hQ _ _ hx
+  ⟨s.map fun p => ⟨(p.1.2, p.1.1), p.2⟩, by rw [h', Step.map_map], by rw [h, Step.map_map]⟩
+
+/-- Machines that take the same steps, successors related by `Q`, are interchangeable on the
+left of `Same`, whatever their nondeterminism. -/
+theorem Same.of_lockstep_left (Q : CoFree E N₁ A → CoFree E N₁ A → Prop)
+    (hQ : ∀ x x', Q x x' → ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+      x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2))
+    {x x' : CoFree E N₁ A} {y : CoFree E N₂ B} (hx : Q x x') (h : Same Ret x' y) :
+    Same Ret x y := by
+  refine Same.coind (fun x y => ∃ x', Q x x' ∧ Same Ret x' y) ?_ ⟨x', hx, h⟩
+  rintro x y ⟨x', hx, h⟩
+  replace h := Same.unfold h
+  induction h generalizing x with
+  | ret a b h₁ h₂ hab =>
+    obtain ⟨s, hs, hs'⟩ := hQ _ _ hx
+    rw [h₁] at hs'
+    cases s with
+    | pure v => cases hs'; exact .ret a b hs h₂ hab
+    | _ => cases hs'
+  | impure op h₁ h₂ hk =>
+    obtain ⟨s, hs, hs'⟩ := hQ _ _ hx
+    rw [h₁] at hs'
+    cases s with
+    | impure op' k => cases hs'; exact .impure op hs h₂ fun r => .inl ⟨_, (k r).2, hk r⟩
+    | _ => cases hs'
+  | silentL h₁ _ ih =>
+    obtain ⟨s, hs, hs'⟩ := hQ _ _ hx
+    rw [h₁] at hs'
+    cases s with
+    | silent p => cases hs'; exact .silentL hs (ih _ p.2)
+    | _ => cases hs'
+  | silentR h₂ _ ih => exact .silentR h₂ (ih _ hx)
+  | branchL c h₁ _ ih =>
+    obtain ⟨s, hs, hs'⟩ := hQ _ _ hx
+    rw [h₁] at hs'
+    cases s with
+    | branch c' k => cases hs'; exact .branchL c hs fun r => ih r _ (k r).2
+    | _ => cases hs'
+  | branchR c h₂ _ ih => exact .branchR c h₂ fun r => ih r _ hx
+  | mutualUnobservedStep h =>
+    obtain ⟨s, hs, hs'⟩ := hQ _ _ hx
+    refine .mutualUnobservedStep ?_
+    cases s with
+    | silent p =>
+      exact (forallUnobserved_silent hs).mpr (forallUnobserved_mono
+        ((forallUnobserved_silent hs').mp h) fun _ hy => .inl ⟨_, p.2, hy⟩)
+    | branch c k =>
+      exact (forallUnobserved_branch hs).mpr fun r => forallUnobserved_mono
+        ((forallUnobserved_branch hs').mp h r) fun _ hy => .inl ⟨_, (k r).2, hy⟩
+    | pure v => exact (not_forallUnobserved_pure hs' h).elim
+    | impure op k => exact (not_forallUnobserved_impure hs' h).elim
+
+theorem Same.of_lockstep_right (Q : CoFree E N₂ B → CoFree E N₂ B → Prop)
+    (hQ : ∀ y y', Q y y' → ∃ s : Step E N₂ B {p : CoFree E N₂ B × CoFree E N₂ B // Q p.1 p.2},
+      y.observe = s.map (·.1.1) ∧ y'.observe = s.map (·.1.2))
+    {x : CoFree E N₁ A} {y y' : CoFree E N₂ B} (hy : Q y y') (h : Same Ret x y') :
+    Same Ret x y :=
+  Same.symm (Same.of_lockstep_left Q hQ hy (Same.symm h))
+
+theorem bindStep_pure (o : Step E N A (CoFree E N A)) :
+    bindStep CoFree.pure o = o.map (·.bind CoFree.pure) := by
+  cases o <;> rfl
+
+theorem lockstep_bind_pure : ∀ x x' : CoFree E N A, x = x' >>= pure →
+    ∃ s : Step E N A {p : CoFree E N A × CoFree E N A // p.1 = p.2 >>= pure},
+      x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) := by
+  rintro _ m rfl
+  exact lockstep_of_map (Q := fun x x' => x = x' >>= pure) (st := m.observe)
+    ((observe_bind m _).trans (bindStep_pure _))
+    (step_map_id _).symm fun _ => rfl
+
+theorem Same.bind_pure_left_iff {m : CoFree E N₁ A} {y : CoFree E N₂ B} :
+    Same Ret (m >>= pure) y ↔ Same Ret m y :=
+  ⟨Same.of_lockstep_left (fun x x' : CoFree _ _ _ => x' = x >>= pure) (lockstep_flip lockstep_bind_pure) rfl,
+    Same.of_lockstep_left (fun x x' : CoFree _ _ _ => x = x' >>= pure) lockstep_bind_pure rfl⟩
+
+theorem Same.bind_pure_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ B} :
+    Same Ret x (m >>= pure) ↔ Same Ret x m :=
+  ⟨Same.of_lockstep_right (fun x x' : CoFree _ _ _ => x' = x >>= pure) (lockstep_flip lockstep_bind_pure) rfl,
+    Same.of_lockstep_right (fun x x' : CoFree _ _ _ => x = x' >>= pure) lockstep_bind_pure rfl⟩
+
+theorem Same.pure_bind_left_iff {a : C} {f : C → CoFree E N₁ A} {y : CoFree E N₂ B} :
+    Same Ret (pure a >>= f) y ↔ Same Ret (f a) y :=
+  ⟨fun h => Same.congr h (observe_bind (CoFree.pure a) f) rfl,
+    fun h => Same.congr h (observe_bind (CoFree.pure a) f).symm rfl⟩
+
+theorem Same.pure_bind_right_iff {x : CoFree E N₁ A} {b : C} {g : C → CoFree E N₂ B} :
+    Same Ret x (pure b >>= g) ↔ Same Ret x (g b) :=
+  ⟨fun h => Same.congr h rfl (observe_bind (CoFree.pure b) g),
+    fun h => Same.congr h rfl (observe_bind (CoFree.pure b) g).symm⟩
+
+theorem lockstep_bind_assoc {f : C → CoFree E N D} {g : D → CoFree E N A} :
+    ∀ x x' : CoFree E N A,
+      (x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g) →
+    ∃ s : Step E N A {p : CoFree E N A × CoFree E N A //
+        p.1 = p.2 ∨ ∃ m, p.1 = m >>= f >>= g ∧ p.2 = m >>= fun c => f c >>= g},
+      x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) := by
+  rintro x _ (rfl | ⟨m, rfl, rfl⟩)
+  · exact lockstep_of_eq (Q := fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
+        (fun _ => Or.inl rfl) rfl
+  · have hl := (observe_bind (m.bind f) g).trans (congrArg (bindStep g) (observe_bind m f))
+    have hr := observe_bind m fun c => (f c).bind g
+    cases ho : m.observe with
+    | pure c =>
+      rw [ho] at hl hr
+      exact lockstep_of_eq (Q := fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
+        (fun _ => Or.inl rfl) (hl.trans ((observe_bind _ _).symm.trans hr.symm))
+    | silent n =>
+      rw [ho] at hl hr
+      exact lockstep_of_map (Q := fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
+        (φ := fun t => t >>= f >>= g) (ψ := fun t => t >>= fun c => f c >>= g)
+        (st := Step.silent n) hl hr fun t => Or.inr ⟨t, rfl, rfl⟩
+    | impure op k =>
+      rw [ho] at hl hr
+      exact lockstep_of_map (Q := fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
+        (φ := fun t => t >>= f >>= g) (ψ := fun t => t >>= fun c => f c >>= g)
+        (st := Step.impure op k) hl hr fun t => Or.inr ⟨t, rfl, rfl⟩
+    | branch c k =>
+      rw [ho] at hl hr
+      exact lockstep_of_map (Q := fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
+        (φ := fun t => t >>= f >>= g) (ψ := fun t => t >>= fun c => f c >>= g)
+        (st := Step.branch c k) hl hr fun t => Or.inr ⟨t, rfl, rfl⟩
+
+theorem Same.bind_assoc_left_iff {m : CoFree E N₁ C} {f : C → CoFree E N₁ D}
+    {g : D → CoFree E N₁ A} {y : CoFree E N₂ B} :
+    Same Ret (m >>= f >>= g) y ↔ Same Ret (m >>= fun c => f c >>= g) y :=
+  ⟨Same.of_lockstep_left
+      (fun x x' => x' = x ∨ ∃ m, x' = m >>= f >>= g ∧ x = m >>= fun c => f c >>= g)
+      (lockstep_flip lockstep_bind_assoc) (.inr ⟨m, rfl, rfl⟩),
+    Same.of_lockstep_left
+      (fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
+      lockstep_bind_assoc (.inr ⟨m, rfl, rfl⟩)⟩
+
+theorem Same.bind_assoc_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ C}
+    {f : C → CoFree E N₂ D} {g : D → CoFree E N₂ B} :
+    Same Ret x (m >>= f >>= g) ↔ Same Ret x (m >>= fun c => f c >>= g) :=
+  ⟨Same.of_lockstep_right
+      (fun x x' => x' = x ∨ ∃ m, x' = m >>= f >>= g ∧ x = m >>= fun c => f c >>= g)
+      (lockstep_flip lockstep_bind_assoc) (.inr ⟨m, rfl, rfl⟩),
+    Same.of_lockstep_right
+      (fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
+      lockstep_bind_assoc (.inr ⟨m, rfl, rfl⟩)⟩
+
+theorem Deterministic.bind {m : CoFree E N A} {f : A → CoFree E N B} (hm : Deterministic m)
+    (hf : ∀ a, Deterministic (f a)) : Deterministic (m >>= f) :=
+  Same.bind hm fun a _ h => h ▸ hf a
+
+theorem Deterministic.pure_bind_iff {a : A} {f : A → CoFree E N B} :
+    Same Eq (pure a >>= f) (f a) ↔ Deterministic (f a) :=
+  Same.pure_bind_left_iff
+
+theorem Deterministic.bind_pure_iff {m : CoFree E N A} : Same Eq (m >>= pure) m ↔ Deterministic m :=
+  Same.bind_pure_left_iff
+
+theorem Deterministic.bind_assoc_iff {m : CoFree E N A} {f : A → CoFree E N B}
+    {g : B → CoFree E N C} :
+    Same Eq (m >>= f >>= g) (m >>= fun a => f a >>= g) ↔ Deterministic (m >>= f >>= g) :=
+  Same.bind_assoc_right_iff.symm
+
+theorem Deterministic.pure_bind {a : A} {f : A → CoFree E N B} (h : Deterministic (f a)) :
+    Same Eq (pure a >>= f) (f a) :=
+  Deterministic.pure_bind_iff.mpr h
+
+theorem Deterministic.bind_pure {m : CoFree E N A} (h : Deterministic m) :
+    Same Eq (m >>= pure) m :=
+  Deterministic.bind_pure_iff.mpr h
+
+theorem Deterministic.bind_assoc {m : CoFree E N A} {f : A → CoFree E N B}
+    {g : B → CoFree E N C} (hm : Deterministic m) (hf : ∀ a, Deterministic (f a))
+    (hg : ∀ b, Deterministic (g b)) : Same Eq (m >>= f >>= g) (m >>= fun a => f a >>= g) :=
+  Deterministic.bind_assoc_iff.mpr (Deterministic.bind (Deterministic.bind hm hf) hg)
+
+end MonadLaws
+
 /-! ## Sanity checks of the definition -/
 
 theorem spin_observe : (spin : CoFree E N₁ A).observe = .silent spin := rfl
