@@ -12,7 +12,7 @@ inductive UB
   | malformed (reason : String)
   | switchNoMatch
   | illegalOverflow
-  | memoryOutOfBounds (offset length : Nat)
+  | memoryOutOfBounds (offset : Word) (length : Nat)
   | uninitializedRead (offset length : Nat)
   | outOfMemory (size : Word)
   deriving DecidableEq, Repr

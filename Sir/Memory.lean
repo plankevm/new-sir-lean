@@ -67,30 +67,22 @@ def MemState.push : MemState → Allocation → MemState := Array.push
 
 namespace MemState
 
-/-- Evidence that `[offset, offset + length)` may be accessed: it is empty, or one allocation of
-`m` holds all of it. -/
-inductive Region (m : MemState) (offset length : Nat) : Type
-  | empty : length = 0 → Region m offset length
-  | within (j : Fin m.size) : m[j].start.toNat ≤ offset ∧ offset + length ≤ m[j].end →
-      Region m offset length
+/-- Evidence that one allocation of `m` holds all of `[offset, offset + length)`. -/
+abbrev Region (m : MemState) (offset : Word) (length : Nat) :=
+  { j : Fin m.size // m[j].start.toNat ≤ offset.toNat ∧ offset.toNat + length ≤ m[j].end }
 
-def inBounds (m : MemState) (offset length : Nat) : Option (m.Region offset length) :=
-  if h : length = 0 then some (.empty h) else
+def inBounds (m : MemState) (offset : Word) (length : Nat) : Option (m.Region offset length) :=
   (List.finRange m.size).findSome? fun j =>
-    if h : m[j].start.toNat ≤ offset ∧ offset + length ≤ m[j].end then some (.within j h) else none
+    if h : m[j].start.toNat ≤ offset.toNat ∧ offset.toNat + length ≤ m[j].end then some ⟨j, h⟩
+    else none
 
-def read (m : MemState) {offset length : Nat} : m.Region offset length → ByteArray
-  | .empty _ => .empty
-  | .within j _ =>
-    let start := offset - m[j].start.toNat
-    m[j].bytes.extract start (start + length)
+def read (m : MemState) {offset : Word} {length : Nat} (r : m.Region offset length) : ByteArray :=
+  let start := (offset - m[r.1].start).toNat
+  m[r.1].bytes.extract start (start + length)
 
-def write (m : MemState) {offset length : Nat} (bytes : ByteArray) :
-    m.Region offset length → MemState
-  | .empty _ => m
-  | .within j _ =>
-    m.modify j fun a =>
-      { a with bytes := bytes.copySlice 0 a.bytes (offset - a.start.toNat) length }
+def write (m : MemState) {offset : Word} {length : Nat} (bytes : ByteArray)
+    (r : m.Region offset length) : MemState :=
+  m.modify r.1 fun a => { a with bytes := bytes.copySlice 0 a.bytes (offset - a.start).toNat length }
 
 end MemState
 
@@ -110,19 +102,25 @@ def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB where
           let a' := match kind with
             | .zeroed => { a' with bytes := ⟨.replicate a'.size 0⟩ }
             | .uninitialized => a'
-          .inl (mem.push a', k a'.start)
+          let mem' := if size > 0 then mem.push a' else mem
+          .inl (mem', k a'.start)
         else .pure (.outOfMemory size)
-      | .read offset len => match mem.inBounds offset.toNat len.toNat with
+      | .read offset len =>
+        if len = 0 then .silent <| .inl (mem, k .empty) else
+        match mem.inBounds offset len.toNat with
         | some r => .silent <| .inl (mem, k (mem.read r))
-        | none => .pure (.memoryOutOfBounds offset.toNat len.toNat)
-      | .write offset bytes => match mem.inBounds offset.toNat bytes.size with
+        | none => .pure (.memoryOutOfBounds offset len.toNat)
+      | .write offset bytes =>
+        if bytes.size = 0 then .silent <| .inl (mem, k ()) else
+        match mem.inBounds offset bytes.size with
         | some r => .silent <| .inl (mem.write bytes r, k ())
-        | none => .pure (.memoryOutOfBounds offset.toNat bytes.size)
+        | none => .pure (.memoryOutOfBounds offset bytes.size)
       | .copy ⟨dst, src, len⟩ =>
-        match mem.inBounds src.toNat len.toNat, mem.inBounds dst.toNat len.toNat with
+        if len = 0 then .silent <| .inl (mem, k ()) else
+        match mem.inBounds src len.toNat, mem.inBounds dst len.toNat with
         | some r, some w => .silent <| .inl (mem.write (mem.read r) w, k ())
-        | none, _ => .pure (.memoryOutOfBounds src.toNat len.toNat)
-        | _, none => .pure (.memoryOutOfBounds dst.toNat len.toNat)
+        | none, _ => .pure (.memoryOutOfBounds src len.toNat)
+        | _, none => .pure (.memoryOutOfBounds dst len.toNat)
     | .branch c _ => nomatch c
   target := nofun
 
