@@ -639,13 +639,6 @@ theorem Same.of_lockstep_left (Q : CoFree E N₁ A → CoFree E N₁ A → Prop)
     | pure v => exact (not_forallUnobserved_pure hs' h).elim
     | impure op k => exact (not_forallUnobserved_impure hs' h).elim
 
-theorem Same.of_lockstep_right (Q : CoFree E N₂ B → CoFree E N₂ B → Prop)
-    (hQ : ∀ y y', Q y y' → ∃ s : Step E N₂ B {p : CoFree E N₂ B × CoFree E N₂ B // Q p.1 p.2},
-      y.observe = s.map (·.1.1) ∧ y'.observe = s.map (·.1.2))
-    {x : CoFree E N₁ A} {y y' : CoFree E N₂ B} (hy : Q y y') (h : Same Ret x y') :
-    Same Ret x y :=
-  Same.symm (Same.of_lockstep_left Q hQ hy (Same.symm h))
-
 theorem bindStep_pure (o : Step E N A (CoFree E N A)) :
     bindStep CoFree.pure o = o.map (·.bind CoFree.pure) := by
   cases o <;> rfl
@@ -665,8 +658,8 @@ theorem Same.bind_pure_left_iff {m : CoFree E N₁ A} {y : CoFree E N₂ B} :
 
 theorem Same.bind_pure_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ B} :
     Same Ret x (m >>= pure) ↔ Same Ret x m :=
-  ⟨Same.of_lockstep_right (fun x x' : CoFree _ _ _ => x' = x >>= pure) (lockstep_flip lockstep_bind_pure) rfl,
-    Same.of_lockstep_right (fun x x' : CoFree _ _ _ => x = x' >>= pure) lockstep_bind_pure rfl⟩
+  ⟨fun h => Same.symm (Same.bind_pure_left_iff.mp (Same.symm h)),
+    fun h => Same.symm (Same.bind_pure_left_iff.mpr (Same.symm h))⟩
 
 theorem Same.pure_bind_left_iff {a : C} {f : C → CoFree E N₁ A} {y : CoFree E N₂ B} :
     Same Ret (pure a >>= f) y ↔ Same Ret (f a) y :=
@@ -675,8 +668,8 @@ theorem Same.pure_bind_left_iff {a : C} {f : C → CoFree E N₁ A} {y : CoFree 
 
 theorem Same.pure_bind_right_iff {x : CoFree E N₁ A} {b : C} {g : C → CoFree E N₂ B} :
     Same Ret x (pure b >>= g) ↔ Same Ret x (g b) :=
-  ⟨fun h => Same.congr h rfl (observe_bind (CoFree.pure b) g),
-    fun h => Same.congr h rfl (observe_bind (CoFree.pure b) g).symm⟩
+  ⟨fun h => Same.symm (Same.pure_bind_left_iff.mp (Same.symm h)),
+    fun h => Same.symm (Same.pure_bind_left_iff.mpr (Same.symm h))⟩
 
 theorem lockstep_bind_assoc {f : C → CoFree E N D} {g : D → CoFree E N A} :
     ∀ x x' : CoFree E N A,
@@ -723,12 +716,8 @@ theorem Same.bind_assoc_left_iff {m : CoFree E N₁ C} {f : C → CoFree E N₁ 
 theorem Same.bind_assoc_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ C}
     {f : C → CoFree E N₂ D} {g : D → CoFree E N₂ B} :
     Same Ret x (m >>= f >>= g) ↔ Same Ret x (m >>= fun c => f c >>= g) :=
-  ⟨Same.of_lockstep_right
-      (fun x x' => x' = x ∨ ∃ m, x' = m >>= f >>= g ∧ x = m >>= fun c => f c >>= g)
-      (lockstep_flip lockstep_bind_assoc) (.inr ⟨m, rfl, rfl⟩),
-    Same.of_lockstep_right
-      (fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
-      lockstep_bind_assoc (.inr ⟨m, rfl, rfl⟩)⟩
+  ⟨fun h => Same.symm (Same.bind_assoc_left_iff.mp (Same.symm h)),
+    fun h => Same.symm (Same.bind_assoc_left_iff.mpr (Same.symm h))⟩
 
 theorem Deterministic.bind {m : CoFree E N A} {f : A → CoFree E N B} (hm : Deterministic m)
     (hf : ∀ a, Deterministic (f a)) : Deterministic (m >>= f) :=
