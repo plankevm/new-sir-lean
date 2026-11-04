@@ -35,12 +35,12 @@ def countTo (n : Nat) : CoFree Log .none Nat := do
   return i
 
 def fact : Nat → CoFree Log .none Nat :=
-  fix fun fact n => match n with
-    | 0 => pure 1
-    | n + 1 => do
-      let r ← fact n
-      perform (E := Rec Nat Nat Log) (.inr (.emit r))
-      pure ((n + 1) * r)
+  fix fun fact n => do
+    if n = 0 then
+      return 1
+    let r ← fact (n - 1)
+    emit r
+    return n * r
 
 /-- A level-1 program whose loop state is a level-0 tree: it re-emits every effect. -/
 def replay (t : CoFree.{0} Log .none Nat) :
@@ -53,7 +53,7 @@ def replay (t : CoFree.{0} Log .none Nat) :
     | .branch c _ => nomatch c
 
 def emitted {A : Type} (t : CoFree Log .none A) : Array Nat × Option A :=
-  let (events, result) := trace (E := Log) (N := .none) (fun _ => ()) nofun 10000 t
+  let (events, result) := trace (E := Log) (N := .none) (fun | .emit _ => ()) nofun 10000 t
   (events.filterMap fun | .op (.emit n) => some n | _ => none, result)
 
 def silents {E : Effect.{0}} {N : NonDeterminism.{0}} {A : Type} (answer : (op : E.Op) → E.Resp op)

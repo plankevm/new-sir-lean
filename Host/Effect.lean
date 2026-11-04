@@ -84,38 +84,31 @@ def HostOp.Resp : HostOp → Type
 
 
 abbrev HostE : Effect := ⟨HostOp, HostOp.Resp⟩
+abbrev HostM (α : Type) := CoFree HostE .none α
 
-variable {N : NonDeterminism}
+def host (op: HostE.Op) : HostM (HostE.Resp op) := CoFree.perform op
 
-def host (op: HostE.Op) : CoFree HostE N (HostE.Resp op)
-  := CoFree.perform (E := HostE) op
+def gas := host .gas
+def selfbalance := host .selfbalance
+def returndata := host .returndata
+def balance (a : Address) := host <| .balance a
+def extcodehash (a : Address) := host <| .extcodehash a
+def extcode (a : Address) := host <| .extcode a
 
-def gas := host (N := N) .gas
-def selfbalance := host (N := N) .selfbalance
-def returndata := host (N := N) .returndata
-def balance (a : Address) := host (N := N) <| .balance a
-def extcodehash (a : Address) := host (N := N) <| .extcodehash a
-def extcode (a : Address) := host (N := N) <| .extcode a
+def persistent.load (k : Word) := host <| .sload k
+def transient.load (k : Word) := host <| .tload k
+def persistent.store (k v : Word) := host <| .sstore k v
+def transient.store (k v : Word) := host <| .tstore k v
 
-def persistent.load (k : Word) := host (N := N) <| .sload k
-def transient.load (k : Word) := host (N := N) <| .tload k
-def persistent.store (k v : Word) := host (N := N) <| .sstore k v
-def transient.store (k v : Word) := host (N := N) <| .tstore k v
+def log (data : ByteArray) (topics : Array Word) := host <| .log topics data
 
-def log (data : ByteArray) (topics : Array Word) := host (N := N) <| .log topics data
+def call (gas : Word) (a : Address) (value : Word) (input : ByteArray) := host <| .call (.call value) gas a input
+def staticcall (gas : Word) (a : Address) (input : ByteArray) := host <| .call .staticcall gas a input
+def delegatecall (gas : Word) (a : Address) (input : ByteArray) := host <| .call .delegatecall gas a input
 
-def call (gas : Word) (a : Address) (value : Word) (input : ByteArray) :=
-  host (N := N) <| .call (.call value) gas a input
-def staticcall (gas : Word) (a : Address) (input : ByteArray) :=
-  host (N := N) <| .call .staticcall gas a input
-def delegatecall (gas : Word) (a : Address) (input : ByteArray) :=
-  host (N := N) <| .call .delegatecall gas a input
+def create (value : Word) (code : ByteArray) := host <| .create value none code
+def create2 (value salt : Word) (code : ByteArray) := host <| .create value (some salt) code
 
-def create (value : Word) (code : ByteArray) :=
-  host (N := N) <| .create value none code
-def create2 (value salt : Word) (code : ByteArray) :=
-  host (N := N) <| .create value (some salt) code
-
-def halt {α : Type} (outcome : SimplifiedOutcome) : CoFree HostE N α := do nomatch ← host (N := N) <| .halt outcome
+def halt {α : Type} (outcome : SimplifiedOutcome) : HostM α := do nomatch ← host <| .halt outcome
 
 end Host

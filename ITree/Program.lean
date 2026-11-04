@@ -12,6 +12,7 @@ instance : Monad (CoFree.{u} E N) where
   pure := CoFree.pure
   bind := CoFree.bind
 
+
 /-- Runs silently forever. -/
 def spin : CoFree E N A := ⟨PUnit, PEmpty, PUnit.unit, fun _ => .silent (.inl PUnit.unit), nofun⟩
 

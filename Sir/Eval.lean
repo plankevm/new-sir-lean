@@ -22,8 +22,7 @@ def mem.write (offset : Word) (bytes : ByteArray) := sir_op (.write offset bytes
 def mem.copy (copy : MemCopy)  := sir_op (.copy copy)
 def ub {α : Type} (ub : UB) : SirM α := do nomatch ← sir_op (.ub ub)
 def malformed {α : Type} (reason : String) := ub (α := α) <| .malformed reason
-def returndata : SirM ByteArray := do Host.returndata (N := .none)
-def returndata.size : SirM Word := (·.size) <$> returndata
+def returndata.size : SirM Word := (·.size) <$> Host.returndata
 
 namespace Vars
 
@@ -45,8 +44,9 @@ structure Context where
   env : Env
   immutables : Immutables program env.mode.kind
 
-def Context.checkStateful (ctx : Context) : SirM Unit :=
-  unless ctx.env.static do Host.halt (N := .none) .invalid
+def Context.checkStateful (ctx : Context) : SirM Unit := do
+  if ctx.env.static then
+    Host.halt .invalid
 
 def Context.code (ctx : Context) : ByteArray := match hmode : ctx.env.mode with
   | .creation ctorData => ctx.layout.init ++ ctorData
@@ -92,8 +92,8 @@ def TernOp.eval : TernOp → Word → Word → Word → Word
   | .mulmod, a, b, n => Word.mulmod a b n
 
 def Query.eval (env : Env) : Query → SirM Word
-  | .gas => Host.gas (N := .none)
-  | .selfbalance => Host.selfbalance (N := .none)
+  | .gas => Host.gas
+  | .selfbalance => Host.selfbalance
   | .address => pure env.address.toWord
   | .origin => pure env.origin.toWord
   | .caller => pure env.caller.toWord
@@ -110,17 +110,17 @@ def Query.eval (env : Env) : Query → SirM Word
 
 def log (ctx : Context) (offset len : Word) (topics : Array Word) : SirM Unit := do
   ctx.checkStateful 
-  Host.log (N := .none) (← mem.read offset len) topics
+  Host.log (← mem.read offset len) topics
 
 def execCall (ctx : Context) (ck : CallKind) (gas to inOff inLen outOff outLen : Word) : SirM Word := do
   match ck with
   | .call value => do unless value = 0 do ctx.checkStateful
   | .staticcall | .delegatecall => pure ()
   let input ← mem.read inOff inLen
-  let succ : Bool ← Host.host (N := .none) <| .call ck gas (.ofWord to) input
+  let succ : Bool ← Host.host <| .call ck gas (.ofWord to) input
   let retSize ← returndata.size
   let copiedOutLen := if retSize ≤ outLen then retSize else outLen
-  mem.writeFromSlice outOff (← returndata) 0 copiedOutLen
+  mem.writeFromSlice outOff (← Host.returndata) 0 copiedOutLen
   return .ofBool succ
 
 def Expr.eval (ctx : Context) : Expr Word → SirM Word
@@ -130,16 +130,16 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .const v => pure v
   | .copy x => pure x
   | .query q => q.eval ctx.env
-  | .balance a => Host.balance (N := .none) (.ofWord a)
-  | .extcodehash a => Host.extcodehash (N := .none) (.ofWord a)
+  | .balance a => Host.balance (.ofWord a)
+  | .extcodehash a => Host.extcodehash (.ofWord a)
   | .blockhash n => pure (ctx.env.blockhash n)
   | .blobhash i => pure (ctx.env.blobhash i)
-  | .sload k => Host.persistent.load (N := .none) k
-  | .tload k => Host.transient.load (N := .none) k
+  | .sload k => Host.persistent.load k
+  | .tload k => Host.transient.load k
   | .calldataload offset => ctx.env.calldata.slicePad offset.toNat 32 |> Word.ofBytes |> pure
   | .calldatasize => pure ctx.env.calldata.size
   | .codesize => pure ctx.code.size
-  | .extcodesize a => (·.size) <$> Host.extcode (N := .none) (.ofWord a)
+  | .extcodesize a => (·.size) <$> Host.extcode (.ofWord a)
   | .returndatasize => returndata.size
   | .keccak256 offset length => Word.keccak256 <$> mem.read offset length
   | .malloc size => alloc_zeroed size
@@ -148,12 +148,12 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .create value offset length => do
       ctx.checkStateful
       let code ← mem.read offset length
-      let a ← Host.create (N := .none) value code
+      let a ← Host.create value code
       return a.toWord
   | .create2 value offset length salt => do
       ctx.checkStateful
       let code ← mem.read offset length
-      let a ← Host.create2 (N := .none) value salt code
+      let a ← Host.create2 value salt code
       return a.toWord
   | .call gas to value inOff inLen outOff outLen =>
       execCall ctx (.call value) gas to inOff inLen outOff outLen
@@ -196,17 +196,17 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
 def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
   | .mstore size ptr v => mem.write ptr (Word.toBytes size v)
   | .mcopy dst src length => mem.copy { dst, src, length }
-  | .sstore k v => do ctx.checkStateful; persistent.store (N := .none) k v
-  | .tstore k v => do ctx.checkStateful; transient.store (N := .none) k v
+  | .sstore k v => do ctx.checkStateful; persistent.store k v
+  | .tstore k v => do ctx.checkStateful; transient.store k v
   | .calldatacopy dst offset length => mem.writeFromSlice dst ctx.env.calldata offset length
   | .codecopy dst offset length => mem.writeFromSlice dst ctx.code offset length
   | .extcodecopy a dst offset length => do
-      let code ← Host.extcode (N := .none) (.ofWord a)
+      let code ← Host.extcode (.ofWord a)
       mem.writeFromSlice dst code offset length
   | .returndatacopy dst offset length => do
       unless (offset.toNat + length.toNat ≤ (← returndata.size))
-        do Host.halt (N := .none) .invalid
-      mem.writeFromSlice dst (← returndata) offset length
+        do Host.halt .invalid
+      mem.writeFromSlice dst (← Host.returndata) offset length
   | .log0 offset length => log ctx offset length #[]
   | .log1 offset length t0 => log ctx offset length #[t0]
   | .log2 offset length t0 t1 => log ctx offset length #[t0, t1]
@@ -220,7 +220,7 @@ def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
         else malformed "invalid immutable id"
       unless v.HasSize ctx.program.immutables[i] do malformed "immutable value too large for slot"
       for ⟨offset, _⟩ in ctx.layout.immutableOffsets i do
-        -- Unsure if overflow UB here to making it explicit
+        -- Unsure if overflow would already implicitly be UB here to making it explicit
         let slotPtr := ptr + Word.ofU32 offset
         unless (ptr ≤ slotPtr) do ub .illegalOverflow
         mem.write slotPtr (v.toBytes ctx.program.immutables[i])
@@ -261,15 +261,15 @@ def evalFn (ctx : Context) : CallI → SirM CallO := CoFree.fix fun evalFn (fn, 
       | .continuesTo dst => pure dst
       | .branches cond nonZero zero => pure (if cond ≠ 0 then nonZero else zero)
       | .switch cond cases fallback => evalSwitch cond cases fallback
-      | .stop => Host.halt (N := .none) (.ret .empty)
+      | .stop => Host.halt (.ret .empty)
       | .return offset length => do
           let data ← mem.read offset length
-          Host.halt (N := .none) (.ret data)
+          Host.halt (.ret data)
       | .revert offset length => do
           let data ← mem.read offset length
-          Host.halt (N := .none) (.revert data)
-      | .invalid => Host.halt (N := .none) .invalid
-      | .selfdestruct a => Host.halt (N := .none) (.selfdestruct (.ofWord a))
+          Host.halt (.revert data)
+      | .invalid => Host.halt .invalid
+      | .selfdestruct a => Host.halt (.selfdestruct (.ofWord a))
       | .icallNever fn args => do
           let _ ← evalFn (fn, args)
           malformed "icall never returned"

@@ -48,8 +48,7 @@ abbrev Call (I O : Type u) : Effect.{u} where
   Resp _ := O
 
 /-- Operations of a recursive program: calls `.inl i` returning `O`, and operations of `E`. -/
-abbrev Rec (I O : Type u) (E : Effect.{u}) : Effect.{u} :=
-  Call I O ⊕ₑ E
+abbrev Rec (I O : Type u) (E : Effect.{u}) : Effect.{u} := Call I O ⊕ₑ E
 
 end Effect
 

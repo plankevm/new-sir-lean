@@ -59,6 +59,9 @@ def pure (a : A) : CoFree E N A :=
 def silent (m : CoFree E N A) : CoFree E N A :=
   ⟨PUnit, PUnit, ⟨⟩, fun _ => .silent (.inr ⟨⟩), fun _ => m⟩
 
+def tau : CoFree E .none PUnit := ⟨PUnit, PEmpty, ⟨⟩, fun _ => .silent (.inl ⟨⟩), nofun⟩
+
+
 def perform (op : E.Op) : CoFree E N (E.Resp op) :=
   ⟨PUnit, E.Resp op, ⟨⟩, fun | .unit => .impure op .inr, pure⟩
 
