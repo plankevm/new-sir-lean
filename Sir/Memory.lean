@@ -71,8 +71,8 @@ end MemState
 uninitialized allocation's bytes are whatever the branch picked. Undefined behavior is returned,
 not performed: `HostE` has no operation for it.
 
-The loop's mutable state is the program itself, so this machine lives one universe up. -/
-def interpMem {α : Type} (sir : SirM α) : CoFree HostE MemoryND (ULift.{1} (Except UB α)) := do
+The loop's mutable state is the program itself, so this machine's states live one universe up. -/
+def interpMem {α : Type} (sir : SirM α) : CoFree HostE MemoryND (Except UB α) := CoFree.down do
   let mut sir := sir
   let mut mem : MemState := #[]
   repeat

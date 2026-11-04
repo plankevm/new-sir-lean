@@ -2,7 +2,7 @@ import ITree.Same
 import ITree.Program
 import ITree.Machine.Theorems
 
-universe u v
+universe u v s
 
 namespace CoFree.Proofs
 
@@ -10,7 +10,7 @@ variable {E : Effect.{u}} {N N₁ N₂ N₃ : NonDeterminism.{u}} {A B C D : Typ
 
 /-! ## Unobserved steps -/
 
-theorem forallUnobserved_mono {m : CoFree E N₁ A} {p q : CoFree E N₁ A → Prop}
+theorem forallUnobserved_mono {m : CoFree.{u, v, s} E N₁ A} {p q : CoFree.{u, v, s} E N₁ A → Prop}
     (h : ForallUnobserved m p) (hpq : ∀ n, p n → q n) : ForallUnobserved m q := by
   unfold ForallUnobserved at h ⊢
   split at h
@@ -18,29 +18,29 @@ theorem forallUnobserved_mono {m : CoFree E N₁ A} {p q : CoFree E N₁ A → P
   · exact fun r => hpq _ (h r)
   · exact h.elim
 
-theorem forallUnobserved_congr {m m' : CoFree E N₁ A} {p : CoFree E N₁ A → Prop}
+theorem forallUnobserved_congr {m m' : CoFree.{u, v, s} E N₁ A} {p : CoFree.{u, v, s} E N₁ A → Prop}
     (he : m.observe = m'.observe) (h : ForallUnobserved m p) : ForallUnobserved m' p := by
   unfold ForallUnobserved at h ⊢; rw [← he]; exact h
 
-theorem forallUnobserved_silent {m n : CoFree E N₁ A} {p : CoFree E N₁ A → Prop}
+theorem forallUnobserved_silent {m n : CoFree.{u, v, s} E N₁ A} {p : CoFree.{u, v, s} E N₁ A → Prop}
     (h : m.observe = .silent n) : ForallUnobserved m p ↔ p n := by
   unfold ForallUnobserved; rw [h]
 
-theorem forallUnobserved_branch {m : CoFree E N₁ A} {c : N₁.Op} {k : N₁.Resp c → CoFree E N₁ A}
-    {p : CoFree E N₁ A → Prop} (h : m.observe = .branch c k) :
+theorem forallUnobserved_branch {m : CoFree.{u, v, s} E N₁ A} {c : N₁.Op} {k : N₁.Resp c → CoFree.{u, v, s} E N₁ A}
+    {p : CoFree.{u, v, s} E N₁ A → Prop} (h : m.observe = .branch c k) :
     ForallUnobserved m p ↔ ∀ r, p (k r) := by
   unfold ForallUnobserved; rw [h]
 
-theorem not_forallUnobserved_pure {m : CoFree E N₁ A} {a : A} {p : CoFree E N₁ A → Prop}
+theorem not_forallUnobserved_pure {m : CoFree.{u, v, s} E N₁ A} {a : A} {p : CoFree.{u, v, s} E N₁ A → Prop}
     (h : m.observe = .pure a) : ¬ForallUnobserved m p := by
   unfold ForallUnobserved; rw [h]; exact id
 
-theorem not_forallUnobserved_impure {m : CoFree E N₁ A} {op : E.Op} {k : E.Resp op → CoFree E N₁ A}
-    {p : CoFree E N₁ A → Prop} (h : m.observe = .impure op k) : ¬ForallUnobserved m p := by
+theorem not_forallUnobserved_impure {m : CoFree.{u, v, s} E N₁ A} {op : E.Op} {k : E.Resp op → CoFree.{u, v, s} E N₁ A}
+    {p : CoFree.{u, v, s} E N₁ A → Prop} (h : m.observe = .impure op k) : ¬ForallUnobserved m p := by
   unfold ForallUnobserved; rw [h]; exact id
 
 /-- An unobserved step has a successor, since every branch has a response. -/
-theorem forallUnobserved_exists {m : CoFree E N₁ A} {p q : CoFree E N₁ A → Prop}
+theorem forallUnobserved_exists {m : CoFree.{u, v, s} E N₁ A} {p q : CoFree.{u, v, s} E N₁ A → Prop}
     (hp : ForallUnobserved m p) (hq : ForallUnobserved m q) : ∃ n, p n ∧ q n := by
   unfold ForallUnobserved at hp hq
   split at hp
@@ -51,8 +51,8 @@ theorem forallUnobserved_exists {m : CoFree E N₁ A} {p q : CoFree E N₁ A →
     exact ⟨_, hp r, hq r⟩
   · exact hp.elim
 
-theorem forallUnobserved_swap {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
-    {R : CoFree E N₁ A → CoFree E N₂ B → Prop}
+theorem forallUnobserved_swap {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
+    {R : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₂ B → Prop}
     (h : ForallUnobserved m₁ fun n₁ => ForallUnobserved m₂ (R n₁)) :
     ForallUnobserved m₂ fun n₂ => ForallUnobserved m₁ fun n₁ => R n₁ n₂ := by
   have ⟨n₁, h₂, _⟩ := forallUnobserved_exists h h
@@ -67,7 +67,7 @@ theorem forallUnobserved_swap {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
     exact fun r => forallUnobserved_mono h fun _ h => (forallUnobserved_branch h₂).mp h r
   · exact hm₂.elim
 
-theorem forallUnobserved_bind {m : CoFree E N A} {f : A → CoFree E N B} {p : CoFree E N B → Prop}
+theorem forallUnobserved_bind {m : CoFree.{u, v, s} E N A} {f : A → CoFree.{u, v, s} E N B} {p : CoFree.{u, v, s} E N B → Prop}
     (h : ForallUnobserved m fun n => p (n.bind f)) : ForallUnobserved (m.bind f) p := by
   unfold ForallUnobserved at h ⊢
   rw [observe_bind]
@@ -83,8 +83,8 @@ section Layer
 variable {Ret : A → B → Prop}
 
 /-- Finitely many unobserved steps on the left, as one rule. -/
-theorem sameFinite_unobservedL {R : CoFree E N₁ A → CoFree E N₂ B → Prop} {m₁ : CoFree E N₁ A}
-    {m₂ : CoFree E N₂ B} (h : ForallUnobserved m₁ fun n => SameFinite Ret R n m₂) :
+theorem sameFinite_unobservedL {R : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₂ B → Prop} {m₁ : CoFree.{u, v, s} E N₁ A}
+    {m₂ : CoFree.{u, v, s} E N₂ B} (h : ForallUnobserved m₁ fun n => SameFinite Ret R n m₂) :
     SameFinite Ret R m₁ m₂ := by
   unfold ForallUnobserved at h
   split at h
@@ -92,8 +92,8 @@ theorem sameFinite_unobservedL {R : CoFree E N₁ A → CoFree E N₂ B → Prop
   · rename_i h'; exact .branchL _ h' h
   · exact h.elim
 
-theorem sameFinite_unobservedR {R : CoFree E N₁ A → CoFree E N₂ B → Prop} {m₁ : CoFree E N₁ A}
-    {m₂ : CoFree E N₂ B} (h : ForallUnobserved m₂ fun n => SameFinite Ret R m₁ n) :
+theorem sameFinite_unobservedR {R : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₂ B → Prop} {m₁ : CoFree.{u, v, s} E N₁ A}
+    {m₂ : CoFree.{u, v, s} E N₂ B} (h : ForallUnobserved m₂ fun n => SameFinite Ret R m₁ n) :
     SameFinite Ret R m₁ m₂ := by
   unfold ForallUnobserved at h
   split at h
@@ -101,8 +101,8 @@ theorem sameFinite_unobservedR {R : CoFree E N₁ A → CoFree E N₂ B → Prop
   · rename_i h'; exact .branchR _ h' h
   · exact h.elim
 
-theorem SameFinite.mono {R R' : CoFree E N₁ A → CoFree E N₂ B → Prop}
-    (hR : ∀ x y, R x y → R' x y) {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem SameFinite.mono {R R' : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₂ B → Prop}
+    (hR : ∀ x y, R x y → R' x y) {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h : SameFinite Ret R m₁ m₂) : SameFinite Ret R' m₁ m₂ := by
   induction h with
   | ret a b h₁ h₂ hab => exact .ret a b h₁ h₂ hab
@@ -115,8 +115,8 @@ theorem SameFinite.mono {R R' : CoFree E N₁ A → CoFree E N₂ B → Prop}
     exact .mutualUnobservedStep (forallUnobserved_mono h fun _ h =>
       forallUnobserved_mono h fun _ => hR _ _)
 
-theorem SameFinite.congr {R : CoFree E N₁ A → CoFree E N₂ B → Prop}
-    {m₁ m₁' : CoFree E N₁ A} {m₂ m₂' : CoFree E N₂ B} (h : SameFinite Ret R m₁ m₂)
+theorem SameFinite.congr {R : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₂ B → Prop}
+    {m₁ m₁' : CoFree.{u, v, s} E N₁ A} {m₂ m₂' : CoFree.{u, v, s} E N₂ B} (h : SameFinite Ret R m₁ m₂)
     (he₁ : m₁.observe = m₁'.observe) (he₂ : m₂.observe = m₂'.observe) :
     SameFinite Ret R m₁' m₂' := by
   induction h generalizing m₁' m₂' with
@@ -138,24 +138,24 @@ section Fixpoint
 
 variable {Ret : A → B → Prop}
 
-theorem Same.unfold {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} :
+theorem Same.unfold {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} :
     Same Ret m₁ m₂ → SameFinite Ret (Same Ret) m₁ m₂
   | ⟨R, h, hR⟩ => SameFinite.mono (fun _ _ hxy => ⟨R, hxy, hR⟩) (hR _ _ h)
 
-theorem Same.fold {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.fold {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h : SameFinite Ret (Same Ret) m₁ m₂) : Same Ret m₁ m₂ :=
   ⟨SameFinite Ret (Same Ret), h, fun _ _ h => SameFinite.mono (fun _ _ => Same.unfold) h⟩
 
 /-- Coinduction up to `Same`: `R` may step to pairs already known to be related. -/
-theorem Same.coind (R : CoFree E N₁ A → CoFree E N₂ B → Prop)
+theorem Same.coind (R : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₂ B → Prop)
     (hR : ∀ x y, R x y → SameFinite Ret (fun x y => R x y ∨ Same Ret x y) x y)
-    {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (h : R m₁ m₂) : Same Ret m₁ m₂ := by
+    {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} (h : R m₁ m₂) : Same Ret m₁ m₂ := by
   refine ⟨fun x y => R x y ∨ Same Ret x y, .inl h, ?_⟩
   rintro x y (hxy | hxy)
   · exact hR x y hxy
   · exact SameFinite.mono (fun _ _ => .inr) (Same.unfold hxy)
 
-theorem Same.congr {m₁ m₁' : CoFree E N₁ A} {m₂ m₂' : CoFree E N₂ B}
+theorem Same.congr {m₁ m₁' : CoFree.{u, v, s} E N₁ A} {m₂ m₂' : CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) (he₁ : m₁.observe = m₁'.observe)
     (he₂ : m₂.observe = m₂'.observe) : Same Ret m₁' m₂' :=
   Same.fold (SameFinite.congr (Same.unfold h) he₁ he₂)
@@ -168,42 +168,42 @@ section Constructors
 
 variable {Ret : A → B → Prop}
 
-theorem Same.ret {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {a : A} {b : B}
+theorem Same.ret {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {a : A} {b : B}
     (h₁ : m₁.observe = .pure a) (h₂ : m₂.observe = .pure b) (h : Ret a b) :
     Same Ret m₁ m₂ :=
   Same.fold (.ret a b h₁ h₂ h)
 
-theorem Same.impure {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (op : E.Op)
-    {k₁ : E.Resp op → CoFree E N₁ A} {k₂ : E.Resp op → CoFree E N₂ B}
+theorem Same.impure {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} (op : E.Op)
+    {k₁ : E.Resp op → CoFree.{u, v, s} E N₁ A} {k₂ : E.Resp op → CoFree.{u, v, s} E N₂ B}
     (h₁ : m₁.observe = .impure op k₁) (h₂ : m₂.observe = .impure op k₂)
     (h : ∀ r, Same Ret (k₁ r) (k₂ r)) : Same Ret m₁ m₂ :=
   Same.fold (.impure op h₁ h₂ h)
 
-theorem Same.silentL {m₁ n₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.silentL {m₁ n₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h₁ : m₁.observe = .silent n₁) (h : Same Ret n₁ m₂) : Same Ret m₁ m₂ :=
   Same.fold (.silentL h₁ (Same.unfold h))
 
-theorem Same.silentR {m₁ : CoFree E N₁ A} {m₂ n₂ : CoFree E N₂ B}
+theorem Same.silentR {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ n₂ : CoFree.{u, v, s} E N₂ B}
     (h₂ : m₂.observe = .silent n₂) (h : Same Ret m₁ n₂) : Same Ret m₁ m₂ :=
   Same.fold (.silentR h₂ (Same.unfold h))
 
-theorem Same.branchL {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (c : N₁.Op)
-    {k : N₁.Resp c → CoFree E N₁ A} (h₁ : m₁.observe = .branch c k)
+theorem Same.branchL {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} (c : N₁.Op)
+    {k : N₁.Resp c → CoFree.{u, v, s} E N₁ A} (h₁ : m₁.observe = .branch c k)
     (h : ∀ r, Same Ret (k r) m₂) : Same Ret m₁ m₂ :=
   Same.fold (.branchL c h₁ fun r => Same.unfold (h r))
 
-theorem Same.branchR {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (c : N₂.Op)
-    {k : N₂.Resp c → CoFree E N₂ B} (h₂ : m₂.observe = .branch c k)
+theorem Same.branchR {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} (c : N₂.Op)
+    {k : N₂.Resp c → CoFree.{u, v, s} E N₂ B} (h₂ : m₂.observe = .branch c k)
     (h : ∀ r, Same Ret m₁ (k r)) : Same Ret m₁ m₂ :=
   Same.fold (.branchR c h₂ fun r => Same.unfold (h r))
 
-theorem Same.mutualUnobservedStep {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.mutualUnobservedStep {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h : ForallUnobserved m₁ fun n₁ => ForallUnobserved m₂ (Same Ret n₁)) : Same Ret m₁ m₂ :=
   Same.fold (.mutualUnobservedStep h)
 
 /-- Both sides branch: every pair of responses must be related. -/
-theorem Same.branch {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {c₁ : N₁.Op} {c₂ : N₂.Op}
-    {k₁ : N₁.Resp c₁ → CoFree E N₁ A} {k₂ : N₂.Resp c₂ → CoFree E N₂ B}
+theorem Same.branch {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {c₁ : N₁.Op} {c₂ : N₂.Op}
+    {k₁ : N₁.Resp c₁ → CoFree.{u, v, s} E N₁ A} {k₂ : N₂.Resp c₂ → CoFree.{u, v, s} E N₂ B}
     (h₁ : m₁.observe = .branch c₁ k₁) (h₂ : m₂.observe = .branch c₂ k₂)
     (h : ∀ r₁ r₂, Same Ret (k₁ r₁) (k₂ r₂)) : Same Ret m₁ m₂ :=
   Same.branchL c₁ h₁ fun r₁ => Same.branchR c₂ h₂ (h r₁)
@@ -216,7 +216,7 @@ section Inversion
 
 variable {Ret : A → B → Prop}
 
-theorem Same.silentL_inv {m₁ n₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.silentL_inv {m₁ n₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) (h₁ : m₁.observe = .silent n₁) : Same Ret n₁ m₂ := by
   replace h := Same.unfold h
   induction h generalizing n₁ with
@@ -230,7 +230,7 @@ theorem Same.silentL_inv {m₁ n₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
     rw [forallUnobserved_silent h₁] at h
     exact Same.fold (sameFinite_unobservedR (forallUnobserved_mono h fun _ => Same.unfold))
 
-theorem Same.silentR_inv {m₁ : CoFree E N₁ A} {m₂ n₂ : CoFree E N₂ B}
+theorem Same.silentR_inv {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ n₂ : CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) (h₂ : m₂.observe = .silent n₂) : Same Ret m₁ n₂ := by
   replace h := Same.unfold h
   induction h generalizing n₂ with
@@ -244,8 +244,8 @@ theorem Same.silentR_inv {m₁ : CoFree E N₁ A} {m₂ n₂ : CoFree E N₂ B}
     exact Same.fold (sameFinite_unobservedL (forallUnobserved_mono h fun _ h =>
       Same.unfold ((forallUnobserved_silent h₂).mp h)))
 
-theorem Same.branchL_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {c : N₁.Op}
-    {k : N₁.Resp c → CoFree E N₁ A} (h : Same Ret m₁ m₂) (h₁ : m₁.observe = .branch c k)
+theorem Same.branchL_inv {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {c : N₁.Op}
+    {k : N₁.Resp c → CoFree.{u, v, s} E N₁ A} (h : Same Ret m₁ m₂) (h₁ : m₁.observe = .branch c k)
     (r : N₁.Resp c) : Same Ret (k r) m₂ := by
   replace h := Same.unfold h
   induction h generalizing k with
@@ -259,8 +259,8 @@ theorem Same.branchL_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {c : 
     rw [forallUnobserved_branch h₁] at h
     exact Same.fold (sameFinite_unobservedR (forallUnobserved_mono (h r) fun _ => Same.unfold))
 
-theorem Same.branchR_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {c : N₂.Op}
-    {k : N₂.Resp c → CoFree E N₂ B} (h : Same Ret m₁ m₂) (h₂ : m₂.observe = .branch c k)
+theorem Same.branchR_inv {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {c : N₂.Op}
+    {k : N₂.Resp c → CoFree.{u, v, s} E N₂ B} (h : Same Ret m₁ m₂) (h₂ : m₂.observe = .branch c k)
     (r : N₂.Resp c) : Same Ret m₁ (k r) := by
   replace h := Same.unfold h
   induction h generalizing k with
@@ -275,7 +275,7 @@ theorem Same.branchR_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {c : 
       Same.unfold ((forallUnobserved_branch h₂).mp h r)))
 
 /-- After an unobserved step on the left, the successors are still related. -/
-theorem Same.unobservedL_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (h : Same Ret m₁ m₂)
+theorem Same.unobservedL_inv {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} (h : Same Ret m₁ m₂)
     (hu : ForallUnobserved m₁ fun _ => True) : ForallUnobserved m₁ fun n => Same Ret n m₂ := by
   unfold ForallUnobserved at hu ⊢
   split at hu
@@ -283,7 +283,7 @@ theorem Same.unobservedL_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (
   · rename_i h₁; exact Same.branchL_inv h h₁
   · exact hu.elim
 
-theorem Same.unobservedR_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (h : Same Ret m₁ m₂)
+theorem Same.unobservedR_inv {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} (h : Same Ret m₁ m₂)
     (hu : ForallUnobserved m₂ fun _ => True) : ForallUnobserved m₂ fun n => Same Ret m₁ n := by
   unfold ForallUnobserved at hu ⊢
   split at hu
@@ -291,7 +291,7 @@ theorem Same.unobservedR_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (
   · rename_i h₂; exact Same.branchR_inv h h₂
   · exact hu.elim
 
-theorem Same.ret_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {a : A} {b : B}
+theorem Same.ret_inv {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {a : A} {b : B}
     (h : Same Ret m₁ m₂) (h₁ : m₁.observe = .pure a) (h₂ : m₂.observe = .pure b) : Ret a b := by
   cases Same.unfold h with
   | ret _ _ h₁' h₂' hab => rw [h₁] at h₁'; rw [h₂] at h₂'; cases h₁'; cases h₂'; exact hab
@@ -303,8 +303,8 @@ theorem Same.ret_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {a : A} {
   | mutualUnobservedStep h => exact (not_forallUnobserved_pure h₁ h).elim
 
 /-- Two related visible operations are the same operation. -/
-theorem Same.impure_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
-    {op₁ op₂ : E.Op} {k₁ : E.Resp op₁ → CoFree E N₁ A} {k₂ : E.Resp op₂ → CoFree E N₂ B}
+theorem Same.impure_inv {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
+    {op₁ op₂ : E.Op} {k₁ : E.Resp op₁ → CoFree.{u, v, s} E N₁ A} {k₂ : E.Resp op₂ → CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) (h₁ : m₁.observe = .impure op₁ k₁)
     (h₂ : m₂.observe = .impure op₂ k₂) : op₁ = op₂ := by
   cases Same.unfold h with
@@ -317,8 +317,8 @@ theorem Same.impure_inv {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
   | mutualUnobservedStep h => exact (not_forallUnobserved_impure h₁ h).elim
 
 /-- Related machines performing the same operation stay related for every response. -/
-theorem Same.impure_inv_resp {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
-    {op : E.Op} {k₁ : E.Resp op → CoFree E N₁ A} {k₂ : E.Resp op → CoFree E N₂ B}
+theorem Same.impure_inv_resp {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
+    {op : E.Op} {k₁ : E.Resp op → CoFree.{u, v, s} E N₁ A} {k₂ : E.Resp op → CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) (h₁ : m₁.observe = .impure op k₁)
     (h₂ : m₂.observe = .impure op k₂) (r : E.Resp op) : Same Ret (k₁ r) (k₂ r) := by
   cases Same.unfold h with
@@ -334,7 +334,7 @@ end Inversion
 
 /-! ## Symmetry, monotonicity, reflexivity without branches -/
 
-theorem Same.symm {Ret : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.symm {Ret : A → B → Prop} {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) : Same (fun b a => Ret a b) m₂ m₁ := by
   refine ⟨fun y x => Same Ret x y, h, fun y x hxy => ?_⟩
   replace hxy := Same.unfold hxy
@@ -348,7 +348,7 @@ theorem Same.symm {Ret : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFr
   | mutualUnobservedStep h => exact .mutualUnobservedStep (forallUnobserved_swap h)
 
 theorem Same.mono {Ret Ret' : A → B → Prop} (hRet : ∀ a b, Ret a b → Ret' a b)
-    {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} (h : Same Ret m₁ m₂) :
+    {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} (h : Same Ret m₁ m₂) :
     Same Ret' m₁ m₂ := by
   refine ⟨Same Ret, h, fun x y hxy => ?_⟩
   replace hxy := Same.unfold hxy
@@ -362,7 +362,7 @@ theorem Same.mono {Ret Ret' : A → B → Prop} (hRet : ∀ a b, Ret a b → Ret
   | mutualUnobservedStep h => exact .mutualUnobservedStep h
 
 theorem Same.refl {Ret : A → A → Prop}
-    (hbr : N₁.Op → False) (hRet : ∀ a, Ret a a) (m : CoFree E N₁ A) : Same Ret m m := by
+    (hbr : N₁.Op → False) (hRet : ∀ a, Ret a a) (m : CoFree.{u, v, s} E N₁ A) : Same Ret m m := by
   refine ⟨Eq, rfl, ?_⟩
   rintro x _ rfl
   cases h : x.observe with
@@ -385,11 +385,11 @@ section Trans
 
 variable {RA : A → B → Prop} {RB : B → C → Prop}
 
-theorem trans_ret {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N₃ C} {a : A} {b : B}
+theorem trans_ret {x : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} {z : CoFree.{u, v, s} E N₃ C} {a : A} {b : B}
     (hx : x.observe = .pure a) (hy : y.observe = .pure b) (hab : RA a b)
     (h₂ : SameFinite RB (Same RB) y z) :
     SameFinite (fun a c => ∃ b, RA a b ∧ RB b c)
-      (fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z) x z := by
+      (fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z) x z := by
   induction h₂ with
   | ret _ c hy' hz hbc => rw [hy] at hy'; cases hy'; exact .ret a c hx hz ⟨_, hab, hbc⟩
   | impure _ hy' => rw [hy] at hy'; cases hy'
@@ -399,13 +399,13 @@ theorem trans_ret {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N₃
   | branchR c hz _ ih => exact .branchR c hz fun r => ih r hy
   | mutualUnobservedStep h => exact (not_forallUnobserved_pure hy h).elim
 
-theorem trans_impure {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N₃ C} {op : E.Op}
-    {k₁ : E.Resp op → CoFree E N₁ A} {k₂ : E.Resp op → CoFree E N₂ B}
+theorem trans_impure {x : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} {z : CoFree.{u, v, s} E N₃ C} {op : E.Op}
+    {k₁ : E.Resp op → CoFree.{u, v, s} E N₁ A} {k₂ : E.Resp op → CoFree.{u, v, s} E N₂ B}
     (hx : x.observe = .impure op k₁) (hy : y.observe = .impure op k₂)
     (hk : ∀ r, Same RA (k₁ r) (k₂ r))
     (h₂ : SameFinite RB (Same RB) y z) :
     SameFinite (fun a c => ∃ b, RA a b ∧ RB b c)
-      (fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z) x z := by
+      (fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z) x z := by
   induction h₂ with
   | ret _ _ hy' => rw [hy] at hy'; cases hy'
   | impure _ hy' hz hk' =>
@@ -417,11 +417,11 @@ theorem trans_impure {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N
   | branchR c hz _ ih => exact .branchR c hz fun r => ih r hy
   | mutualUnobservedStep h => exact (not_forallUnobserved_impure hy h).elim
 
-theorem trans_visible {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N₃ C}
+theorem trans_visible {x : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} {z : CoFree.{u, v, s} E N₃ C}
     (h₁ : SameFinite RA (Same RA) x y) :
     ¬ForallUnobserved y (fun _ => True) → SameFinite RB (Same RB) y z →
     SameFinite (fun a c => ∃ b, RA a b ∧ RB b c)
-      (fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z) x z := by
+      (fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z) x z := by
   induction h₁ with
   | ret _ _ hx hy hab => intro _ h₂; exact trans_ret hx hy hab h₂
   | impure op hx hy hk => intro _ h₂; exact trans_impure hx hy hk h₂
@@ -436,26 +436,26 @@ theorem trans_visible {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E 
 
 /-- The middle machine `y`, at an unobserved step, has reached `y'` (one of its successors);
 if `y'` is again unobserved, keep going, else line up with `trans_visible`. -/
-theorem trans_unobserved_next {x : CoFree E N₁ A} {y' : CoFree E N₂ B} {z : CoFree E N₃ C}
+theorem trans_unobserved_next {x : CoFree.{u, v, s} E N₁ A} {y' : CoFree.{u, v, s} E N₂ B} {z : CoFree.{u, v, s} E N₃ C}
     (H : ForallUnobserved x fun x' => Same RA x' y')
     (h₂ : SameFinite RB (Same RB) y' z)
     (ih : ForallUnobserved y' (fun _ => True) →
       (ForallUnobserved x fun x' => ForallUnobserved y' (Same RA x')) →
       SameFinite (fun a c => ∃ b, RA a b ∧ RB b c)
-        (fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z) x z) :
+        (fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z) x z) :
     SameFinite (fun a c => ∃ b, RA a b ∧ RB b c)
-      (fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z) x z := by
+      (fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z) x z := by
   by_cases hu : ForallUnobserved y' fun _ => True
   · exact ih hu (forallUnobserved_mono H fun _ h => Same.unobservedR_inv h hu)
   · exact sameFinite_unobservedL (forallUnobserved_mono H fun _ h =>
       trans_visible (Same.unfold h) hu h₂)
 
-theorem trans_unobserved {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N₃ C}
+theorem trans_unobserved {x : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} {z : CoFree.{u, v, s} E N₃ C}
     (h₂ : SameFinite RB (Same RB) y z) :
     ForallUnobserved y (fun _ => True) →
     (ForallUnobserved x fun x' => ForallUnobserved y (Same RA x')) →
     SameFinite (fun a c => ∃ b, RA a b ∧ RB b c)
-      (fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z) x z := by
+      (fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z) x z := by
   induction h₂ with
   | ret _ _ hy => intro hu; exact (not_forallUnobserved_pure hy hu).elim
   | impure _ hy => intro hu; exact (not_forallUnobserved_impure hy hu).elim
@@ -476,11 +476,11 @@ theorem trans_unobserved {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree
     obtain ⟨y', h₁, h₂⟩ := forallUnobserved_exists hx' h
     exact forallUnobserved_mono h₂ fun _ h₃ => ⟨y', h₁, h₃⟩
 
-theorem trans_step {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N₃ C}
+theorem trans_step {x : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} {z : CoFree.{u, v, s} E N₃ C}
     (h₁ : SameFinite RA (Same RA) x y) :
     Same RB y z →
     SameFinite (fun a c => ∃ b, RA a b ∧ RB b c)
-      (fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z) x z := by
+      (fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z) x z := by
   induction h₁ with
   | ret _ _ hx hy hab => intro h₂; exact trans_ret hx hy hab (Same.unfold h₂)
   | impure op hx hy hk => intro h₂; exact trans_impure hx hy hk (Same.unfold h₂)
@@ -496,47 +496,47 @@ theorem trans_step {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N�
     obtain ⟨_, h', _⟩ := forallUnobserved_exists h h
     exact trans_unobserved (Same.unfold h₂) (forallUnobserved_mono h' fun _ _ => trivial) h
 
-theorem Same.trans {x : CoFree E N₁ A} {y : CoFree E N₂ B} {z : CoFree E N₃ C}
+theorem Same.trans {x : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} {z : CoFree.{u, v, s} E N₃ C}
     (h₁ : Same RA x y) (h₂ : Same RB y z) :
     Same (fun a c => ∃ b, RA a b ∧ RB b c) x z :=
-  ⟨fun x z => ∃ y : CoFree E N₂ B, Same RA x y ∧ Same RB y z, ⟨_, h₁, h₂⟩,
+  ⟨fun x z => ∃ y : CoFree.{u, v, s} E N₂ B, Same RA x y ∧ Same RB y z, ⟨_, h₁, h₂⟩,
    fun _ _ ⟨_, h₁, h₂⟩ => trans_step (Same.unfold h₁) h₂⟩
 
 end Trans
 
 /-! ## Determinism -/
 
-theorem Same.deterministic_left {Ret : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.deterministic_left {Ret : A → B → Prop} {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) : Same (fun a a' => ∃ b, Ret a b ∧ Ret a' b) m₁ m₁ :=
   Same.trans h (Same.symm h)
 
-theorem Same.deterministic_right {Ret : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.deterministic_right {Ret : A → B → Prop} {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (h : Same Ret m₁ m₂) : Same (fun b b' => ∃ a, Ret a b ∧ Ret a b') m₂ m₂ :=
   Same.trans (Same.symm h) h
 
-theorem Same.symm_eq {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ A} (h : Same Eq m₁ m₂) : Same Eq m₂ m₁ :=
+theorem Same.symm_eq {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ A} (h : Same Eq m₁ m₂) : Same Eq m₂ m₁ :=
   Same.mono (fun _ _ h => h.symm) (Same.symm h)
 
-theorem Same.trans_eq {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ A} {m₃ : CoFree E N₃ A} (h₁ : Same Eq m₁ m₂) (h₂ : Same Eq m₂ m₃) :
+theorem Same.trans_eq {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ A} {m₃ : CoFree.{u, v, s} E N₃ A} (h₁ : Same Eq m₁ m₂) (h₂ : Same Eq m₂ m₃) :
     Same Eq m₁ m₃ :=
   Same.mono (fun _ _ ⟨_, h₁, h₂⟩ => h₁.trans h₂) (Same.trans h₁ h₂)
 
-theorem Deterministic.of_same {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ A} (h : Same Eq m₁ m₂) :
+theorem Deterministic.of_same {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ A} (h : Same Eq m₁ m₂) :
     Deterministic m₁ ∧ Deterministic m₂ :=
   ⟨Same.trans_eq h (Same.symm_eq h), Same.trans_eq (Same.symm_eq h) h⟩
 
-theorem Same.not_of_not_self_left {Ret : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.not_of_not_self_left {Ret : A → B → Prop} {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (hself : ∀ R : A → A → Prop, ¬Same R m₁ m₁) : ¬Same Ret m₁ m₂ :=
   fun h => hself _ (Same.deterministic_left h)
 
-theorem Same.not_of_not_self_right {Ret : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+theorem Same.not_of_not_self_right {Ret : A → B → Prop} {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B}
     (hself : ∀ R : B → B → Prop, ¬Same R m₂ m₂) : ¬Same Ret m₁ m₂ :=
   fun h => hself _ (Same.deterministic_right h)
 
 /-! ## Bind -/
 
-theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoFree E N₁ A}
-    {m₂ : CoFree E N₂ B} {f : A → CoFree E N₁ C} {g : B → CoFree E N₂ D} (h : Same Ret m₁ m₂)
+theorem Same.bind {Ret : A → B → Prop} {Ret' : C → D → Prop} {m₁ : CoFree.{u, v, s} E N₁ A}
+    {m₂ : CoFree.{u, v, s} E N₂ B} {f : A → CoFree.{u, v, s} E N₁ C} {g : B → CoFree.{u, v, s} E N₂ D} (h : Same Ret m₁ m₂)
     (hfg : ∀ a b, Ret a b → Same Ret' (f a) (g b)) :
     Same Ret' (m₁.bind f) (m₂.bind g) := by
   refine Same.coind (fun x y => ∃ m₁ m₂, Same Ret m₁ m₂ ∧ x = m₁.bind f ∧
@@ -564,37 +564,37 @@ section MonadLaws
 
 variable {Ret : A → B → Prop}
 
-theorem step_map_id (s : Step E N A (CoFree E N A)) : s.map (fun n => n) = s := by
+theorem step_map_id (s : Step E N A (CoFree.{u, v, s} E N A)) : s.map (fun n => n) = s := by
   cases s <;> rfl
 
 /-- Successors given as a map out of a step, related pointwise. -/
-theorem lockstep_of_map {Q : CoFree E N₁ A → CoFree E N₁ A → Prop} {x x' : CoFree E N₁ A}
-    {T : Type (max (u+1) (v+1))} {st : Step E N₁ A T} {φ ψ : T → CoFree E N₁ A}
+theorem lockstep_of_map {Q : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₁ A → Prop} {x x' : CoFree.{u, v, s} E N₁ A}
+    {T : Type (max (u+1) (v+1) (s+1))} {st : Step E N₁ A T} {φ ψ : T → CoFree.{u, v, s} E N₁ A}
     (h : x.observe = st.map φ) (h' : x'.observe = st.map ψ) (hc : ∀ t, Q (φ t) (ψ t)) :
-    ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+    ∃ s : Step E N₁ A {p : CoFree.{u, v, s} E N₁ A × CoFree.{u, v, s} E N₁ A // Q p.1 p.2},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) :=
   ⟨st.map fun t => ⟨(φ t, ψ t), hc t⟩, by rw [h, Step.map_map], by rw [h', Step.map_map]⟩
 
-theorem lockstep_of_eq {Q : CoFree E N₁ A → CoFree E N₁ A → Prop} {x x' : CoFree E N₁ A}
+theorem lockstep_of_eq {Q : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₁ A → Prop} {x x' : CoFree.{u, v, s} E N₁ A}
     (hrefl : ∀ n, Q n n) (h : x.observe = x'.observe) :
-    ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+    ∃ s : Step E N₁ A {p : CoFree.{u, v, s} E N₁ A × CoFree.{u, v, s} E N₁ A // Q p.1 p.2},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) :=
   lockstep_of_map (st := x'.observe) (h.trans (step_map_id _).symm) (step_map_id _).symm hrefl
 
-theorem lockstep_flip {Q : CoFree E N₁ A → CoFree E N₁ A → Prop}
-    (hQ : ∀ x x', Q x x' → ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+theorem lockstep_flip {Q : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₁ A → Prop}
+    (hQ : ∀ x x', Q x x' → ∃ s : Step E N₁ A {p : CoFree.{u, v, s} E N₁ A × CoFree.{u, v, s} E N₁ A // Q p.1 p.2},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2)) :
-    ∀ x x', Q x' x → ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.2 p.1},
+    ∀ x x', Q x' x → ∃ s : Step E N₁ A {p : CoFree.{u, v, s} E N₁ A × CoFree.{u, v, s} E N₁ A // Q p.2 p.1},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) := fun _ _ hx =>
   let ⟨s, h, h'⟩ := hQ _ _ hx
   ⟨s.map fun p => ⟨(p.1.2, p.1.1), p.2⟩, by rw [h', Step.map_map], by rw [h, Step.map_map]⟩
 
 /-- Machines that take the same steps, successors related by `Q`, are interchangeable on the
 left of `Same`, whatever their nondeterminism. -/
-theorem Same.of_lockstep_left (Q : CoFree E N₁ A → CoFree E N₁ A → Prop)
-    (hQ : ∀ x x', Q x x' → ∃ s : Step E N₁ A {p : CoFree E N₁ A × CoFree E N₁ A // Q p.1 p.2},
+theorem Same.of_lockstep_left (Q : CoFree.{u, v, s} E N₁ A → CoFree.{u, v, s} E N₁ A → Prop)
+    (hQ : ∀ x x', Q x x' → ∃ s : Step E N₁ A {p : CoFree.{u, v, s} E N₁ A × CoFree.{u, v, s} E N₁ A // Q p.1 p.2},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2))
-    {x x' : CoFree E N₁ A} {y : CoFree E N₂ B} (hx : Q x x') (h : Same Ret x' y) :
+    {x x' : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} (hx : Q x x') (h : Same Ret x' y) :
     Same Ret x y := by
   refine Same.coind (fun x y => ∃ x', Q x x' ∧ Same Ret x' y) ?_ ⟨x', hx, h⟩
   rintro x y ⟨x', hx, h⟩
@@ -639,42 +639,42 @@ theorem Same.of_lockstep_left (Q : CoFree E N₁ A → CoFree E N₁ A → Prop)
     | pure v => exact (not_forallUnobserved_pure hs' h).elim
     | impure op k => exact (not_forallUnobserved_impure hs' h).elim
 
-theorem bindStep_pure (o : Step E N A (CoFree E N A)) :
+theorem bindStep_pure (o : Step E N A (CoFree.{u, v, s} E N A)) :
     bindStep CoFree.pure o = o.map (·.bind CoFree.pure) := by
   cases o <;> rfl
 
-theorem lockstep_bind_pure : ∀ x x' : CoFree E N A, x = x' >>= pure →
-    ∃ s : Step E N A {p : CoFree E N A × CoFree E N A // p.1 = p.2 >>= pure},
+theorem lockstep_bind_pure : ∀ x x' : CoFree.{u, v, s} E N A, x = x' >>= pure →
+    ∃ s : Step E N A {p : CoFree.{u, v, s} E N A × CoFree.{u, v, s} E N A // p.1 = p.2 >>= pure},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) := by
   rintro _ m rfl
   exact lockstep_of_map (Q := fun x x' => x = x' >>= pure) (st := m.observe)
     ((observe_bind m _).trans (bindStep_pure _))
     (step_map_id _).symm fun _ => rfl
 
-theorem Same.bind_pure_left_iff {m : CoFree E N₁ A} {y : CoFree E N₂ B} :
+theorem Same.bind_pure_left_iff {m : CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} :
     Same Ret (m >>= pure) y ↔ Same Ret m y :=
-  ⟨Same.of_lockstep_left (fun x x' : CoFree _ _ _ => x' = x >>= pure) (lockstep_flip lockstep_bind_pure) rfl,
-    Same.of_lockstep_left (fun x x' : CoFree _ _ _ => x = x' >>= pure) lockstep_bind_pure rfl⟩
+  ⟨Same.of_lockstep_left (fun x x' : CoFree.{u, v, s} _ _ _ => x' = x >>= pure) (lockstep_flip lockstep_bind_pure) rfl,
+    Same.of_lockstep_left (fun x x' : CoFree.{u, v, s} _ _ _ => x = x' >>= pure) lockstep_bind_pure rfl⟩
 
-theorem Same.bind_pure_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ B} :
+theorem Same.bind_pure_right_iff {x : CoFree.{u, v, s} E N₁ A} {m : CoFree.{u, v, s} E N₂ B} :
     Same Ret x (m >>= pure) ↔ Same Ret x m :=
   ⟨fun h => Same.symm (Same.bind_pure_left_iff.mp (Same.symm h)),
     fun h => Same.symm (Same.bind_pure_left_iff.mpr (Same.symm h))⟩
 
-theorem Same.pure_bind_left_iff {a : C} {f : C → CoFree E N₁ A} {y : CoFree E N₂ B} :
+theorem Same.pure_bind_left_iff {a : C} {f : C → CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} :
     Same Ret (pure a >>= f) y ↔ Same Ret (f a) y :=
   ⟨fun h => Same.congr h (observe_bind (CoFree.pure a) f) rfl,
     fun h => Same.congr h (observe_bind (CoFree.pure a) f).symm rfl⟩
 
-theorem Same.pure_bind_right_iff {x : CoFree E N₁ A} {b : C} {g : C → CoFree E N₂ B} :
+theorem Same.pure_bind_right_iff {x : CoFree.{u, v, s} E N₁ A} {b : C} {g : C → CoFree.{u, v, s} E N₂ B} :
     Same Ret x (pure b >>= g) ↔ Same Ret x (g b) :=
   ⟨fun h => Same.symm (Same.pure_bind_left_iff.mp (Same.symm h)),
     fun h => Same.symm (Same.pure_bind_left_iff.mpr (Same.symm h))⟩
 
-theorem lockstep_bind_assoc {f : C → CoFree E N D} {g : D → CoFree E N A} :
-    ∀ x x' : CoFree E N A,
+theorem lockstep_bind_assoc {f : C → CoFree.{u, v, s} E N D} {g : D → CoFree.{u, v, s} E N A} :
+    ∀ x x' : CoFree.{u, v, s} E N A,
       (x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g) →
-    ∃ s : Step E N A {p : CoFree E N A × CoFree E N A //
+    ∃ s : Step E N A {p : CoFree.{u, v, s} E N A × CoFree.{u, v, s} E N A //
         p.1 = p.2 ∨ ∃ m, p.1 = m >>= f >>= g ∧ p.2 = m >>= fun c => f c >>= g},
       x.observe = s.map (·.1.1) ∧ x'.observe = s.map (·.1.2) := by
   rintro x _ (rfl | ⟨m, rfl, rfl⟩)
@@ -703,8 +703,8 @@ theorem lockstep_bind_assoc {f : C → CoFree E N D} {g : D → CoFree E N A} :
         (φ := fun t => t >>= f >>= g) (ψ := fun t => t >>= fun c => f c >>= g)
         (st := Step.branch c k) hl hr fun t => Or.inr ⟨t, rfl, rfl⟩
 
-theorem Same.bind_assoc_left_iff {m : CoFree E N₁ C} {f : C → CoFree E N₁ D}
-    {g : D → CoFree E N₁ A} {y : CoFree E N₂ B} :
+theorem Same.bind_assoc_left_iff {m : CoFree.{u, v, s} E N₁ C} {f : C → CoFree.{u, v, s} E N₁ D}
+    {g : D → CoFree.{u, v, s} E N₁ A} {y : CoFree.{u, v, s} E N₂ B} :
     Same Ret (m >>= f >>= g) y ↔ Same Ret (m >>= fun c => f c >>= g) y :=
   ⟨Same.of_lockstep_left
       (fun x x' => x' = x ∨ ∃ m, x' = m >>= f >>= g ∧ x = m >>= fun c => f c >>= g)
@@ -713,38 +713,38 @@ theorem Same.bind_assoc_left_iff {m : CoFree E N₁ C} {f : C → CoFree E N₁ 
       (fun x x' => x = x' ∨ ∃ m, x = m >>= f >>= g ∧ x' = m >>= fun c => f c >>= g)
       lockstep_bind_assoc (.inr ⟨m, rfl, rfl⟩)⟩
 
-theorem Same.bind_assoc_right_iff {x : CoFree E N₁ A} {m : CoFree E N₂ C}
-    {f : C → CoFree E N₂ D} {g : D → CoFree E N₂ B} :
+theorem Same.bind_assoc_right_iff {x : CoFree.{u, v, s} E N₁ A} {m : CoFree.{u, v, s} E N₂ C}
+    {f : C → CoFree.{u, v, s} E N₂ D} {g : D → CoFree.{u, v, s} E N₂ B} :
     Same Ret x (m >>= f >>= g) ↔ Same Ret x (m >>= fun c => f c >>= g) :=
   ⟨fun h => Same.symm (Same.bind_assoc_left_iff.mp (Same.symm h)),
     fun h => Same.symm (Same.bind_assoc_left_iff.mpr (Same.symm h))⟩
 
-theorem Deterministic.bind {m : CoFree E N A} {f : A → CoFree E N B} (hm : Deterministic m)
+theorem Deterministic.bind {m : CoFree.{u, v, s} E N A} {f : A → CoFree.{u, v, s} E N B} (hm : Deterministic m)
     (hf : ∀ a, Deterministic (f a)) : Deterministic (m >>= f) :=
   Same.bind hm fun a _ h => h ▸ hf a
 
-theorem Deterministic.pure_bind_iff {a : A} {f : A → CoFree E N B} :
+theorem Deterministic.pure_bind_iff {a : A} {f : A → CoFree.{u, v, s} E N B} :
     Same Eq (pure a >>= f) (f a) ↔ Deterministic (f a) :=
   Same.pure_bind_left_iff
 
-theorem Deterministic.bind_pure_iff {m : CoFree E N A} : Same Eq (m >>= pure) m ↔ Deterministic m :=
+theorem Deterministic.bind_pure_iff {m : CoFree.{u, v, s} E N A} : Same Eq (m >>= pure) m ↔ Deterministic m :=
   Same.bind_pure_left_iff
 
-theorem Deterministic.bind_assoc_iff {m : CoFree E N A} {f : A → CoFree E N B}
-    {g : B → CoFree E N C} :
+theorem Deterministic.bind_assoc_iff {m : CoFree.{u, v, s} E N A} {f : A → CoFree.{u, v, s} E N B}
+    {g : B → CoFree.{u, v, s} E N C} :
     Same Eq (m >>= f >>= g) (m >>= fun a => f a >>= g) ↔ Deterministic (m >>= f >>= g) :=
   Same.bind_assoc_right_iff.symm
 
-theorem Deterministic.pure_bind {a : A} {f : A → CoFree E N B} (h : Deterministic (f a)) :
+theorem Deterministic.pure_bind {a : A} {f : A → CoFree.{u, v, s} E N B} (h : Deterministic (f a)) :
     Same Eq (pure a >>= f) (f a) :=
   Deterministic.pure_bind_iff.mpr h
 
-theorem Deterministic.bind_pure {m : CoFree E N A} (h : Deterministic m) :
+theorem Deterministic.bind_pure {m : CoFree.{u, v, s} E N A} (h : Deterministic m) :
     Same Eq (m >>= pure) m :=
   Deterministic.bind_pure_iff.mpr h
 
-theorem Deterministic.bind_assoc {m : CoFree E N A} {f : A → CoFree E N B}
-    {g : B → CoFree E N C} (hm : Deterministic m) (hf : ∀ a, Deterministic (f a))
+theorem Deterministic.bind_assoc {m : CoFree.{u, v, s} E N A} {f : A → CoFree.{u, v, s} E N B}
+    {g : B → CoFree.{u, v, s} E N C} (hm : Deterministic m) (hf : ∀ a, Deterministic (f a))
     (hg : ∀ b, Deterministic (g b)) : Same Eq (m >>= f >>= g) (m >>= fun a => f a >>= g) :=
   Deterministic.bind_assoc_iff.mpr (Deterministic.bind (Deterministic.bind hm hf) hg)
 
@@ -752,7 +752,7 @@ end MonadLaws
 
 /-! ## Sanity checks of the definition -/
 
-theorem spin_observe : (spin : CoFree E N₁ A).observe = .silent spin := rfl
+theorem spin_observe : (spin : CoFree.{u, v, s} E N₁ A).observe = .silent spin := rfl
 
 theorem spin_relates_to_self : ∀ {E N₁ N₂ A B Ret}, Same Ret (spin (E := E) (N := N₁) (A := A)) (spin (E := E) (N := N₂) (A := B)) := by
   intro E N₁ N₂ A B Ret
@@ -770,11 +770,11 @@ section Sanity
 variable {Ret : A → B → Prop}
 
 /-- A machine that only runs silently is related to no machine that returns. -/
-theorem Same.not_spin_pure {b : B} : ¬Same Ret (spin : CoFree E N₁ A) (CoFree.pure b : CoFree E N₂ B) := by
+theorem Same.not_spin_pure {b : B} : ¬Same Ret (spin : CoFree.{u, v, s} E N₁ A) (CoFree.pure b : CoFree.{u, v, s} E N₂ B) := by
   intro h
   replace h := Same.unfold h
-  generalize hs : (spin : CoFree E N₁ A) = s at h
-  generalize hp : (CoFree.pure b : CoFree E N₂ B) = p at h
+  generalize hs : (spin : CoFree.{u, v, s} E N₁ A) = s at h
+  generalize hp : (CoFree.pure b : CoFree.{u, v, s} E N₂ B) = p at h
   induction h with
   | ret _ _ h₁ => subst hs; cases h₁
   | impure _ h₁ => subst hs; cases h₁
@@ -787,11 +787,11 @@ theorem Same.not_spin_pure {b : B} : ¬Same Ret (spin : CoFree E N₁ A) (CoFree
     exact not_forallUnobserved_pure (observe_pure b) ((forallUnobserved_silent spin_observe).mp h)
 
 /-- Nor to one that performs an operation. -/
-theorem Same.not_spin_impure {m : CoFree E N₂ B} {op : E.Op} {k : E.Resp op → CoFree E N₂ B}
-    (hm : m.observe = .impure op k) : ¬Same Ret (spin : CoFree E N₁ A) m := by
+theorem Same.not_spin_impure {m : CoFree.{u, v, s} E N₂ B} {op : E.Op} {k : E.Resp op → CoFree.{u, v, s} E N₂ B}
+    (hm : m.observe = .impure op k) : ¬Same Ret (spin : CoFree.{u, v, s} E N₁ A) m := by
   intro h
   replace h := Same.unfold h
-  generalize hs : (spin : CoFree E N₁ A) = s at h
+  generalize hs : (spin : CoFree.{u, v, s} E N₁ A) = s at h
   generalize hp : m = p at h
   induction h with
   | ret _ _ h₁ => subst hs; cases h₁
@@ -805,67 +805,67 @@ theorem Same.not_spin_impure {m : CoFree E N₂ B} {op : E.Op} {k : E.Resp op �
     exact not_forallUnobserved_impure hm ((forallUnobserved_silent spin_observe).mp h)
 
 theorem Same.pure_iff {a : A} {b : B} :
-    Same Ret (CoFree.pure a : CoFree E N₁ A) (CoFree.pure b : CoFree E N₂ B) ↔ Ret a b :=
+    Same Ret (CoFree.pure a : CoFree.{u, v, s} E N₁ A) (CoFree.pure b : CoFree.{u, v, s} E N₂ B) ↔ Ret a b :=
   ⟨fun h => Same.ret_inv h rfl rfl, Same.ret rfl rfl⟩
 
 /-- A silent step on the left is invisible. -/
-theorem Same.silent_iff_left {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} :
+theorem Same.silent_iff_left {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} :
     Same Ret (CoFree.silent m₁) m₂ ↔ Same Ret m₁ m₂ :=
   ⟨fun h => Same.silentL_inv h rfl, Same.silentL rfl⟩
 
-theorem Same.silent_iff_right {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} :
+theorem Same.silent_iff_right {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} :
     Same Ret m₁ (CoFree.silent m₂) ↔ Same Ret m₁ m₂ :=
   ⟨fun h => Same.silentR_inv h rfl, Same.silentR rfl⟩
 
-theorem Same.impure_iff {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {op : E.Op}
-    {k₁ : E.Resp op → CoFree E N₁ A} {k₂ : E.Resp op → CoFree E N₂ B}
+theorem Same.impure_iff {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {op : E.Op}
+    {k₁ : E.Resp op → CoFree.{u, v, s} E N₁ A} {k₂ : E.Resp op → CoFree.{u, v, s} E N₂ B}
     (h₁ : m₁.observe = .impure op k₁) (h₂ : m₂.observe = .impure op k₂) :
     Same Ret m₁ m₂ ↔ ∀ r, Same Ret (k₁ r) (k₂ r) :=
   ⟨fun h => Same.impure_inv_resp h h₁ h₂, Same.impure op h₁ h₂⟩
 
-theorem Same.impure_ne {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {op₁ op₂ : E.Op}
-    {k₁ : E.Resp op₁ → CoFree E N₁ A} {k₂ : E.Resp op₂ → CoFree E N₂ B}
+theorem Same.impure_ne {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {op₁ op₂ : E.Op}
+    {k₁ : E.Resp op₁ → CoFree.{u, v, s} E N₁ A} {k₂ : E.Resp op₂ → CoFree.{u, v, s} E N₂ B}
     (h₁ : m₁.observe = .impure op₁ k₁) (h₂ : m₂.observe = .impure op₂ k₂) (hne : op₁ ≠ op₂) :
     ¬Same Ret m₁ m₂ :=
   fun h => hne (Same.impure_inv h h₁ h₂)
 
 /-- An operation with no response ends the run (undefined behavior is one): it relates to itself,
 whatever the continuations. -/
-theorem Same.terminal {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {op : E.Op}
-    {k₁ : E.Resp op → CoFree E N₁ A} {k₂ : E.Resp op → CoFree E N₂ B} (hop : E.Resp op → False)
+theorem Same.terminal {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {op : E.Op}
+    {k₁ : E.Resp op → CoFree.{u, v, s} E N₁ A} {k₂ : E.Resp op → CoFree.{u, v, s} E N₂ B} (hop : E.Resp op → False)
     (h₁ : m₁.observe = .impure op k₁) (h₂ : m₂.observe = .impure op k₂) : Same Ret m₁ m₂ :=
   Same.impure op h₁ h₂ fun r => (hop r).elim
 
 /-- Two branches are related iff every pair of responses is. -/
-theorem Same.branch_iff {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B} {c₁ : N₁.Op} {c₂ : N₂.Op}
-    {k₁ : N₁.Resp c₁ → CoFree E N₁ A} {k₂ : N₂.Resp c₂ → CoFree E N₂ B}
+theorem Same.branch_iff {m₁ : CoFree.{u, v, s} E N₁ A} {m₂ : CoFree.{u, v, s} E N₂ B} {c₁ : N₁.Op} {c₂ : N₂.Op}
+    {k₁ : N₁.Resp c₁ → CoFree.{u, v, s} E N₁ A} {k₂ : N₂.Resp c₂ → CoFree.{u, v, s} E N₂ B}
     (h₁ : m₁.observe = .branch c₁ k₁) (h₂ : m₂.observe = .branch c₂ k₂) :
     Same Ret m₁ m₂ ↔ ∀ r₁ r₂, Same Ret (k₁ r₁) (k₂ r₂) :=
   ⟨fun h r₁ r₂ => Same.branchR_inv (Same.branchL_inv h h₁ r₁) h₂ r₂, Same.branch h₁ h₂⟩
 
 /-- A branch on the left is related iff every response is. -/
-theorem Same.branch_iff_left {m₁ : CoFree E N₁ A} {c : N₁.Op} {k : N₁.Resp c → CoFree E N₁ A}
-    {m₂ : CoFree E N₂ B} (h₁ : m₁.observe = .branch c k) :
+theorem Same.branch_iff_left {m₁ : CoFree.{u, v, s} E N₁ A} {c : N₁.Op} {k : N₁.Resp c → CoFree.{u, v, s} E N₁ A}
+    {m₂ : CoFree.{u, v, s} E N₂ B} (h₁ : m₁.observe = .branch c k) :
     Same Ret m₁ m₂ ↔ ∀ r, Same Ret (k r) m₂ :=
   ⟨fun h r => Same.branchL_inv h h₁ r, Same.branchL c h₁⟩
 
 /-- A branch that ignores its response is invisible. -/
-theorem Same.branch_const {m : CoFree E N₁ A} {c : N₁.Op} {m₁ : CoFree E N₁ A}
-    {m₂ : CoFree E N₂ B} (hm : m.observe = .branch c fun _ => m₁) :
+theorem Same.branch_const {m : CoFree.{u, v, s} E N₁ A} {c : N₁.Op} {m₁ : CoFree.{u, v, s} E N₁ A}
+    {m₂ : CoFree.{u, v, s} E N₂ B} (hm : m.observe = .branch c fun _ => m₁) :
     Same Ret m m₂ ↔ Same Ret m₁ m₂ :=
   ⟨fun h => let ⟨r⟩ := N₁.resp_nonempty c; Same.branchL_inv h hm r,
    fun h => Same.branchL c hm fun _ => h⟩
 
 /-- A machine whose visible behavior depends on a branch is not related to itself. -/
-theorem Same.not_refl_of_branch {Ret : A → A → Prop} {m : CoFree E N₁ A} {c : N₁.Op}
-    {k : N₁.Resp c → CoFree E N₁ A} (h : m.observe = .branch c k) {r₁ r₂ : N₁.Resp c}
+theorem Same.not_refl_of_branch {Ret : A → A → Prop} {m : CoFree.{u, v, s} E N₁ A} {c : N₁.Op}
+    {k : N₁.Resp c → CoFree.{u, v, s} E N₁ A} (h : m.observe = .branch c k) {r₁ r₂ : N₁.Resp c}
     (hne : ¬Same Ret (k r₁) (k r₂)) : ¬Same Ret m m :=
   fun hm => hne (Same.branchR_inv (Same.branchL_inv hm h r₁) h r₂)
 
 /-- Divergence absorbs branches: branching into machines that all diverge is the same as
 diverging. -/
-theorem Same.spin_branch_spin {m : CoFree E N₂ B} {c : N₂.Op}
-    (hm : m.observe = .branch c fun _ => spin) : Same Ret (spin : CoFree E N₁ A) m :=
+theorem Same.spin_branch_spin {m : CoFree.{u, v, s} E N₂ B} {c : N₂.Op}
+    (hm : m.observe = .branch c fun _ => spin) : Same Ret (spin : CoFree.{u, v, s} E N₁ A) m :=
   Same.branchR c hm fun _ => spin_relates_to_self
 
 end Sanity

@@ -23,7 +23,7 @@ def observed {A : Type} (answer : Nat → Nat) (t : CoFree Ask Pick A) :
   let (events, result) := trace answer answer 2000 t
   (events.map fun | .silent => none | .op q => some (.inl q) | .branch c => some (.inr c), result)
 
-def same {A : Type} [BEq A] (name : String) (lhs rhs : CoFree Ask Pick A) : String × Bool :=
+def same {A : Type} [BEq A] (name : String) (lhs rhs : CoFree.{0, 0, 0} Ask Pick A) : String × Bool :=
   (name, answers.all fun answer => observed answer lhs == observed answer rhs)
 
 def programs : List (CoFree Ask Pick Nat) :=

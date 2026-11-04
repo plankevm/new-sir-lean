@@ -9,7 +9,7 @@ inductive PrintRandBr | rand
 
 def PrintE : Effect := ⟨PrintRandOp, fun | .print _ => PUnit ⟩
 def Rand : NonDeterminism := { Op := PrintRandBr, Resp | .rand => Nat }
-abbrev PrintM (α : Type) := CoFree PrintE Rand α
+abbrev PrintM (α : Type) := CoFree.{0, 0, 0} PrintE Rand α
 
 def print (n : Nat) : PrintM Unit := perform (E := PrintE) (.print n)
 def rand : PrintM Nat := branch (N := Rand) .rand
@@ -34,7 +34,7 @@ theorem print_rand_nondeterministic : ¬Deterministic print_rand := nondetermini
 theorem print_rand_not_same_true : ¬Same (fun _ _ => True) print_rand print_rand :=
   nondeterministic_unrelated_to_self
 
-theorem print_rand_not_same_any {Ret} {N} {m : CoFree PrintE N Unit} : ¬Same Ret print_rand m :=
+theorem print_rand_not_same_any {Ret} {N} {m : CoFree.{0, 0, 0} PrintE N Unit} : ¬Same Ret print_rand m :=
   Same.not_of_not_self_left fun _ => nondeterministic_unrelated_to_self
 
 /-- A branch whose responses print different numbers relates to neither output. -/
@@ -62,7 +62,7 @@ theorem ignored_rand_deterministic : Deterministic ignored_rand :=
   (Same.branch_iff hb hb).mpr fun r₁ r₂ =>
     (Same.impure_iff (hk r₁) (hk r₂)).mpr fun _ => Same.ret rfl rfl rfl
 
-theorem rand_not_same_eq_any {N : NonDeterminism} : ∀ m : CoFree PrintE N Nat, ¬Same Eq rand m :=
+theorem rand_not_same_eq_any {N : NonDeterminism} : ∀ m : CoFree.{0, 0, 0} PrintE N Nat, ¬Same Eq rand m :=
   fun _ h => rand_not_same_eq (Deterministic.of_same h).1
 
 end ITreeTests.Same
