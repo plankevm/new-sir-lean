@@ -9,6 +9,9 @@ def «end» (a : NatRange) : Nat := a.start + a.size
 
 def Disjoint (a₁ a₂ : NatRange) : Prop := a₁.end ≤ a₂.start ∨ a₂.end ≤ a₁.start
 
+instance : Membership Nat NatRange where
+  mem r x := r.start ≤ x ∧ x < r.end
+
 theorem Disjoint_imp_no_overlap : ∀ a₁ a₂, (Disjoint a₁ a₂) → (¬∃ x, a₁.start ≤ x ∧ x < a₁.end ∧
 a₂.start ≤ x ∧ x < a₂.end) := by
   unfold Disjoint
