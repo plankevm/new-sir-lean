@@ -42,7 +42,7 @@ def resumeBr {A : Type} (t : CoFree Exec SirND A) (c : Choice) (r : Choice.Resp 
   | .branch c' k => if h : c' = c then k (h ▸ r) else t
   | _ => t
 
-theorem observe_of_headBr {A : Type} {t : CoFree Exec SirND A} {c : Choice} (h : headBr t = some c) :
+lemma observe_of_headBr {A : Type} {t : CoFree Exec SirND A} {c : Choice} (h : headBr t = some c) :
     t.observe = .branch c (resumeBr t c) := by
   unfold headBr at h
   split at h
@@ -52,7 +52,7 @@ theorem observe_of_headBr {A : Type} {t : CoFree Exec SirND A} {c : Choice} (h :
     simp only [hk, dite_true]
   next => cases h
 
-theorem observe_of_headOp {A : Type} {t : CoFree Exec SirND A} {op : WorldOp} (h : headOp t = some op) :
+lemma observe_of_headOp {A : Type} {t : CoFree Exec SirND A} {op : WorldOp} (h : headOp t = some op) :
     t.observe = .impure op (resume t op) := by
   unfold headOp at h
   split at h
@@ -64,7 +64,7 @@ theorem observe_of_headOp {A : Type} {t : CoFree Exec SirND A} {op : WorldOp} (h
 
 variable {A B : Type} {RR : A → B → Prop}
 
-theorem same_skipL (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
+lemma same_skipL (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
     (h : Same RR (skip n t₁) t₂) : Same RR t₁ t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -74,7 +74,7 @@ theorem same_skipL (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {
     next t' ht => exact Same.silentL ht (ih h)
     next => exact h
 
-theorem same_skipR (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
+lemma same_skipR (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
     (h : Same RR t₁ (skip n t₂)) : Same RR t₁ t₂ := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -84,7 +84,7 @@ theorem same_skipR (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂
     next t' ht => exact Same.silentR ht (ih h)
     next => exact h
 
-theorem skipL_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
+lemma skipL_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t₂ : CoFree Exec N B}
     (h : Same RR t₁ t₂) : Same RR (skip n t₁) t₂ := by
   induction n generalizing t₁ with
   | zero => exact h
@@ -94,7 +94,7 @@ theorem skipL_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec SirND A} {t
     next t' ht => exact ih (Same.silentL_inv h ht)
     next => exact h
 
-theorem skipR_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
+lemma skipR_inv (n : Nat) {N : NonDeterminism} {t₁ : CoFree Exec N A} {t₂ : CoFree Exec SirND B}
     (h : Same RR t₁ t₂) : Same RR t₁ (skip n t₂) := by
   induction n generalizing t₂ with
   | zero => exact h
@@ -118,7 +118,7 @@ def stored (k v : Word) : Store := ⟨(default : Storage).set k v, default⟩
 /-- `stop`, which the host hands on as `ret` with no data. -/
 abbrev stopOp (st : Store) : WorldOp := .ret .empty st
 
-theorem stop_ne {a b : Store} (k : Word) (h : a.storage k ≠ b.storage k) : stopOp a ≠ stopOp b :=
+lemma stop_ne {a b : Store} (k : Word) (h : a.storage k ≠ b.storage k) : stopOp a ≠ stopOp b :=
   fun e => h (by cases e; rfl)
 
 def stops : Program := prog #[{ control := .stop }]

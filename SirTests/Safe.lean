@@ -8,7 +8,7 @@ namespace SirTests.Safe
 
 open Sir Host CoFree SirTests.Same
 
-theorem hasOutcome_skip_iff (n : Nat) {t : CoFree Exec SirND Empty} {o : Host.Outcome} :
+lemma hasOutcome_skip_iff (n : Nat) {t : CoFree Exec SirND Empty} {o : Host.Outcome} :
     HasOutcome (skip n t) o ↔ HasOutcome t o := by
   induction n generalizing t with
   | zero => exact .rfl

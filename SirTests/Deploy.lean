@@ -146,7 +146,7 @@ def pureOf? {A : Type} (t : CoFree Exec SirND A) : Option A :=
   | .pure a => some a
   | _ => none
 
-theorem same_of_pureOf {A : Type} {x y : CoFree Exec SirND A} {a : A} (hx : pureOf? x = some a)
+lemma same_of_pureOf {A : Type} {x y : CoFree Exec SirND A} {a : A} (hx : pureOf? x = some a)
     (hy : pureOf? y = some a) : Same Eq x y := by
   unfold pureOf? at hx hy
   split at hx <;> split at hy <;> try cases hx

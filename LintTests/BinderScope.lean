@@ -41,6 +41,16 @@ theorem leading : ∀ x : Nat, x = x → x = x := fun _ h => h
 #guard_msgs in
 theorem nestedExists : True → ∃ x : Nat, x = 0 ∧ True := fun _ => ⟨0, rfl, trivial⟩
 
+-- `lemma` is `theorem`: same treatment, same modifiers.
+#guard_msgs in
+lemma leadingLemma : ∀ x : Nat, x = x → x = x := fun _ h => h
+
+#guard_msgs in
+/-- A docstring. -/
+@[simp] private lemma privateLemma (n : Nat) : n + 0 = n := rfl
+
+example : (3 : Nat) + 0 = 3 := by simp only [privateLemma]
+
 #guard_msgs in
 def depArrow : Prop := (x : Nat) → x = x ∨ False
 

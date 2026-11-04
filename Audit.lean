@@ -28,8 +28,11 @@ def packageModules : IO (Array Name) := do
           mods := mods.push ((f.withExtension "").components.foldl Name.str .anonymous)
   pure mods
 
+/-- `Lint.BinderScope` and the modules it imports, which cannot import it back. -/
+def lintBase : List Name := [`Lint.BinderScope, `Lint.Lemma]
+
 /-- Fails unless every module of the package is imported here and transitively imports
-`Lint.BinderScope`. -/
+`Lint.BinderScope` (or is in `lintBase`). -/
 elab "#audit_lint_imports" : command => do
   let env ← getEnv
   let idx : Std.HashMap Name Nat := env.header.moduleNames.foldl (init := {}) fun m n => m.insert n m.size
@@ -50,7 +53,7 @@ elab "#audit_lint_imports" : command => do
   for m in mods do
     match idx[m]? with
     | none => bad := bad.push m
-    | some i => unless m == `Lint.BinderScope || reaches i do bad := bad.push m
+    | some i => unless lintBase.contains m || reaches i do bad := bad.push m
   unless bad.isEmpty do
     throwError m!"modules not imported by a library root, or not importing Lint.BinderScope: {bad}"
   logInfo m!"lint import audit: all {mods.size} modules import Lint.BinderScope"

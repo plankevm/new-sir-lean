@@ -1,4 +1,5 @@
 import Lean
+import Lint.Lemma
 
 /-!
 # Binder scope linter
