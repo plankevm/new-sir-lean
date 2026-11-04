@@ -34,15 +34,14 @@ theorem observe_bind (m : CoFree E N A) (g : A → CoFree E N B) :
     (m.bind g).observe = bindStep g m.observe :=
   Proofs.observe_bind m g
 
-theorem mapStep_map {X : Type w} {Y : Type w'} (f : E.Op → F.Op)
-    (g : (op : E.Op) → F.Resp (f op) → E.Resp op) (b : NonDeterminism.Map N M) (h : X → Y)
-    (x : Step E N A X) : mapStep f g b (x.map h) = (mapStep f g b x).map h :=
-  Proofs.mapStep_map f g b h x
-
-theorem observe_mapOps (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
-    (b : NonDeterminism.Map N M) (m : CoFree E N A) :
-    (m.mapOps f g b).observe = (mapStep f g b m.observe).map (mapOps f g b) :=
-  Proofs.observe_mapOps f g b m
+theorem observe_mapOps (e : Effect.Map E F) (nd : NonDeterminism.Map N M) (m : CoFree E N A) :
+    (m.mapOps e nd).observe =
+      match m.observe with
+      | .pure a => .pure a
+      | .silent m' => .silent (m'.mapOps e nd)
+      | .impure op k => .impure (e.op op) fun r => (k (e.resp op r)).mapOps e nd
+      | .branch c k => .branch (nd.op c) fun r => (k (nd.resp c r)).mapOps e nd :=
+  Proofs.observe_mapOps e nd m
 
 theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E N (IterStep S A)) (i : S)
     (p : (g i).Pos) :

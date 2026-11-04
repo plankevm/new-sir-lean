@@ -69,13 +69,38 @@ theorem observe_bind (m : CoFree E N A) (g : A → CoFree E N B) :
     · rfl
 
 
-theorem observe_mapOps (f : E.Op → F.Op) (g : (op : E.Op) → F.Resp (f op) → E.Resp op)
-    (b : NonDeterminism.Map N M) (m : CoFree E N A) :
-    (m.mapOps f g b).observe = (mapStep f g b m.observe).map (mapOps f g b) := by
+theorem observe_mapOps (e : Effect.Map E F) (nd : NonDeterminism.Map N M) (m : CoFree E N A) :
+    (m.mapOps e nd).observe =
+      match m.observe with
+      | .pure a => .pure a
+      | .silent m' => .silent (m'.mapOps e nd)
+      | .impure op k => .impure (e.op op) fun r => (k (e.resp op r)).mapOps e nd
+      | .branch c k => .branch (nd.op c) fun r => (k (nd.resp c r)).mapOps e nd := by
   obtain ⟨S, J, s₀, step, target⟩ := m
-  simp only [observe, mapOps, mapStep_map, Step.map_map]
-  refine Step.map_congr (fun x => ?_) _
-  cases x <;> rfl
+  rw [mapOps.eq_1]
+  simp only [observe]
+  generalize step s₀ = st
+  rcases st with a | (s | j) | ⟨op, k⟩ | ⟨c, k⟩
+  · rfl
+  · simp only [Step.map, next, startAt]
+    rw [mapOps.eq_1]
+  · rfl
+  · simp only [Step.map]
+    congr 1
+    funext r
+    simp only [Function.comp_apply]
+    cases k (e.resp op r)
+    · simp only [next, startAt]
+      rw [mapOps.eq_1]
+    · rfl
+  · simp only [Step.map]
+    congr 1
+    funext r
+    simp only [Function.comp_apply]
+    cases k (nd.resp c r)
+    · simp only [next, startAt]
+      rw [mapOps.eq_1]
+    · rfl
 
 theorem observe_iter_startAt {S : Type u} (s : S) (g : S → CoFree E N (IterStep S A)) (i : S)
     (p : (g i).Pos) :

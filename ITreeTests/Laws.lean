@@ -47,17 +47,17 @@ def conts : List (Nat → CoFree Ask Pick Nat) :=
 
 def body : Nat → CoFree (Rec Nat Nat Ask) Pick Nat
   | 0 => CoFree.pure 1
-  | i + 1 => (perform (E := Rec Nat Nat Ask) (.inl i)).bind fun r =>
-    (perform (E := Rec Nat Nat Ask) (.inr (i + 1))).bind fun x => CoFree.pure (r + x)
+  | i + 1 => (perform (E := Rec Nat Nat Ask) (.inl i)).bind fun (r : Nat) =>
+    (perform (E := Rec Nat Nat Ask) (.inr (i + 1))).bind fun (x : Nat) => CoFree.pure (r + x)
 
 def recPrograms : List (CoFree (Rec Nat Nat Ask) Pick Nat) :=
   [ CoFree.pure 3,
     body 3,
     silent (body 2),
-    (perform (E := Rec Nat Nat Ask) (.inr 4)).bind fun x =>
-      (perform (E := Rec Nat Nat Ask) (.inl (x % 3))).bind fun y => CoFree.pure (x + y),
+    (perform (E := Rec Nat Nat Ask) (.inr 4)).bind fun (x : Nat) =>
+      (perform (E := Rec Nat Nat Ask) (.inl (x % 3))).bind fun (y : Nat) => CoFree.pure (x + y),
     (CoFree.branch (E := Rec Nat Nat Ask) (N := Pick) 2).bind fun x =>
-      (perform (E := Rec Nat Nat Ask) (.inl (x % 3))).bind fun y => CoFree.pure (x + y) ]
+      (perform (E := Rec Nat Nat Ask) (.inl (x % 3))).bind fun (y : Nat) => CoFree.pure (x + y) ]
 
 def monadLaws : List (String × Bool) :=
   (conts.map fun f => same "pure_bind" ((CoFree.pure 4).bind f) (f 4)) ++
@@ -79,25 +79,25 @@ def controlLaws : List (String × Bool) :=
   (recPrograms.map fun t => same "fixFrom_silent" (fixFrom body (silent t))
     (silent (fixFrom body t))) ++
   ([0, 2, 3].map fun i => same "fixFrom_call"
-    (fixFrom body ((perform (E := Rec Nat Nat Ask) (.inl i)).bind fun o => CoFree.pure (o + 1)))
+    (fixFrom body ((perform (E := Rec Nat Nat Ask) (.inl i)).bind fun (o : Nat) => CoFree.pure (o + 1)))
     (silent ((fixFrom body (body i)).bind fun o => silent (fixFrom body (CoFree.pure (o + 1)))))) ++
   [same "fixFrom_op"
-    (fixFrom body ((perform (E := Rec Nat Nat Ask) (.inr 5)).bind fun x => body (x % 3)))
+    (fixFrom body ((perform (E := Rec Nat Nat Ask) (.inr 5)).bind fun (x : Nat) => body (x % 3)))
     ((perform (E := Ask) 5).bind fun x => fixFrom body (body (x % 3)))] ++
   [same "fixFrom_br"
     (fixFrom body ((CoFree.branch (E := Rec Nat Nat Ask) (N := Pick) 5).bind fun x => body (x % 3)))
     ((pick 5).bind fun x => fixFrom body (body (x % 3)))]
 
-def rename : Ask.Op → Ask.Op := (· + 100)
+def rename : Effect.Map Ask Ask := ⟨(· + 100), fun _ r => r⟩
 
 def handlerLaws : List (String × Bool) :=
   (programs.flatMap fun t => conts.map fun f => same "mapOps_bind"
-    (mapOps (F := Ask) (M := Pick) rename (fun _ r => r) .id (t.bind f))
-    ((mapOps (F := Ask) (M := Pick) rename (fun _ r => r) .id t).bind fun a =>
-      mapOps (F := Ask) rename (fun _ r => r) .id (f a))) ++
-  [same "mapOps_perform" (mapOps (F := Ask) (M := Pick) rename (fun _ r => r) .id (ask 4))
+    (mapOps (F := Ask) (M := Pick) rename .id (t.bind f))
+    ((mapOps (F := Ask) (M := Pick) rename .id t).bind fun a =>
+      mapOps (F := Ask) rename .id (f a))) ++
+  [same "mapOps_perform" (mapOps (F := Ask) (M := Pick) rename .id (ask 4))
     ((ask 104).bind CoFree.pure)] ++
-  [same "mapOps_choose" (mapOps (F := Ask) (M := Pick) rename (fun _ r => r) .id (pick 4))
+  [same "mapOps_choose" (mapOps (F := Ask) (M := Pick) rename .id (pick 4))
     ((pick 4).bind CoFree.pure)]
 
 def checks : List (String × Bool) := monadLaws ++ controlLaws ++ handlerLaws
