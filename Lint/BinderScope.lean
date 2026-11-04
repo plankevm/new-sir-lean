@@ -1,5 +1,6 @@
 import Lean
 import Lint.Lemma
+import Lint.NoBang
 
 /-!
 # Binder scope linter
@@ -31,9 +32,11 @@ def binderBody? (stx : Syntax) : Option Syntax :=
   match stx with
   | .node _ _ args =>
     let atom (s : Syntax) := if s.isAtom then s.getAtomVal.trimAscii.toString else ""
-    if args.size ≥ 3 && atom args[args.size - 2]! == "," &&
-        ["∀", "∃", "∃!", "Π", "forall", "exists"].contains (atom args[0]!)
-    then some args.back! else none
+    if h : args.size ≥ 3 then
+      if atom args[args.size - 2] == "," &&
+          ["∀", "∃", "∃!", "Π", "forall", "exists"].contains (atom args[0])
+      then some args[args.size - 1] else none
+    else none
   | _ => none
 
 def connectives : List SyntaxNodeKind :=
@@ -70,11 +73,11 @@ partial def visit (stx : Syntax) (anc : List SyntaxNodeKind) (follow : Option St
         | a :: _ => if isOperator a then none else some a
         | [] => some nullKind
       modify (·.push { stx, leading, inCtor := anc.contains ``Parser.Command.ctor })
-  for i in [:args.size] do
+  for h : i in [:args.size] do
     let next := (args.extract (i + 1) args.size).findSome? fun s =>
       s.getHead?.bind fun h => if h.isAtom then some h.getAtomVal.trimAscii.toString else some ""
     let follow := next <|> if transparent k then follow else none
-    visit args[i]! (k :: anc) follow
+    visit args[i] (k :: anc) follow
 
 def hits (stx : Syntax) : Array Hit :=
   ((visit stx [] none).run #[]).2

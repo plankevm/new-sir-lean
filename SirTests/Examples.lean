@@ -102,7 +102,7 @@ def immutables : Program where
 
 def getImmutableInInit : Program :=
   let init : Function := ⟨0, .never, #[{ ops := #[.let 4 (.getImmutable 0)], control := .stop }]⟩
-  { immutables with functions := immutables.functions.set! 0 init }
+  { immutables with functions := immutables.functions.set 0 init (by simp [immutables]) }
 
 def calls : Program := initOnly #[
   { ops := #[.let 1 (.const 4), .let 2 (.malloc 1), .let 10 (.const 100), .let 11 (.const 0xBEEF),

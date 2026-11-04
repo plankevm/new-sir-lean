@@ -22,7 +22,7 @@ elab "#audit_layout" : command => do
   let mut stated : Nat := 0
   for (name, info) in env.constants.toList do
     let some idx := env.getModuleIdxFor? name | continue
-    let mod := env.header.moduleNames[idx.toNat]!
+    let some mod := env.header.moduleNames[idx.toNat]? | continue
     unless mod.getRoot == `ITree && mod != `ITree do continue
     unless (← liftCoreM (findDeclarationRanges? name)).isSome do continue
     if env.isProjectionFn name then continue

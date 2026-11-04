@@ -14,7 +14,7 @@ inductive UB
   | illegalOverflow
   | memoryOutOfBounds (offset length : Nat)
   | uninitializedRead (offset length : Nat)
-  | outOfMemory (size : Nat)
+  | outOfMemory (size : Word)
   deriving DecidableEq, Repr
 
 structure MemCopy where
@@ -22,8 +22,10 @@ structure MemCopy where
   src : Word
   length : Word
 
+inductive AllocKind | zeroed | uninitialized
+
 inductive SirOp
-  | alloc (zeroed : Bool) (size : Word)
+  | alloc (kind : AllocKind) (size : Word)
   | read (offset length : Word)
   | write (offset : Word) (bytes : ByteArray)
   | copy (copy : MemCopy)

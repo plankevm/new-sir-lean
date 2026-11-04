@@ -29,16 +29,16 @@ def packageModules : IO (Array Name) := do
   pure mods
 
 /-- `Lint.BinderScope` and the modules it imports, which cannot import it back. -/
-def lintBase : List Name := [`Lint.BinderScope, `Lint.Lemma]
+def lintBase : List Name := [`Lint.BinderScope, `Lint.Lemma, `Lint.NoBang]
 
 /-- Fails unless every module of the package is imported here and transitively imports
 `Lint.BinderScope` (or is in `lintBase`). -/
 elab "#audit_lint_imports" : command => do
   let env ← getEnv
   let idx : Std.HashMap Name Nat := env.header.moduleNames.foldl (init := {}) fun m n => m.insert n m.size
-  let reaches (start : Nat) : Bool := Id.run do
+  let reaches (start : Name) : Bool := Id.run do
     let mut seen : Std.HashSet Name := {}
-    let mut todo := [env.header.moduleNames[start]!]
+    let mut todo := [start]
     while true do
       let some n := todo.head? | break
       todo := todo.tail
@@ -46,14 +46,13 @@ elab "#audit_lint_imports" : command => do
       if seen.contains n then continue
       seen := seen.insert n
       let some i := idx[n]? | continue
-      todo := env.header.moduleData[i]!.imports.toList.map (·.module) ++ todo
+      let some data := env.header.moduleData[i]? | continue
+      todo := data.imports.toList.map (·.module) ++ todo
     false
   let mut bad : Array Name := #[]
   let mods ← packageModules
   for m in mods do
-    match idx[m]? with
-    | none => bad := bad.push m
-    | some i => unless lintBase.contains m || reaches i do bad := bad.push m
+    unless idx.contains m && (lintBase.contains m || reaches m) do bad := bad.push m
   unless bad.isEmpty do
     throwError m!"modules not imported by a library root, or not importing Lint.BinderScope: {bad}"
   logInfo m!"lint import audit: all {mods.size} modules import Lint.BinderScope"
@@ -76,7 +75,7 @@ elab "#audit_axioms" : command => do
   let mut checked : Nat := 0
   for (name, _) in env.constants.toList do
     let some idx := env.getModuleIdxFor? name | continue
-    let mod := env.header.moduleNames[idx.toNat]!
+    let some mod := env.header.moduleNames[idx.toNat]? | continue
     unless mods.contains mod do continue
     checked := checked + 1
     for ax in ← liftCoreM (collectAxioms name) do

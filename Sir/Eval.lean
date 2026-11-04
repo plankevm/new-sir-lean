@@ -15,8 +15,8 @@ abbrev SirM (α : Type) : Type 1 := CoFree EvalE .none α
 abbrev Vars := Std.TreeMap VarId Word
 
 private def sir_op (op : SirE.Op) : SirM (SirE.Resp op) := CoFree.perform (E := EvalE) (Sum.inr op)
-def alloc_zeroed (size : Word) := sir_op (.alloc true size)
-def alloc_uninit (size : Word) := sir_op (.alloc false size)
+def alloc_zeroed (size : Word) := sir_op (.alloc .zeroed size)
+def alloc_uninit (size : Word) := sir_op (.alloc .uninitialized size)
 def mem.read (offset len : Word) := sir_op (.read offset len)
 def mem.write (offset : Word) (bytes : ByteArray) := sir_op (.write offset bytes)
 def mem.copy (copy : MemCopy)  := sir_op (.copy copy)
