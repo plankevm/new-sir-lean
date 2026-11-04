@@ -72,12 +72,12 @@ uninitialized allocation's bytes are whatever the branch picked. Undefined behav
 not performed: `HostE` has no operation for it.
 
 The loop's mutable state is the program itself, so this machine's states live one universe up. -/
-def interpMem {α : Type} (sir : SirM α) : CoFree HostE MemoryND (Except UB α) := CoFree.down do
+def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB := CoFree.down do
   let mut sir := sir
   let mut mem : MemState := #[]
   repeat
     match sir.observe with
-    | .pure a => return ⟨.ok a⟩
+    | .pure a => nomatch a
     | .silent sir' => sir := sir'
     | .impure (.inl op) k =>
       let ⟨r⟩ ← (perform (E := HostE) (N := MemoryND) op).up
@@ -85,28 +85,28 @@ def interpMem {α : Type} (sir : SirM α) : CoFree HostE MemoryND (Except UB α)
     | .impure (.inr (.alloc zeroed size)) k =>
       let ⟨⟨pick, valid⟩⟩ ← (CoFree.branch (E := HostE) (N := MemoryND) (.alloc size mem.toList)).up
       match pick, valid with
-      | none, _ => return ⟨.error (.outOfMemory size.toNat)⟩
+      | none, _ => return ⟨(.outOfMemory size.toNat)⟩
       | some a, _ =>
         let a := if zeroed then { a with bytes := ⟨.replicate a.size 0⟩ } else a
         mem := mem.push a
         sir := k a.start
     | .impure (.inr (.read offset length)) k =>
       let some bytes := mem.read? offset.toNat length.toNat
-        | return ⟨.error (.memoryOutOfBounds offset.toNat length.toNat)⟩
+        | return ⟨(.memoryOutOfBounds offset.toNat length.toNat)⟩
       sir := k bytes
     | .impure (.inr (.write offset bytes)) k =>
       unless mem.inBounds offset.toNat bytes.size do
-        return ⟨.error (.memoryOutOfBounds offset.toNat bytes.size)⟩
+        return ⟨(.memoryOutOfBounds offset.toNat bytes.size)⟩
       mem := mem.write offset.toNat bytes
       sir := k ()
     | .impure (.inr (.copy ⟨dst, src, length⟩)) k =>
       let some bytes := mem.read? src.toNat length.toNat
-        | return ⟨.error (.memoryOutOfBounds src.toNat length.toNat)⟩
+        | return ⟨(.memoryOutOfBounds src.toNat length.toNat)⟩
       unless mem.inBounds dst.toNat length.toNat do
-        return ⟨.error (.memoryOutOfBounds dst.toNat length.toNat)⟩
+        return ⟨(.memoryOutOfBounds dst.toNat length.toNat)⟩
       mem := mem.write dst.toNat bytes
       sir := k ()
-    | .impure (.inr (.ub u)) _ => return ⟨.error u⟩
+    | .impure (.inr (.ub u)) _ => return ⟨u⟩
     | .branch c _ => nomatch c
   CoFree.spin
 
