@@ -1,5 +1,7 @@
 import SirTests.Host
 import SirTests.KernelRfl
+import ITree.Same.Theorems
+import Sir.Syntax
 
 /-! `Same` on small programs, run with memory interpreted. The runs are
 computed by the kernel (`kernel_rfl`) up to their next host operation; after an allocation the placement stays a variable, so the rest of the run is

@@ -1,4 +1,5 @@
 import SirTests.Host
+import Sir.Syntax
 
 namespace SirTests.Examples
 

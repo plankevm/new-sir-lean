@@ -1,7 +1,7 @@
 import Sir.Ir
 import Sir.Layout
 import Sir.Eval
-import ITree
+import ITree.Outcome
 
 open CoFree
 

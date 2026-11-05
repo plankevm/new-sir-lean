@@ -1,4 +1,5 @@
-import ITree
+import ITree.Run
+import ITree.Program
 
 namespace ITreeTests.Examples
 

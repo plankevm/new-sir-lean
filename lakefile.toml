@@ -1,6 +1,6 @@
 name = "sir"
 version = "0.1.0"
-defaultTargets = ["ITree", "ITreeTests", "Host", "Sir", "SirTests", "Lint", "LintTests", "Audit"]
+defaultTargets = ["ITree", "ITreeTests", "Host", "Sir", "SirTests", "Lint", "LintTests"]
 
 [leanOptions]
 autoImplicit = false

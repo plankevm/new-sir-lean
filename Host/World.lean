@@ -1,6 +1,6 @@
-import ITree
 import Host.Word
 import Host.Keccak
+import ITree.Effect
 
 namespace Host
 

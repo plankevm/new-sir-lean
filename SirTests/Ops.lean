@@ -1,4 +1,4 @@
-import Sir
+import Sir.Eval
 
 /-! Pure EVM operations and Keccak-256 against known values (Keccak vectors from `cast keccak`). -/
 

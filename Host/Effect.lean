@@ -1,8 +1,8 @@
-import ITree
 import Host.Word
 import Host.NatRange
 import Host.World
 import Host.Outcome
+import ITree.Program
 
 open CoFree
 

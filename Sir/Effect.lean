@@ -1,4 +1,3 @@
-import Host
 import ITree.Effect
 import ITree.Machine
 import Sir.Ir

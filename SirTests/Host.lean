@@ -1,4 +1,6 @@
-import Sir
+import Sir.Eval
+import Host.Interp
+import ITree.Run
 
 /-! A concrete test host: a fixed `Env`, the world operations of `interpHost` answered from a small
 world, and deterministic placement (bump from `0x80`, zero bytes). `run` interprets memory and

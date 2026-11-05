@@ -1,4 +1,4 @@
-import ITree
+import ITree.Same.Theorems
 
 namespace ITreeTests.Same
 

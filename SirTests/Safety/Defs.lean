@@ -1,4 +1,4 @@
-import Sir
+import Sir.Syntax
 
 namespace SirTests.Safety
 

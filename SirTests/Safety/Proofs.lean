@@ -1,5 +1,7 @@
 import SirTests.Safety.Defs
 import SirTests.KernelRfl
+import ITree.Step.Theorems
+import Sir.Safety
 
 namespace SirTests.Safety
 

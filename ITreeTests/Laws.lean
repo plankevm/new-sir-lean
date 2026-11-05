@@ -1,4 +1,4 @@
-import ITree
+import ITree.Run
 
 namespace ITreeTests.Laws
 
