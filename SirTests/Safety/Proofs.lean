@@ -72,41 +72,41 @@ def skip {A : Type} : Nat → SirM A → SirM A
     | .silent t' => skip n t'
     | _ => t
 
-lemma observe_interpMemFrom (mem : MemState) (m : SirM Empty) :
-    (interpMemFrom mem m).observe =
-      (memStep mem (m.step m.initial)).map fun p => interpMemFrom p.1 (m.next p.2) := by
+lemma observe_interpMem (mem : MemState) (m : SirM Empty) :
+    (CoFree.interp memStep mem m).observe =
+      (memStep mem (m.step m.initial)).map fun p => CoFree.interp memStep p.1 (m.next p.2) := by
   obtain ⟨S, J, s₀, step, target⟩ := m
-  simp only [observe, interpMemFrom, Step.map_map]
+  simp only [observe, CoFree.interp, Step.map_map]
   congr 1
   funext ⟨mem', s⟩
   rcases s with s | j <;> rfl
 
-lemma observe_interpMemFrom_silent {mem : MemState} {m m' : SirM Empty} (h : m.observe = .silent m') :
-    (interpMemFrom mem m).observe = .silent (interpMemFrom mem m') := by
-  rw [observe_interpMemFrom]
+lemma observe_interpMem_silent {mem : MemState} {m m' : SirM Empty} (h : m.observe = .silent m') :
+    (CoFree.interp memStep mem m).observe = .silent (CoFree.interp memStep mem m') := by
+  rw [observe_interpMem]
   unfold observe at h
   generalize m.step m.initial = y at h ⊢
   cases y <;> cases h
   rfl
 
-lemma observe_interpMemFrom_impure {mem : MemState} {m : SirM Empty} {op : EvalE.Op}
+lemma observe_interpMem_impure {mem : MemState} {m : SirM Empty} {op : EvalE.Op}
     {k : EvalE.Resp op → SirM Empty} (h : m.observe = .impure op k) :
-    ∃ k', (∀ r, m.next (k' r) = k r) ∧ (interpMemFrom mem m).observe =
-      (memStep mem (.impure op k')).map fun p => interpMemFrom p.1 (m.next p.2) := by
-  rw [observe_interpMemFrom]
+    ∃ k', (∀ r, m.next (k' r) = k r) ∧ (CoFree.interp memStep mem m).observe =
+      (memStep mem (.impure op k')).map fun p => CoFree.interp memStep p.1 (m.next p.2) := by
+  rw [observe_interpMem]
   unfold observe at h
   generalize m.step m.initial = y at h ⊢
   cases y <;> cases h
   exact ⟨_, fun _ => rfl, rfl⟩
 
 lemma halts_skip {op : HostOp} (n : Nat) {mem : MemState} {t : SirM Empty}
-    (h : Halts op (interpMemFrom mem (skip n t))) : Halts op (interpMemFrom mem t) := by
+    (h : Halts op (CoFree.interp memStep mem (skip n t))) : Halts op (CoFree.interp memStep mem t) := by
   induction n generalizing t with
   | zero => exact h
   | succ n ih =>
     unfold skip at h
     split at h
-    next t' ht => exact .silent (observe_interpMemFrom_silent ht) (ih h)
+    next t' ht => exact .silent (observe_interpMem_silent ht) (ih h)
     next => exact h
 
 def afterAlloc (t : SirM Empty) (w : Word) : SirM Empty :=
@@ -186,50 +186,50 @@ lemma Halts.op_eq {op' : HostOp} {m : CoFree HostE MemoryND UB} (h : op = op') (
   h ▸ hm
 
 lemma halts_ret {o : SimplifiedOutcome} {k : Empty → SirM Empty}
-    (h : t.observe = .impure (.inl (.halt o)) k) : Halts (HostOp.halt o) (interpMemFrom mem t) := by
-  obtain ⟨k', _, ho⟩ := observe_interpMemFrom_impure (mem := mem) h
+    (h : t.observe = .impure (.inl (.halt o)) k) : Halts (HostOp.halt o) (CoFree.interp memStep mem t) := by
+  obtain ⟨k', _, ho⟩ := observe_interpMem_impure (mem := mem) h
   exact .now ho
 
 lemma halts_alloc {size : Word} {k : Word → SirM Empty}
     (h : t.observe = .impure (.inr (.alloc .zeroed size)) k)
     (hex : ∃ a', ValidAlloc mem.live.toList size.toNat a')
     (hk : ∀ x : { a' // ValidAlloc mem.live.toList size.toNat a' },
-      Halts op (interpMemFrom (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem)
+      Halts op (CoFree.interp memStep (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem)
         (k x.1.start))) :
-    Halts op (interpMemFrom mem t) := by
-  obtain ⟨k', hk', ho⟩ := observe_interpMemFrom_impure (mem := mem) h
+    Halts op (CoFree.interp memStep mem t) := by
+  obtain ⟨k', hk', ho⟩ := observe_interpMem_impure (mem := mem) h
   exact .branch (ho.trans (congrArg (Step.map _) (memStep_alloc_zeroed hex)))
-    fun x => Halts.of_eq (congrArg (interpMemFrom _) (hk' _)) (hk x)
+    fun x => Halts.of_eq (congrArg (CoFree.interp memStep _) (hk' _)) (hk x)
 
 lemma halts_write_empty {w : Word} {bytes : ByteArray} {k : Unit → SirM Empty}
     (h : t.observe = .impure (.inr (.write w bytes)) k) (hb : bytes.size = 0)
-    (hk : Halts op (interpMemFrom mem (k ()))) : Halts op (interpMemFrom mem t) := by
-  obtain ⟨k', hk', ho⟩ := observe_interpMemFrom_impure (mem := mem) h
+    (hk : Halts op (CoFree.interp memStep mem (k ()))) : Halts op (CoFree.interp memStep mem t) := by
+  obtain ⟨k', hk', ho⟩ := observe_interpMem_impure (mem := mem) h
   exact .silent (ho.trans (congrArg (Step.map _) (memStep_write_empty hb)))
-    (Halts.of_eq (congrArg (interpMemFrom _) (hk' _)) hk)
+    (Halts.of_eq (congrArg (CoFree.interp memStep _) (hk' _)) hk)
 
 lemma halts_write {w : Word} {bytes : ByteArray} {k : Unit → SirM Empty}
     (h : t.observe = .impure (.inr (.write w bytes)) k) (hb : bytes.size ≠ 0)
     {r : mem.Region w bytes.size} (hr : mem.inBounds w bytes.size = some r)
-    (hk : Halts op (interpMemFrom (mem.write bytes r) (k ()))) : Halts op (interpMemFrom mem t) := by
-  obtain ⟨k', hk', ho⟩ := observe_interpMemFrom_impure (mem := mem) h
+    (hk : Halts op (CoFree.interp memStep (mem.write bytes r) (k ()))) : Halts op (CoFree.interp memStep mem t) := by
+  obtain ⟨k', hk', ho⟩ := observe_interpMem_impure (mem := mem) h
   exact .silent (ho.trans (congrArg (Step.map _) (memStep_write hb hr)))
-    (Halts.of_eq (congrArg (interpMemFrom _) (hk' _)) hk)
+    (Halts.of_eq (congrArg (CoFree.interp memStep _) (hk' _)) hk)
 
 lemma halts_read_empty {w len : Word} {k : ByteArray → SirM Empty}
     (h : t.observe = .impure (.inr (.read w len)) k) (hl : len = 0)
-    (hk : Halts op (interpMemFrom mem (k .empty))) : Halts op (interpMemFrom mem t) := by
-  obtain ⟨k', hk', ho⟩ := observe_interpMemFrom_impure (mem := mem) h
+    (hk : Halts op (CoFree.interp memStep mem (k .empty))) : Halts op (CoFree.interp memStep mem t) := by
+  obtain ⟨k', hk', ho⟩ := observe_interpMem_impure (mem := mem) h
   exact .silent (ho.trans (congrArg (Step.map _) (memStep_read_empty hl)))
-    (Halts.of_eq (congrArg (interpMemFrom _) (hk' _)) hk)
+    (Halts.of_eq (congrArg (CoFree.interp memStep _) (hk' _)) hk)
 
 lemma halts_read {w len : Word} {k : ByteArray → SirM Empty}
     (h : t.observe = .impure (.inr (.read w len)) k) (hl : len ≠ 0)
     {r : mem.Region w len.toNat} (hr : mem.inBounds w len.toNat = some r)
-    (hk : Halts op (interpMemFrom mem (k (mem.read r)))) : Halts op (interpMemFrom mem t) := by
-  obtain ⟨k', hk', ho⟩ := observe_interpMemFrom_impure (mem := mem) h
+    (hk : Halts op (CoFree.interp memStep mem (k (mem.read r)))) : Halts op (CoFree.interp memStep mem t) := by
+  obtain ⟨k', hk', ho⟩ := observe_interpMem_impure (mem := mem) h
   exact .silent (ho.trans (congrArg (Step.map _) (memStep_read hl hr)))
-    (Halts.of_eq (congrArg (interpMemFrom _) (hk' _)) hk)
+    (Halts.of_eq (congrArg (CoFree.interp memStep _) (hk' _)) hk)
 
 end Steps
 
@@ -330,7 +330,7 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
       intro ⟨j, _⟩
       obtain rfl : j = ⟨0, Nat.zero_lt_one⟩ := Fin.ext (Nat.lt_one_iff.1 j.isLt)
       exact congrArg (fun b : ByteArray => #[({ start := a.start, bytes := b } : Allocation)]) hcs
-    refine Halts.of_eq (congrArg (fun m => interpMemFrom m _) (hm2 _)) ?_
+    refine Halts.of_eq (congrArg (fun m => CoFree.interp memStep m _) (hm2 _)) ?_
     have hr : MemState.inBounds #[⟨a.start, copied l cd⟩] a.start (l.main.size : Word).toNat =
         some ⟨⟨0, Nat.zero_lt_one⟩, Nat.le_refl _, by
           show a.start.toNat + _ ≤ a.start.toNat + (copied l cd).size

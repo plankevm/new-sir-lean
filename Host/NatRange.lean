@@ -1,3 +1,4 @@
+import Lint.BinderScope
 structure NatRange where
   start : Nat
   size : Nat

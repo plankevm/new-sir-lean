@@ -52,7 +52,7 @@ def checks : List (String × Bool) :=
     ("BinOp.eval byte indexes the second input", Sir.BinOp.eval .byte 31 0x1234 == 0x34),
     ("TernOp.eval addmod a b n", Sir.TernOp.eval .addmod 10 3 4 == 1),
     ("UnOp.eval not", Sir.UnOp.eval .not 0 == max),
-    ("toBytes 2", (Word.toBytes 2 0x12345).toList == [0x23, 0x45]),
+    ("toBytes 2", (Word.toBytes ⟨2, by decide⟩ 0x12345).toList == [0x23, 0x45]),
     ("ofBytes", Word.ofBytes (bytes [1, 2]) == 0x0102),
     ("slicePad", ((bytes [1, 2, 3]).slicePad 1 4).toList == [2, 3, 0, 0]),
     ("keccak empty", Word.keccak256 .empty

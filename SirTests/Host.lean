@@ -1,38 +1,68 @@
 import Sir
 
-/-! A concrete test host: a fixed `Env`, and the operations of `execHost` answered from a small
-world, with deterministic placement (bump from `0x80`). Terminal operations end the run with an
-`Outcome`; the world survives because the state sits under the exception. `runExec` runs `exec`
-instead, with storage made concrete by `Host.interpStore`. -/
+/-! A concrete test host: a fixed `Env`, the world operations of `interpHost` answered from a small
+world, and deterministic placement (bump from `0x80`, zero bytes). `run` interprets memory and
+host state, then runs the result. -/
 
 namespace SirTests
 
 open Sir Host
 
-inductive Outcome
-  | stop
+inductive Result
   | ret (data : List UInt8)
   | revert (data : List UInt8)
   | invalid
   | selfdestruct (beneficiary : Address)
+  | malformed
   | ub (u : UB)
   | hostError (msg : String)
   | outOfFuel
   deriving DecidableEq, Repr
 
+def startState : State := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 1, fun _ => .empty⟩⟩
+
 structure World where
-  storage : List (Word × Word) := []
-  transient : List (Word × Word) := []
+  start : State := startState
+  after : Store → State := fun st => { startState with store := st }
+  callResult : Bool × ByteArray := (true, .empty)
   logs : Array (List Word × List UInt8) := #[]
   calls : Array (CallKind × Address × List UInt8) := #[]
-  callResult : Bool × ByteArray := (true, .empty)
-  queries : Nat := 0
+  ops : Nat := 0
 
-def World.sload (w : World) (k : Word) : Word := ((w.storage.find? (·.1 == k)).map (·.2)).getD 0
+abbrev TestM := StateT World (Except String)
 
-def World.tload (w : World) (k : Word) : Word := ((w.transient.find? (·.1 == k)).map (·.2)).getD 0
+def countOp {α : Type} (v : α) : TestM α := do
+  modify fun w => { w with ops := w.ops + 1 }
+  pure v
 
-abbrev HostM := ExceptT Outcome (StateM World)
+def answer : (op : WorldOp) → TestM (WorldOp.Resp op)
+  | .gas => countOp (1000000 : Word)
+  | .log topics data => do
+    modify fun w => { w with logs := w.logs.push (topics.toList, data.toList) }
+    countOp ()
+  | .call .staticcall _ account input _ => do
+    modify fun w => { w with calls := w.calls.push (.staticcall, account, input.toList) }
+    let w ← get
+    countOp (w.callResult : Bool × ByteArray)
+  | .call (.call value) _ account input st => do
+    modify fun w => { w with calls := w.calls.push (.call value, account, input.toList) }
+    let w ← get
+    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × State)
+  | .call .delegatecall _ account input st => do
+    modify fun w => { w with calls := w.calls.push (.delegatecall, account, input.toList) }
+    let w ← get
+    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × State)
+  | .create _ salt _ st => do
+    let w ← get
+    countOp (((if salt.isSome then 0xC2 else 0xC1 : Address), ByteArray.empty, w.after st) :
+      Address × ByteArray × State)
+
+/-- Places every allocation after the highest live one, from `0x80`. -/
+def place : (c : MemoryND.Op) → TestM (MemoryND.Resp c)
+  | .alloc size live _ => do
+    let start := live.foldl (fun s a => max s a.end) 0x80
+    let a : Allocation := ⟨Word.ofNat start, ⟨.replicate size.toNat 0⟩⟩
+    if h : ValidAlloc live size.toNat a then pure ⟨a, h⟩ else throw "alloc"
 
 def testEnv : Env where
   address := 0xA0
@@ -50,88 +80,56 @@ def testEnv : Env where
   blobbasefee := 7
   blockhash _ := 7
   blobhash _ := 7
-  calldata := .empty
-  code := .empty
-  static := false
+  mode := .creation .empty
 
-def countQuery (v : Word) : HostM Word := do
-  modify fun w => { w with queries := w.queries + 1 }
-  pure v
+structure Run where
+  result : Result
+  store : Option Store
+  world : World
 
-def answer : (op : HostOp) → HostM (HostOp.Resp op)
-  | .gas => countQuery 1000000
-  | .selfbalance | .balance _ | .extcodehash _ => countQuery 7
-  | .sload k => do
-    let w ← get
-    countQuery (w.sload k)
-  | .tload k => do
-    let w ← get
-    countQuery (w.tload k)
-  | .sstore k v => modify fun w => { w with storage := (k, v) :: w.storage }
-  | .tstore k v => modify fun w => { w with transient := (k, v) :: w.transient }
-  | .extcode _ => pure (⟨#[1, 2, 3]⟩ : ByteArray)
-  | .log topics data => modify fun w => { w with logs := w.logs.push (topics.toList, data.toList) }
-  | .call kind _ account input => do
-    modify fun w => { w with calls := w.calls.push (kind, account, input.toList) }
-    let w ← get
-    pure w.callResult
-  | .create _ salt _ => pure ((if salt.isSome then 0xC2 else 0xC1 : Address), ByteArray.empty)
-  | .stop => throw .stop
-  | .ret data => throw (.ret data.toList)
-  | .revert data => throw (.revert data.toList)
-  | .invalid => throw .invalid
-  | .selfdestruct a => throw (.selfdestruct a)
-  | .ub u => throw (.ub u)
+def Run.slot (r : Run) (k : Word) : Word := (r.store.map (·.storage k)).getD 0
 
-/-- Places every allocation after the highest live one, from `0x80`. -/
-def place : (c : Choice) → HostM (Choice.Resp c)
-  | .placement size live _ => do
-    let start := live.foldl (fun s a => max s a.end) 0x80
-    if h : Placement ⟨start, size⟩ live then pure ⟨start, h⟩ else throw (.hostError "alloc")
-  | .choose _ pos => pure ⟨0, pos⟩
+def Run.slots (r : Run) (ks : List Word) : List Word := ks.map r.slot
 
-def runWith (env : Env) (world : World) (p : Program) (layout : Layout) (imm : Immutables p)
-    (e : Entry) (fuel : Nat := 100000) : Outcome × World :=
-  match (CoFree.runM (E := HostE) (N := SirND) answer place fuel (execHost p layout imm env e)).run.run world with
-  | (.ok none, w) => (.outOfFuel, w)
-  | (.ok (some x), _) => nomatch x
-  | (.error o, w) => (o, w)
+def ofOutcome : UB ⊕ Outcome → Result × Option Store
+  | .inl (.malformed _) => (.malformed, none)
+  | .inl u => (.ub u, none)
+  | .inr (.ret data st) => (.ret data.toList, some st)
+  | .inr (.revert data) => (.revert data.toList, none)
+  | .inr .invalid => (.invalid, none)
+  | .inr (.selfdestruct a st) => (.selfdestruct a, some st)
 
-/-- How a run of `exec` ends, with the storage it commits. -/
-inductive ExecOutcome
-  | done (o : Outcome) (store : Option Store)
-  | outOfFuel
+def runWith (p : Program) (l : Layout p) (env : Env) (imm : Immutables p env.mode.kind)
+    (world : World) (fuel : Nat) : Run :=
+  match (CoFree.runM answer place fuel (interpHost env.address world.start (p.runHost l env imm))).run world with
+  | .ok (none, w) => ⟨.outOfFuel, none, w⟩
+  | .ok (some o, w) => let (r, st) := ofOutcome o; ⟨r, st, w⟩
+  | .error msg => ⟨.hostError msg, none, world⟩
 
-/-- Answers `exec`'s world operations: the gas left is fixed, logs are dropped, and every call or
-creation answers `(true, empty)`, `0xC1` or `0xC2`, and leaves the state `after store`. -/
-def answerWorld (after : Store → State) : (op : WorldOp) → Except ExecOutcome (WorldOp.Resp op)
-  | .gas => pure (1000000 : Word)
-  | .log .. => pure ()
-  | .call .staticcall .. => pure ((true, .empty) : Bool × ByteArray)
-  | .call (.call _) _ _ _ st | .call .delegatecall _ _ _ st =>
-    pure ((true, .empty, after st) : Bool × ByteArray × State)
-  | .create _ salt _ st => pure (((if salt.isSome then 0xC2 else 0xC1 : Address), .empty, after st) : Address × ByteArray × State)
-  | .ret data st => throw (.done (.ret data.toList) (some st))
-  | .revert data => throw (.done (.revert data.toList) none)
-  | .invalid => throw (.done .invalid none)
-  | .selfdestruct a st => throw (.done (.selfdestruct a) (some st))
-  | .ub u => throw (.done (.ub u) none)
+def plainLayout (p : Program) (hd : p.data.size = 0 := by decide)
+    (hi : p.immutables.size = 0 := by decide) : Layout p where
+  init := .empty
+  init_u32 := by decide
+  main := .empty
+  main_u32 := by decide
+  mainStartOffset := ⟨0, fun _ h => absurd h (Nat.not_lt_zero _)⟩
+  initDataOffsets i := absurd (Nat.lt_of_lt_of_eq i.isLt hd) (Nat.not_lt_zero _)
+  mainDataOffsets i := absurd (Nat.lt_of_lt_of_eq i.isLt hd) (Nat.not_lt_zero _)
+  immutableOffsets i := absurd (Nat.lt_of_lt_of_eq i.isLt hi) (Nat.not_lt_zero _)
+  atLeastOne_immOffsets i := absurd (Nat.lt_of_lt_of_eq i.isLt hi) (Nat.not_lt_zero _)
+  no_imm_imm_overlap i := absurd (Nat.lt_of_lt_of_eq i.isLt hi) (Nat.not_lt_zero _)
+  no_imm_data_overlap d := absurd (Nat.lt_of_lt_of_eq d.isLt hd) (Nat.not_lt_zero _)
 
-def runExec (env : Env) (s : State) (after : Store → State) (p : Program) (layout : Layout)
-    (imm : Immutables p) (e : Entry) (fuel : Nat := 100000) : ExecOutcome :=
-  let pick : (c : Choice) → Except ExecOutcome c.Resp := fun c => match place c |>.run.run {} with
-    | (.ok r, _) => pure r
-    | (.error o, _) => throw (.done o none)
-  match CoFree.runM (E := Exec) (N := SirND) (answerWorld after) pick fuel (exec p layout imm env e s) with
-  | .ok none => .outOfFuel
-  | .ok (some x) => nomatch x
-  | .error o => o
+def noImmutables (p : Program) (hi : p.immutables.size = 0 := by decide) : MainImmutablesMap p :=
+  ⟨⟨#[], hi.symm⟩, .empty, fun i => absurd (Nat.lt_of_lt_of_eq i.isLt hi) (Nat.not_lt_zero _)⟩
 
-def noLayout : Layout where
-  dataOffset _ d := BitVec.ofNat 256 (0x1000 + d.id)
-  runtimeStartOffset := 0x40
-  initEndOffset := 0x200
-  runtimeLength := 8
-  immutableRefs _ := []
+def runInit (p : Program) (l : Layout p := by exact plainLayout _) (env : Env := testEnv)
+    (world : World := {}) (fuel : Nat := 100000) : Run :=
+  runWith p l { env with mode := .creation .empty } .init world fuel
+
+def runMain (p : Program) (imms : MainImmutablesMap p) (l : Layout p := by exact plainLayout _)
+    (env : Env := testEnv) (static : Bool := false) (calldata : ByteArray := .empty)
+    (world : World := {}) (fuel : Nat := 100000) : Run :=
+  runWith p l { env with mode := .call static calldata } (.main imms) world fuel
 
 end SirTests
