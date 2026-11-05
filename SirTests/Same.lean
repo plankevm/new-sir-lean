@@ -126,7 +126,7 @@ lemma not_same_pure_impure {N₁ N₂ : NonDeterminism} {m₁ : CoFree HostE N�
 /-! ## Programs -/
 
 def run (p : Program) (l : Layout p := by exact plainLayout _) : CoFree HostE MemoryND UB :=
-  p.runHost l testEnv .init
+  interpMem (runInner ⟨p, l, .creation .empty, testEnv, .init⟩)
 
 /-- `stop`, which is `ret` with no data. -/
 abbrev stopOp : HostOp := .halt (.ret .empty)

@@ -82,14 +82,13 @@ def testEnv : Env where
   blobbasefee := 7
   blockhash _ := 7
   blobhash _ := 7
-  mode := .creation .empty
 
 structure Run where
   result : Result
   store : Option Store
   world : World
 
-def Run.slot (r : Run) (k : Word) : Word := (r.store.map (·.storage k)).getD 0
+def Run.slot (r : Run) (k : Word) : Word := (r.store.map (·.persistent k)).getD 0
 
 def Run.slots (r : Run) (ks : List Word) : List Word := ks.map r.slot
 
@@ -101,9 +100,9 @@ def ofOutcome : UB ⊕ Outcome → Result × Option Store
   | .inr .invalid => (.invalid, none)
   | .inr (.selfdestruct a st) => (.selfdestruct a, some st)
 
-def runWith (p : Program) (l : Layout p) (env : Env) (imm : Immutables p env.mode.kind)
+def runWith (p : Program) (l : Layout p) (mode : ExecutionMode) (env : Env) (imm : Immutables p mode.kind)
     (world : World) (fuel : Nat) : Run :=
-  match (CoFree.runM answer place fuel (interpHost env.address world.start (p.runHost l env imm))).run world with
+  match (CoFree.runM answer place fuel (p.run l mode env imm world.start)).run world with
   | .ok (none, w) => ⟨.outOfFuel, none, w⟩
   | .ok (some o, w) => let (r, st) := ofOutcome o; ⟨r, st, w⟩
   | .error msg => ⟨.hostError msg, none, world⟩
@@ -127,11 +126,11 @@ def noImmutables (p : Program) (hi : p.immutables.size = 0 := by decide) : MainI
 
 def runInit (p : Program) (l : Layout p := by exact plainLayout _) (env : Env := testEnv)
     (world : World := {}) (fuel : Nat := 100000) : Run :=
-  runWith p l { env with mode := .creation .empty } .init world fuel
+  runWith p l (.creation .empty) env .init world fuel
 
 def runMain (p : Program) (imms : MainImmutablesMap p) (l : Layout p := by exact plainLayout _)
     (env : Env := testEnv) (static : Bool := false) (calldata : ByteArray := .empty)
     (world : World := {}) (fuel : Nat := 100000) : Run :=
-  runWith p l { env with mode := .call static calldata } (.main imms) world fuel
+  runWith p l (.call static calldata) env (.main imms) world fuel
 
 end SirTests

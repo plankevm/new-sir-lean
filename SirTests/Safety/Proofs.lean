@@ -16,24 +16,31 @@ inductive Halts {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type u} (op : E.O
   | branch {m : CoFree E N A} {c : N.Op} {k : N.Resp c → CoFree E N A} :
       m.observe = .branch c k → (∀ r, Halts op (k r)) → Halts op m
 
-section Halts
+inductive Returns {E : Effect.{u}} {N : NonDeterminism.{u}} {A : Type u} (a : A) :
+    CoFree E N A → Prop
+  | now {m : CoFree E N A} : m.observe = .pure a → Returns a m
+  | silent {m m' : CoFree E N A} : m.observe = .silent m' → Returns a m' → Returns a m
+  | branch {m : CoFree E N A} {c : N.Op} {k : N.Resp c → CoFree E N A} :
+      m.observe = .branch c k → (∀ r, Returns a (k r)) → Returns a m
 
-variable {E : Effect.{u}} {N N₁ N₂ : NonDeterminism.{u}} {A B : Type u} {op : E.Op}
+section Returns
 
-lemma Halts.same {Ret : A → B → Prop} (hE : E.Resp op → False) {m₁ : CoFree E N₁ A}
-    {m₂ : CoFree E N₂ B} (h₁ : Halts op m₁) (h₂ : Halts op m₂) : Same Ret m₁ m₂ := by
-  refine ⟨fun a b => Halts op a ∧ Halts op b, ⟨h₁, h₂⟩, fun a b ⟨ha, hb⟩ => ?_⟩
-  induction ha with
-  | now ha =>
-    induction hb with
-    | now hb => exact .impure op ha hb fun r => (hE r).elim
-    | silent hb hb' ih => exact .silentR hb (ih ⟨.now ha, hb'⟩)
-    | branch hb hb' ih => exact .branchR _ hb fun r => ih r ⟨.now ha, hb' r⟩
-  | silent ha ha' ih => exact .silentL ha (ih ⟨ha', hb⟩)
-  | branch ha ha' ih => exact .branchL _ ha fun r => ih r ⟨ha' r, hb⟩
+variable {E : Effect.{u}} {N N₁ N₂ : NonDeterminism.{u}} {A : Type u} {a : A}
 
-lemma Halts.outcome (hE : E.Resp op → False) {m : CoFree E N A} {o : Outcome E A}
-    (h : Halts op m) (ho : HasOutcome m o) : o = .terminalOp op := by
+lemma Returns.same {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ A} (h₁ : Returns a m₁) (h₂ : Returns a m₂) :
+    Same Eq m₁ m₂ := by
+  refine ⟨fun x y => Returns a x ∧ Returns a y, ⟨h₁, h₂⟩, fun x y ⟨hx, hy⟩ => ?_⟩
+  induction hx with
+  | now hx =>
+    induction hy with
+    | now hy => exact .ret a a hx hy rfl
+    | silent hy hy' ih => exact .silentR hy (ih ⟨.now hx, hy'⟩)
+    | branch hy hy' ih => exact .branchR _ hy fun r => ih r ⟨.now hx, hy' r⟩
+  | silent hx hx' ih => exact .silentL hx (ih ⟨hx', hy⟩)
+  | branch hx hx' ih => exact .branchL _ hx fun r => ih r ⟨hx' r, hy⟩
+
+lemma Returns.outcome {m : CoFree E N A} {o : Outcome E A} (h : Returns a m) (ho : HasOutcome m o) :
+    o = .res a := by
   induction ho with
   | res hm => cases h <;> simp_all
   | terminal _ hk =>
@@ -49,24 +56,60 @@ lemma Halts.outcome (hE : E.Resp op → False) {m : CoFree E N A} {o : Outcome E
   | impure _ hm ih =>
     obtain ⟨op', k, hm, r, rfl⟩ := hm
     cases h with
-    | now h => rw [hm] at h; cases h; exact (hE r).elim
+    | now h => rw [hm] at h; cases h
     | silent h => rw [hm] at h; cases h
     | branch h => rw [hm] at h; cases h
 
-lemma Halts.hasOutcome (hE : E.Resp op → False) {m : CoFree E N A} (h : Halts op m) :
-    HasOutcome m (.terminalOp op) := by
+lemma Returns.hasOutcome {m : CoFree E N A} (h : Returns a m) : HasOutcome m (.res a) := by
   induction h with
-  | now hm => exact .terminal hE ⟨_, hm⟩
+  | now hm => exact .res hm
   | silent hm _ ih => exact .silent ih hm
   | branch hm _ ih =>
     obtain ⟨r⟩ := N.resp_nonempty _
     exact .branch (ih r) ⟨_, _, hm, r, rfl⟩
 
-lemma Halts.runSafe {m : CoFree HostE MemoryND UB} {o : SimplifiedOutcome} (h : Halts (HostOp.halt o) m) :
-    RunSafe m :=
-  ⟨h.same Empty.elim h, fun ⟨_, ho⟩ => nomatch h.outcome Empty.elim ho⟩
+lemma Returns.runSafe {m : CoFree WorldE MemoryND (UB ⊕ Outcome)} {o : Outcome}
+    (h : Returns (.inr o) m) : RunSafe m :=
+  ⟨h.same h, fun ⟨_, ho⟩ => by cases h.outcome ho⟩
 
-end Halts
+end Returns
+
+lemma observe_interp {E F : Effect} {N M : NonDeterminism} {A B σ : Type}
+    (f : ∀ {X : Type}, σ → Step E N A X → Step F M B (σ × X)) (st : σ) (m : CoFree E N A) :
+    (CoFree.interp f st m).observe =
+      (f st (m.step m.initial)).map fun p => CoFree.interp f p.1 (m.next p.2) := by
+  obtain ⟨S, J, s₀, step, target⟩ := m
+  simp only [observe, CoFree.interp, Step.map_map]
+  congr 1
+  funext ⟨st', s⟩
+  rcases s with s | j <;> rfl
+
+lemma Halts.interpHost {self : Address} {o : SimplifiedOutcome} {m : CoFree HostE MemoryND UB}
+    (hs : HostState) (hm : Halts (HostOp.halt o) m) :
+    Returns (.inr (o.withStore hs.store)) (CoFree.interp (hostStep self) hs m) := by
+  induction hm with
+  | @now m k h =>
+    refine .now ?_
+    rw [observe_interp]
+    unfold observe at h
+    generalize m.step m.initial = y at h ⊢
+    cases y <;> cases h
+    rfl
+  | @silent m m' h _ ih =>
+    refine .silent ?_ ih
+    rw [observe_interp]
+    unfold observe at h
+    generalize m.step m.initial = y at h ⊢
+    cases y <;> cases h
+    rfl
+  | @branch m c k h _ ih =>
+    refine .branch (k := fun r => CoFree.interp (hostStep self) hs (k r)) ?_ ih
+    rw [observe_interp]
+    unfold observe at h
+    generalize m.step m.initial = y at h ⊢
+    cases y <;> cases h
+    rfl
+
 
 def skip {A : Type} : Nat → SirM A → SirM A
   | 0, t => t
@@ -76,12 +119,8 @@ def skip {A : Type} : Nat → SirM A → SirM A
 
 lemma observe_interpMem (mem : MemState) (m : SirM Empty) :
     (CoFree.interp memStep mem m).observe =
-      (memStep mem (m.step m.initial)).map fun p => CoFree.interp memStep p.1 (m.next p.2) := by
-  obtain ⟨S, J, s₀, step, target⟩ := m
-  simp only [observe, CoFree.interp, Step.map_map]
-  congr 1
-  funext ⟨mem', s⟩
-  rcases s with s | j <;> rfl
+      (memStep mem (m.step m.initial)).map fun p => CoFree.interp memStep p.1 (m.next p.2) :=
+  observe_interp memStep mem m
 
 lemma observe_interpMem_silent {mem : MemState} {m m' : SirM Empty} (h : m.observe = .silent m') :
     (CoFree.interp memStep mem m).observe = .silent (CoFree.interp memStep mem m') := by
@@ -132,7 +171,7 @@ def afterHalt (t : SirM Empty) (e : Empty) : SirM Empty :=
   | _ => t
 
 def initRun (l : Layout noop) (cd : ByteArray) (e : Env) : SirM Empty :=
-  skip 1000 (noop.run l { e with mode := .creation cd } .init)
+  skip 1000 (runInner ⟨noop, l, .creation cd, e, .init⟩)
 
 def copied (l : Layout noop) (cd : ByteArray) : ByteArray :=
   (l.init ++ cd).slicePad (Word.ofU32 l.mainStartOffset.val).toNat (l.main.size : Word).toNat
@@ -286,8 +325,8 @@ lemma copied_eq (l : Layout noop) (cd : ByteArray) : copied l cd = l.main := by
     ByteArray.getElem_eq_getElem_data]
 
 lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
-    Halts (HostOp.halt (.ret l.main)) (noop.runHost l { e with mode := .creation cd } .init) := by
-  refine halts_skip 1000 (t := noop.run l { e with mode := .creation cd } .init) ?_
+    Halts (HostOp.halt (.ret l.main)) (interpMem (runInner ⟨noop, l, .creation cd, e, .init⟩)) := by
+  refine halts_skip 1000 (t := runInner ⟨noop, l, .creation cd, e, .init⟩) ?_
   have hsz : (⟨.replicate l.main.size 0⟩ : ByteArray).size = l.main.size := Array.size_replicate
   have hex : ∃ a', ValidAlloc (MemState.live #[]).toList (l.main.size : Word).toNat a' :=
     ⟨⟨0, ⟨.replicate l.main.size 0⟩⟩, by rw [toNat_mainSize]; exact hsz, by
@@ -350,16 +389,13 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
     exact Halts.op_eq (congrArg (fun b => HostOp.halt (.ret b)) (hb _)) (halts_ret (noop_ret l cd e a.start () _))
 
 lemma noop_stop (l : Layout noop) (st : Bool) (cd : ByteArray) (e : Env) (imm : Immutables noop .call) :
-    (skip 1000 (noop.run l { e with mode := .call st cd } imm)).observe =
-      .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (noop.run l { e with mode := .call st cd } imm))) := by
+    (skip 1000 (runInner ⟨noop, l, .call st cd, e, imm⟩)).observe =
+      .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (runInner ⟨noop, l, .call st cd, e, imm⟩))) := by
   kernel_rfl
 
 lemma noop_mainSafe (l : Layout noop) (imms : MainImmutablesMap noop) : MainSafe noop imms l := by
-  intro env h
-  rcases env with ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ | ⟨st, cd⟩⟩
-  · cases h
-  · exact Halts.runSafe (halts_skip 1000 (halts_ret
-      (noop_stop l st cd (Env.mk _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (.call st cd)) _)))
+  intro env st cd w₀
+  exact (Halts.interpHost ⟨w₀, .empty⟩ (halts_skip 1000 (halts_ret (noop_stop l st cd env _)))).runSafe
 
 def stopsLayout : Layout initStops where
   init := ⟨#[0]⟩
@@ -390,16 +426,21 @@ def stopsEnv : Env where
   blobbasefee := 0
   blockhash _ := 0
   blobhash _ := 0
-  mode := .creation .empty
 
 lemma initStops_stop :
-    (skip 1000 (initStops.run stopsLayout stopsEnv .init)).observe =
-      .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (initStops.run stopsLayout stopsEnv .init))) := by
+    (skip 1000 (runInner ⟨initStops, stopsLayout, .creation .empty, stopsEnv, .init⟩)).observe =
+      .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (runInner ⟨initStops, stopsLayout, .creation .empty, stopsEnv, .init⟩))) := by
   kernel_rfl
 
+def stopsState : State := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 0, fun _ => .empty⟩⟩
+
+lemma stopsState_unset : stopsState.Unset stopsEnv.address :=
+  ⟨fun _ => rfl, fun _ => rfl, rfl, rfl⟩
+
 lemma initStops_halts :
-    HasOutcome (initStops.runHost stopsLayout stopsEnv .init) (.terminalOp (.halt (.ret .empty))) :=
-  (halts_skip 1000 (halts_ret initStops_stop)).hasOutcome Empty.elim
+    HasOutcome (initStops.run stopsLayout (.creation .empty) stopsEnv .init stopsState)
+      (.res (.inr (.ret .empty stopsState.store))) :=
+  (Halts.interpHost ⟨stopsState, .empty⟩ (halts_skip 1000 (halts_ret initStops_stop))).hasOutcome
 
 lemma stopsLayout_withSetImmutables_ne (imms : MainImmutablesMap initStops) :
     stopsLayout.withSetImmutables imms ≠ .empty := by

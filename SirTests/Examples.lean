@@ -450,7 +450,7 @@ def transient : Program := initOnly #[
 
 /-- A callee that sets slot 0 to 9 and every balance to 3. -/
 def callee (st : Store) : State :=
-  ⟨{ st with storage := st.storage.set 0 9 }, ⟨fun _ => 3, fun _ => .empty⟩⟩
+  ⟨{ st with persistent := st.persistent.set 0 9 }, ⟨fun _ => 3, fun _ => .empty⟩⟩
 
 def just (c : Expr VarId) : Program :=
   initOnly #[{ ops := #[.let 10 (.const 0), .let 11 (.const 1), .let 3 c], control := .stop }]
