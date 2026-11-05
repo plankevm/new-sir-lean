@@ -6,6 +6,7 @@ namespace SirTests.Safety
 open Sir Host CoFree
 
 theorem noop_safe : Safe noop := by
+  refine ⟨⟨noopLayout⟩, ?_⟩
   intro l env cd w₀ _
   have h := ((noop_init_halts l cd env).interpHost (self := env.address) ⟨w₀, .empty⟩).runInit
   have hm : l.toMainImmutablesMap l.main = some ⟨#v[], .empty, nofun⟩ :=
@@ -15,6 +16,6 @@ theorem noop_safe : Safe noop := by
 
 theorem initStops_not_safe : ¬Safe initStops := by
   intro hs
-  exact (hs stopsLayout stopsEnv .empty stopsState stopsState_unset).1.2 ⟨_, initStops_halts⟩
+  exact (hs.2 stopsLayout stopsEnv .empty stopsState stopsState_unset).1.2 ⟨_, initStops_halts⟩
 
 end SirTests.Safety

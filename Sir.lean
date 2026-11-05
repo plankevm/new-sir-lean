@@ -7,3 +7,4 @@ import Sir.Layout.Theorems
 import Sir.Safety
 import Sir.Syntax
 import Sir.Equivalence
+import Sir.Equivalence.Theorems

@@ -408,6 +408,19 @@ lemma noop_mainSafe (l : Layout noop) (imms : MainImmutablesMap noop) : MainSafe
   intro env st cd w₀
   exact (Halts.interpHost ⟨w₀, .empty⟩ (halts_skip 1000 (halts_ret (noop_stop l st cd env _)))).runSafe
 
+def noopLayout : Layout noop where
+  init := ⟨#[0]⟩
+  init_u32 := by decide
+  main := ⟨#[0]⟩
+  main_u32 := by decide
+  mainStartOffset := ⟨0, fun | 0, _ => rfl⟩
+  initDataOffsets := nofun
+  mainDataOffsets := nofun
+  immutableOffsets := nofun
+  atLeastOne_immOffsets := nofun
+  no_imm_imm_overlap := nofun
+  no_imm_data_overlap := nofun
+
 def stopsLayout : Layout initStops where
   init := ⟨#[0]⟩
   init_u32 := by decide
