@@ -2,6 +2,7 @@ import ITree
 import Std.Data.TreeMap
 import Sir.Effect
 import Sir.Layout
+import Sir.Memory
 import Host.Effect
 import Host.Keccak
 
@@ -9,20 +10,7 @@ open Host
 
 namespace Sir
 
-abbrev EvalE := HostE ⊕ₑ SirE
-abbrev SirM (α : Type) : Type 1 := CoFree EvalE .none α
-
 abbrev Vars := Std.TreeMap VarId Word
-
-private def sir_op (op : SirE.Op) : SirM (SirE.Resp op) := CoFree.perform (E := EvalE) (Sum.inr op)
-def alloc_zeroed (size : Word) := sir_op (.alloc .zeroed size)
-def alloc_uninit (size : Word) := sir_op (.alloc .uninitialized size)
-def mem.read (offset len : Word) := sir_op (.read offset len)
-def mem.write (offset : Word) (bytes : ByteArray) := sir_op (.write offset bytes)
-def mem.copy (copy : MemCopy)  := sir_op (.copy copy)
-def ub {α : Type} (ub : UB) : SirM α := do nomatch ← sir_op (.ub ub)
-def malformed {α : Type} (reason : String) := ub (α := α) <| .malformed reason
-def returndata.size : SirM Word := (·.size) <$> Host.returndata
 
 namespace Vars
 
@@ -54,7 +42,7 @@ def Context.code (ctx : Context) : ByteArray := match hmode : ctx.env.mode with
       let imms := ctx.immutables
       have h_eq : ctx.env.mode.kind = .call := by simp [ExecutionMode.kind, hmode]
       let immMain := (h_eq ▸ imms).getMain
-      ctx.layout.withSetImmutables immMain ++ immMain.tail
+      ctx.layout.withSetImmutables immMain
 
 def mem.writeFromSlice (dst : Word) (src : ByteArray) (offset length : Word) : SirM Unit :=
   write dst (src.slicePad offset.toNat length.toNat)
@@ -275,11 +263,13 @@ def evalFn (ctx : Context) : CallI → SirM CallO := CoFree.fix fun evalFn (fn, 
           malformed "icall never returned"
     inputs ← vars.lookupAll block.outputs
 
-
-def run (p : Program) (layout : Layout p) (env : Env) (imm : Immutables p env.mode.kind) : SirM Empty := do
+def Program.run (p : Program) (layout : Layout p) (env : Env) (imm : Immutables p env.mode.kind) : SirM Empty := do
   let ctx := ⟨p, layout, env, imm⟩
   let entryFn := p[env.mode.kind]
   let _ ← evalFn ctx (entryFn, #[])
   malformed "top-level entry point returned instead of terminating"
+
+def Program.runHost (p : Program) (layout : Layout p) (env : Env) (imm : Immutables p env.mode.kind)
+  : CoFree HostE MemoryND UB := interpMem (p.run layout env imm)
 
 end Sir

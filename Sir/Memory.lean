@@ -1,4 +1,4 @@
-import Sir.Eval
+import Sir.Effect
 
 open Host
 open CoFree (perform)

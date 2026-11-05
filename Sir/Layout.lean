@@ -6,16 +6,14 @@ namespace Sir
 structure MainImmutablesMap (p : Program) : Type where
   slots : Vector Word p.immutables.size
   tail : ByteArray
+  slot_values_correctly_sized : ∀ i : Fin p.immutables.size, slots[i].HasSize p.immutables[i]
 
-/-- The values `getimmutable` reads: fixed for a whole run, one per immutable, each fitting the
-immutable's declared size. -/
 inductive Immutables (p : Program) : Host.ExecutionModeKind → Type
   | init : Immutables p .creation
   | main : MainImmutablesMap p → Immutables p .call
 
 def Immutables.getMain {p : Program} : (imm : Immutables p .call) → MainImmutablesMap p
   | .main m => m
-
 
 instance {p : Program} : GetElem? (Immutables p .call) ImmutableId Word (fun _ => p.ValidImmutableId) where
   getElem imm i valid := imm.getMain.slots[i.id]
@@ -67,7 +65,7 @@ def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutables
     let value := imms.slots[imm].toBytes p.immutables[imm]
     for offset in l.immutableOffsets imm do
       main := ByteArray.copySlice value 0 main offset.val.toNat value.size
-  return main
+  return main ++ imms.tail
 
 
 end Sir

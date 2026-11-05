@@ -13,7 +13,6 @@ inductive UB
   | switchNoMatch
   | illegalOverflow
   | memoryOutOfBounds (offset : Word) (length : Nat)
-  | uninitializedRead (offset length : Nat)
   | outOfMemory (size : Word)
   deriving DecidableEq, Repr
 
@@ -38,7 +37,18 @@ def SirOp.Resp : SirOp → Type
   | .copy .. => Unit
   | .ub _ => Empty
 
-
 abbrev SirE : Effect := ⟨SirOp, SirOp.Resp⟩
+abbrev EvalE := Host.HostE ⊕ₑ SirE
+abbrev SirM (α : Type) : Type 1 := CoFree EvalE .none α
+
+private def sir_op (op : SirE.Op) : SirM (SirE.Resp op) := CoFree.perform (E := EvalE) (Sum.inr op)
+def alloc_zeroed (size : Word) := sir_op (.alloc .zeroed size)
+def alloc_uninit (size : Word) := sir_op (.alloc .uninitialized size)
+def mem.read (offset len : Word) := sir_op (.read offset len)
+def mem.write (offset : Word) (bytes : ByteArray) := sir_op (.write offset bytes)
+def mem.copy (copy : MemCopy)  := sir_op (.copy copy)
+def ub {α : Type} (ub : UB) : SirM α := do nomatch ← sir_op (.ub ub)
+def malformed {α : Type} (reason : String) := ub (α := α) <| .malformed reason
+def returndata.size : SirM Word := (·.size) <$> Host.returndata
 
 end Sir
