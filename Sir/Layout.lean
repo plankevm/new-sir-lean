@@ -58,14 +58,17 @@ structure Layout (p : Program) where
         (mainDataOffsets data h).range
 
 
-def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutablesMap p) : ByteArray
+def Layout.setImmutables {p : Program} (l : Layout p) (slots : Vector Word p.immutables.size) : ByteArray
 := Id.run do
   let mut main := l.main
   for imm in List.finRange p.immutables.size do
-    let value := imms.slots[imm].toBytes p.immutables[imm]
+    let value := slots[imm].toBytes p.immutables[imm]
     for offset in l.immutableOffsets imm do
       main := ByteArray.copySlice value 0 main offset.val.toNat value.size
-  return main ++ imms.tail
+  return main
+
+def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutablesMap p) : ByteArray :=
+  l.setImmutables imms.slots ++ imms.tail
 
 def Layout.extractImmutables {p : Program} (l : Layout p) (returnedMain : ByteArray)
   : Option (ByteArray × Array Word) := do
@@ -77,11 +80,21 @@ def Layout.extractImmutables {p : Program} (l : Layout p) (returnedMain : ByteAr
   for i in List.finRange p.immutables.size do
     for slot in l.immutableOffsets i do
       let offset := slot.val.toNat
-      let value := Word.ofBytes (returnedMain.extract offset p.immutables[i].toNat)
+      let value := Word.ofBytes (returnedMain.extract offset (offset + p.immutables[i].toNat))
       match slots[i] with
       | .some value' => guard (value = value')
       | .none => slots := slots.set i.val (.some value) i.isLt
 
-  return (tail, ← slots.toArray.mapM id)
+  let values ← slots.mapM id
+  guard (l.setImmutables values ++ tail = returnedMain)
+  return (tail, values.toArray)
+
+def Layout.toMainImmutablesMap {p : Program} (l : Layout p) (returnedMain : ByteArray)
+  : Option (MainImmutablesMap p) := do
+  let (tail, values) ← l.extractImmutables returnedMain
+  if h : ∃ hsize : values.size = p.immutables.size,
+      ∀ i : Fin p.immutables.size, values[i].HasSize p.immutables[i] then
+    return ⟨⟨values, h.1⟩, tail, h.2⟩
+  else none
 
 end Sir

@@ -3,6 +3,7 @@ import Sir.Effect
 import Sir.Eval
 import Sir.Memory
 import Sir.Layout
+import Sir.Layout.Theorems
 import Sir.Safety
 import Sir.Syntax
 import Sir.Equivalence
