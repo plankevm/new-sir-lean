@@ -112,6 +112,21 @@ def execCall (ctx : Context) (ck : CallKind) (gas to inOff inLen outOff outLen :
   mem.writeFromSlice outOff (← Host.returndata) 0 copiedOutLen
   return .ofBool succ
 
+def Context.getImmutable (ctx : Context) (id : ImmutableId) : SirM Word := do
+  let henv : { p : Bool × ByteArray // ctx.mode = .call p.1 p.2 }
+    ← match henv : ctx.mode with
+    | .creation _ => malformed "getting immutable in init"
+    | .call a b => pure ⟨(a, b), henv⟩
+  let i : Fin ctx.program.immutables.size
+    ← if hvalid : id.id < ctx.program.immutables.size
+    then pure ⟨id.id, hvalid⟩
+    else malformed "invalid immutable id"
+  let imms := ctx.immutables
+  have heq : ctx.mode.kind = .call := by simp [ExecutionMode.kind, henv.property]
+  let some v := (heq ▸ imms).getMain.slots[i.val]? | malformed "missing immutable slot"
+  unless v.HasSize ctx.program.immutables[i] do malformed "immutable value too large for slot"
+  return v
+
 def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .unop op a => pure (op.eval a)
   | .binop op a b => pure (op.eval a b)
@@ -155,7 +170,7 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
         ← if hvalid : ctx.program.ValidDataId d
         then pure ⟨d.id, hvalid⟩
         else malformed "undefined data id"
-      match henv : ctx.mode with
+      match ctx.mode with
       | .creation _ => pure <| (.ofU32 ·.val) <| ctx.layout.initDataOffsets i
       | .call _ _ => do
           if hmd : i ∈ ctx.program.mainDatas then
@@ -168,20 +183,7 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .initEndOffset => do
       unless (ctx.mode.kind = .creation) do malformed "accessing init end offset outside of init"
       return ctx.layout.init.size
-  | .getImmutable id => do
-      let henv : { p : Bool × ByteArray // ctx.mode = .call p.1 p.2 }
-        ← match henv : ctx.mode with
-        | .creation _ => malformed "getting immutable in init"
-        | .call a b => pure ⟨(a, b), henv⟩
-      let i : Fin ctx.program.immutables.size
-        ← if hvalid : id.id < ctx.program.immutables.size
-        then pure ⟨id.id, hvalid⟩
-        else malformed "invalid immutable id"
-      let imms := ctx.immutables
-      have heq : ctx.mode.kind = .call := by simp [ExecutionMode.kind, henv.property]
-      let some v := (heq ▸ imms).getMain.slots[i.val]? | malformed "missing immutable slot"
-      unless v.HasSize ctx.program.immutables[i] do malformed "immutable value too large for slot"
-      return v
+  | .getImmutable id => ctx.getImmutable id
 
 
 def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit

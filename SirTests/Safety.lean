@@ -16,7 +16,9 @@ theorem noop_safe : Safe noop := by
         exact congrArg some (congrArg (· ++ ByteArray.empty) (rfl : l.setImmutables #v[] = l.main) |>.trans
           ByteArray.append_empty))
   rw [hm] at h
-  exact ⟨h.runSafe, fun imms _ _ _ => noop_mainSafe l imms⟩
+  exact ⟨h.runSafe, fun imms _ ho => by
+    cases h.outcome ho
+    exact ⟨by decide, noop_mainSafe l _⟩⟩
 
 theorem initStops_not_safe : ¬Safe initStops := by
   intro hs
