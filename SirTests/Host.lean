@@ -23,7 +23,7 @@ inductive Result
 
 def startState : World := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 1, fun _ => .empty⟩⟩
 
-structure World where
+structure TestWorld where
   start : World := startState
   after : Store → World := fun st => { startState with store := st }
   callResult : Bool × ByteArray := (true, .empty)
@@ -31,7 +31,7 @@ structure World where
   calls : Array (CallKind × Address × List UInt8) := #[]
   ops : Nat := 0
 
-abbrev TestM := StateT World (Except String)
+abbrev TestM := StateT TestWorld (Except String)
 
 def countOp {α : Type} (v : α) : TestM α := do
   modify fun w => { w with ops := w.ops + 1 }
@@ -86,7 +86,7 @@ def testEnv : Env where
 structure Run where
   result : Result
   store : Option Store
-  world : World
+  world : TestWorld
 
 def Run.slot (r : Run) (k : Word) : Word := (r.store.map (·.persistent k)).getD 0
 
@@ -101,8 +101,8 @@ def ofOutcome : UB ⊕ Outcome → Result × Option Store
   | .inr (.selfdestruct a st) => (.selfdestruct a, some st)
 
 def runWith (p : Program) (l : Layout p) (mode : ExecutionMode) (env : Env) (imm : Immutables p mode.kind)
-    (world : World) (fuel : Nat) : Run :=
-  match (CoFree.runM answer place fuel (interpHost env.address world.start (p.runHost l mode env imm))).run world with
+    (world : TestWorld) (fuel : Nat) : Run :=
+  match (CoFree.runM answer place fuel (p.run l mode env imm world.start)).run world with
   | .ok (none, w) => ⟨.outOfFuel, none, w⟩
   | .ok (some o, w) => let (r, st) := ofOutcome o; ⟨r, st, w⟩
   | .error msg => ⟨.hostError msg, none, world⟩
@@ -125,12 +125,12 @@ def noImmutables (p : Program) (hi : p.immutables.size = 0 := by decide) : MainI
   ⟨⟨#[], hi.symm⟩, .empty, fun i => absurd (Nat.lt_of_lt_of_eq i.isLt hi) (Nat.not_lt_zero _)⟩
 
 def runInit (p : Program) (l : Layout p := by exact plainLayout _) (env : Env := testEnv)
-    (world : World := {}) (fuel : Nat := 100000) : Run :=
+    (world : TestWorld := {}) (fuel : Nat := 100000) : Run :=
   runWith p l (.creation .empty) env .init world fuel
 
 def runMain (p : Program) (imms : MainImmutablesMap p) (l : Layout p := by exact plainLayout _)
     (env : Env := testEnv) (static : Bool := false) (calldata : ByteArray := .empty)
-    (world : World := {}) (fuel : Nat := 100000) : Run :=
+    (world : TestWorld := {}) (fuel : Nat := 100000) : Run :=
   runWith p l (.call static calldata) env (.main imms) world fuel
 
 end SirTests

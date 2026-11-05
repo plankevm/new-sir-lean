@@ -2,6 +2,8 @@ import SirTests.Safety.Defs
 import SirTests.KernelRfl
 import ITree.Step.Theorems
 import Sir.Safety
+import Sir.Layout.Theorems
+import ITree.Machine.Theorems
 
 namespace SirTests.Safety
 
@@ -68,7 +70,16 @@ lemma Returns.hasOutcome {m : CoFree E N A} (h : Returns a m) : HasOutcome m (.r
     obtain ⟨r⟩ := N.resp_nonempty _
     exact .branch (ih r) ⟨_, _, hm, r, rfl⟩
 
-lemma Returns.runSafe {m : CoFree WorldE MemoryND (UB ⊕ Outcome)} {o : Outcome}
+lemma Returns.map {B : Type u} {b : B} (f : A → B) {m : CoFree E N A} (h : Returns a m) (hb : f a = b) :
+    Returns b (f <$> m) := by
+  subst hb
+  have e : ∀ m : CoFree E N A, f <$> m = m.bind fun x => CoFree.pure (f x) := fun _ => rfl
+  induction h with
+  | now hm => exact .now (by rw [e, observe_bind, hm]; rfl)
+  | silent hm _ ih => exact .silent (by rw [e, observe_bind, hm]; rfl) ih
+  | branch hm _ ih => exact .branch (by rw [e, observe_bind, hm]; rfl) ih
+
+lemma Returns.runSafe {O : Type} {m : CoFree WorldE MemoryND (UB ⊕ O)} {o : O}
     (h : Returns (.inr o) m) : RunSafe m :=
   ⟨h.same h, fun ⟨_, ho⟩ => by cases h.outcome ho⟩
 
@@ -437,10 +448,6 @@ def stopsState : World := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 0, fun _ 
 lemma stopsState_unset : stopsState.Unset stopsEnv.address :=
   ⟨fun _ => rfl, fun _ => rfl, rfl, rfl⟩
 
-lemma initStops_halts :
-    HasOutcome (initStops.run stopsLayout (.creation .empty) stopsEnv .init stopsState)
-      (.res (.inr (.ret .empty stopsState.store))) :=
-  (Halts.interpHost ⟨stopsState, .empty⟩ (halts_skip 1000 (halts_ret initStops_stop))).hasOutcome
 
 lemma stopsLayout_withSetImmutables_ne (imms : MainImmutablesMap initStops) :
     stopsLayout.withSetImmutables imms ≠ .empty := by
@@ -449,5 +456,19 @@ lemma stopsLayout_withSetImmutables_ne (imms : MainImmutablesMap initStops) :
   rw [show stopsLayout.withSetImmutables imms = ⟨#[0]⟩ ++ imms.tail from rfl, ByteArray.size_append] at this
   rw [show (⟨#[0]⟩ : ByteArray).size = 1 from rfl, show ByteArray.empty.size = 0 from rfl] at this
   omega
+lemma Returns.runInit {p : Program} {l : Layout p} {cd : ByteArray} {env : Env} {w₀ : World}
+    {main : ByteArray} {s' : Store} (h : Returns (.inr (.ret main s')) (p.run l (.creation cd) env .init w₀)) :
+    Returns (match l.toMainImmutablesMap main with
+      | some m => .inr (.ret p m s')
+      | none => .inl (.malformed "unsound main returned")) (p.runInit l cd env w₀) := by
+  exact h.map _ rfl
+
+lemma initStops_halts :
+    HasOutcome (initStops.runInit stopsLayout .empty stopsEnv stopsState)
+      (.res (.inl (.malformed "unsound main returned"))) := by
+  have h := (Halts.interpHost ⟨stopsState, .empty⟩ (halts_skip 1000 (halts_ret initStops_stop))).runInit
+  rcases hm : stopsLayout.toMainImmutablesMap .empty with _ | m
+  · rw [hm] at h; exact h.hasOutcome
+  · exact absurd ((Layout.toMainImmutablesMap_eq_some_iff _ _ _).1 hm) (stopsLayout_withSetImmutables_ne m)
 
 end SirTests.Safety
