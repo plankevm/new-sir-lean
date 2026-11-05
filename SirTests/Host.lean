@@ -121,16 +121,15 @@ def plainLayout (p : Program) (hd : p.data.size = 0 := by decide)
   no_imm_imm_overlap i := absurd (Nat.lt_of_lt_of_eq i.isLt hi) (Nat.not_lt_zero _)
   no_imm_data_overlap d := absurd (Nat.lt_of_lt_of_eq d.isLt hd) (Nat.not_lt_zero _)
 
-def noImmutables (p : Program) (hi : p.immutables.size = 0 := by decide) : MainImmutablesMap p :=
-  ⟨⟨#[], hi.symm⟩, .empty, fun i => absurd (Nat.lt_of_lt_of_eq i.isLt hi) (Nat.not_lt_zero _)⟩
+def noImmutables : MainImmutables := ⟨#[], .empty⟩
 
 def runInit (p : Program) (l : Layout p := by exact plainLayout _) (env : Env := testEnv)
     (world : TestWorld := {}) (fuel : Nat := 100000) : Run :=
   runWith p l (.creation .empty) env .init world fuel
 
-def runMain (p : Program) (imms : MainImmutablesMap p) (l : Layout p := by exact plainLayout _)
+def runMain (p : Program) (imms : MainImmutables) (l : Layout p := by exact plainLayout _)
     (env : Env := testEnv) (static : Bool := false) (calldata : ByteArray := .empty)
-    (world : TestWorld := {}) (fuel : Nat := 100000) : Run :=
-  runWith p l (.call static calldata) env (.main imms) world fuel
+    (world : TestWorld := {}) (fuel : Nat := 100000) (hwf : imms.WF p := by decide) : Run :=
+  runWith p l (.call static calldata) env (.main imms hwf) world fuel
 
 end SirTests

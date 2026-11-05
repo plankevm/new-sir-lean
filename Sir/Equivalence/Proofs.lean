@@ -17,13 +17,13 @@ lemma definedAnd_trans {α : Type} {r₁ r₂ r₃ : α → α → Prop}
   exact hr a b c
 
 lemma mainEquiv_symm {p₁ p₂ : Program} {l₁ : Layout p₁} {l₂ : Layout p₂}
-    {imms₁ : MainImmutablesMap p₁} {imms₂ : MainImmutablesMap p₂}
+    {imms₁ imms₂ : MainImmutables}
     (h : MainEquiv l₁ l₂ imms₁ imms₂) : MainEquiv l₂ l₁ imms₂ imms₁ :=
   fun static calldata e w₀ =>
     Same.mono (fun _ _ => definedAnd_symm fun _ _ => Eq.symm) (Same.symm (h static calldata e w₀))
 
 lemma mainEquiv_trans {p₁ p₂ p₃ : Program} {l₁ : Layout p₁} {l₂ : Layout p₂} {l₃ : Layout p₃}
-    {imms₁ : MainImmutablesMap p₁} {imms₂ : MainImmutablesMap p₂} {imms₃ : MainImmutablesMap p₃}
+    {imms₁ imms₂ imms₃ : MainImmutables}
     (h₁ : MainEquiv l₁ l₂ imms₁ imms₂) (h₂ : MainEquiv l₂ l₃ imms₂ imms₃) :
     MainEquiv l₁ l₃ imms₁ imms₃ :=
   fun static calldata e w₀ =>
@@ -33,28 +33,19 @@ lemma mainEquiv_trans {p₁ p₂ p₃ : Program} {l₁ : Layout p₁} {l₂ : La
 lemma deployOutcomeEquiv_symm {p₁ p₂ : Program} {l₁ : Layout p₁} {l₂ : Layout p₂}
     {a b : InitOutcome} :
     DeployOutcomeEquiv l₁ l₂ a b → DeployOutcomeEquiv l₂ l₁ b a := by
-  intro h
-  rcases a with ⟨q₁, m₁, s₁⟩ | _ | _ | _ <;>
-    rcases b with ⟨q₂, m₂, s₂⟩ | _ | _ | _ <;>
-    simp only [DeployOutcomeEquiv] at h ⊢
-  all_goals first
-    | (obtain ⟨rfl, rfl, rfl, h⟩ := h; exact ⟨rfl, rfl, rfl, mainEquiv_symm h⟩)
-    | simp_all [eq_comm]
+  rcases a with ⟨m₁, s₁⟩ | _ | _ | _ <;> rcases b with ⟨m₂, s₂⟩ | _ | _ | _ <;>
+    simp only [DeployOutcomeEquiv]
+  · exact fun ⟨hs, hm⟩ => ⟨hs.symm, mainEquiv_symm hm⟩
+  all_goals simp_all [eq_comm]
 
 lemma deployOutcomeEquiv_trans {p₁ p₂ p₃ : Program} {l₁ : Layout p₁} {l₂ : Layout p₂}
     {l₃ : Layout p₃} {a b c : InitOutcome} :
     DeployOutcomeEquiv l₁ l₂ a b → DeployOutcomeEquiv l₂ l₃ b c →
       DeployOutcomeEquiv l₁ l₃ a c := by
-  intro h₁ h₂
-  rcases a with ⟨q₁, m₁, s₁⟩ | _ | _ | _ <;>
-    rcases b with ⟨q₂, m₂, s₂⟩ | _ | _ | _ <;>
-    rcases c with ⟨q₃, m₃, s₃⟩ | _ | _ | _ <;>
-    simp only [DeployOutcomeEquiv] at h₁ h₂ ⊢
-  all_goals first
-    | (obtain ⟨rfl, rfl, rfl, h₁⟩ := h₁
-       obtain ⟨rfl, _, rfl, h₂⟩ := h₂
-       exact ⟨rfl, rfl, rfl, mainEquiv_trans h₁ h₂⟩)
-    | simp_all
+  rcases a with ⟨m₁, s₁⟩ | _ | _ | _ <;> rcases b with ⟨m₂, s₂⟩ | _ | _ | _ <;>
+    rcases c with ⟨m₃, s₃⟩ | _ | _ | _ <;> simp only [DeployOutcomeEquiv]
+  · exact fun ⟨hs₁, hm₁⟩ ⟨hs₂, hm₂⟩ => ⟨hs₁.trans hs₂, mainEquiv_trans hm₁ hm₂⟩
+  all_goals simp_all
 
 lemma equiv_symm {p₁ p₂ : Program} (h : Equiv p₁ p₂) : Equiv p₂ p₁ :=
   ⟨h.1.symm, fun l₁ l₂ e c w₀ hu =>

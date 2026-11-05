@@ -13,8 +13,7 @@ def MainEquiv
   {p₁ p₂ : Program}
   (l₁ : Layout p₁)
   (l₂ : Layout p₂)
-  (imms₁ : MainImmutablesMap p₁)
-  (imms₂ : MainImmutablesMap p₂)
+  (imms₁ imms₂ : MainImmutables)
   : Prop :=
   ∀ static calldata e w₀,
     CoFree.Same (DefinedAnd Eq)
@@ -23,8 +22,7 @@ def MainEquiv
 
 def DeployOutcomeEquiv {p₁ p₂ : Program} (l₁ : Layout p₁) (l₂ : Layout p₂)
   : InitOutcome → InitOutcome → Prop
-  | .ret q₁ imms₁ s₁, .ret q₂ imms₂ s₂ =>
-    s₁ = s₂ ∧ ∃ (h₁ : q₁ = p₁) (h₂ : q₂ = p₂), MainEquiv l₁ l₂ (h₁ ▸ imms₁) (h₂ ▸ imms₂)
+  | .ret imms₁ s₁, .ret imms₂ s₂ => s₁ = s₂ ∧ MainEquiv l₁ l₂ imms₁ imms₂
   | o₁, o₂ => o₁ = o₂
 
 def Equiv (p₁ p₂ : Program) : Prop :=

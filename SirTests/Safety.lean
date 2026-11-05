@@ -9,10 +9,11 @@ theorem noop_safe : Safe noop := by
   refine ⟨⟨noopLayout⟩, ?_⟩
   intro l env cd w₀ _
   have h := ((noop_init_halts l cd env).interpHost (self := env.address) ⟨w₀, .empty⟩).runInit
-  have hm : l.toMainImmutablesMap l.main = some ⟨#v[], .empty, nofun⟩ :=
-    (Layout.toMainImmutablesMap_eq_some_iff _ _ _).2 ByteArray.append_empty
+  have hm : l.toMainImmutables l.main = some ⟨#[], .empty⟩ :=
+    (Layout.toMainImmutables_eq_some_iff _ _ _).2
+      ⟨by decide, by unfold Layout.withSetImmutables; split <;> exact ByteArray.append_empty⟩
   rw [hm] at h
-  exact ⟨h.runSafe, fun imms _ _ => noop_mainSafe l imms⟩
+  exact ⟨h.runSafe, fun imms _ _ hwf => noop_mainSafe l imms hwf⟩
 
 theorem initStops_not_safe : ¬Safe initStops := by
   intro hs

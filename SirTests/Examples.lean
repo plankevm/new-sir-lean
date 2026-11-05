@@ -379,13 +379,13 @@ def runOut (p : Program) (l : Layout p := by exact plainLayout _) : Run :=
 
 def wordBytes (n : Nat) : List UInt8 := (Word.toBytes b32 (BitVec.ofNat 256 n)).toList
 
-def immValues : MainImmutablesMap immutables := ⟨#v[0x2345], .empty, fun | ⟨0, _⟩ => by decide +revert⟩
+def immValues : MainImmutables := ⟨#[0x2345], .empty⟩
 
 def checks : List (String × Bool) :=
   let mem := runInit memory
   let call := runOut (callsThen #[])
   let spun := runInit spinLogging (fuel := 1000)
-  let env := runMain environment (noImmutables _) envLayout (calldata := ⟨#[1, 2, 3]⟩)
+  let env := runMain environment noImmutables envLayout (calldata := ⟨#[1, 2, 3]⟩)
   [ ("loop sums 0..9", (runInit loopSum).result == .ret [] && (runInit loopSum).slot 0 == 45),
     ("pure ops in stack order", (runInit pureOps).result == .ret [] &&
       (runInit pureOps).slots [0, 3, 4, 1] == [7, 80, 1, 1]),
@@ -459,8 +459,8 @@ def runS (p : Program) (l : Layout p := by exact plainLayout _) : Run :=
   runInit p l (world := { after := callee })
 
 def runStatic (p : Program) (l : Layout p := by exact plainLayout _)
-    (imms : MainImmutablesMap p := by exact noImmutables _) : Run :=
-  runMain p imms l (static := true)
+    (imms : MainImmutables := noImmutables) (hwf : imms.WF p := by decide) : Run :=
+  runMain p imms l (static := true) (hwf := hwf)
 
 def worldChecks : List (String × Bool) :=
   [ ("sload reads the frame's own sstore",

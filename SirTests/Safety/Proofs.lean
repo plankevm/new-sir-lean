@@ -404,8 +404,10 @@ lemma noop_stop (l : Layout noop) (st : Bool) (cd : ByteArray) (e : Env) (imm : 
       .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (runInner ⟨noop, l, .call st cd, e, imm⟩))) := by
   kernel_rfl
 
-lemma noop_mainSafe (l : Layout noop) (imms : MainImmutablesMap noop) : MainSafe noop imms l := by
+lemma noop_mainSafe (l : Layout noop) (imms : MainImmutables) (hwf : imms.WF noop) :
+    MainSafe noop imms l := by
   intro env st cd w₀
+  simp only [Program.runMain, hwf, ↓reduceDIte]
   exact (Halts.interpHost ⟨w₀, .empty⟩ (halts_skip 1000 (halts_ret (noop_stop l st cd env _)))).runSafe
 
 def noopLayout : Layout noop where
@@ -462,17 +464,19 @@ lemma stopsState_unset : stopsState.Unset stopsEnv.address :=
   ⟨fun _ => rfl, fun _ => rfl, rfl, rfl⟩
 
 
-lemma stopsLayout_withSetImmutables_ne (imms : MainImmutablesMap initStops) :
+lemma stopsLayout_withSetImmutables_ne (imms : MainImmutables) :
     stopsLayout.withSetImmutables imms ≠ .empty := by
   intro heq
   have := congrArg ByteArray.size heq
-  rw [show stopsLayout.withSetImmutables imms = ⟨#[0]⟩ ++ imms.tail from rfl, ByteArray.size_append] at this
+  have hset : stopsLayout.withSetImmutables imms = ⟨#[0]⟩ ++ imms.tail := by
+    unfold Layout.withSetImmutables; split <;> rfl
+  rw [hset, ByteArray.size_append] at this
   rw [show (⟨#[0]⟩ : ByteArray).size = 1 from rfl, show ByteArray.empty.size = 0 from rfl] at this
   omega
 lemma Returns.runInit {p : Program} {l : Layout p} {cd : ByteArray} {env : Env} {w₀ : World}
     {main : ByteArray} {s' : Store} (h : Returns (.inr (.ret main s')) (p.run l (.creation cd) env .init w₀)) :
-    Returns (match l.toMainImmutablesMap main with
-      | some m => .inr (.ret p m s')
+    Returns (match l.toMainImmutables main with
+      | some m => .inr (.ret m s')
       | none => .inl (.malformed "unsound main returned")) (p.runInit l cd env w₀) := by
   exact h.map _ rfl
 
@@ -480,8 +484,8 @@ lemma initStops_halts :
     HasOutcome (initStops.runInit stopsLayout .empty stopsEnv stopsState)
       (.res (.inl (.malformed "unsound main returned"))) := by
   have h := (Halts.interpHost ⟨stopsState, .empty⟩ (halts_skip 1000 (halts_ret initStops_stop))).runInit
-  rcases hm : stopsLayout.toMainImmutablesMap .empty with _ | m
+  rcases hm : stopsLayout.toMainImmutables .empty with _ | m
   · rw [hm] at h; exact h.hasOutcome
-  · exact absurd ((Layout.toMainImmutablesMap_eq_some_iff _ _ _).1 hm) (stopsLayout_withSetImmutables_ne m)
+  · exact absurd ((Layout.toMainImmutables_eq_some_iff _ _ _).1 hm).2 (stopsLayout_withSetImmutables_ne m)
 
 end SirTests.Safety
