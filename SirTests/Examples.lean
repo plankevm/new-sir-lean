@@ -29,75 +29,169 @@ def initOnly (blocks : Array Block) (extra : Array Function := #[]) : Program wh
   mainDatas := []
 
 /-- `for i in 0..10: acc += i`, then `sstore 0 acc`. -/
-def loopSum : Program := initOnly #[
-  { ops := #[.let 1 (.const 0), .let 2 (.const 0)], outputs := #[1, 2], control := .continuesTo 1 },
-  { inputs := #[3, 4],
-    ops := #[.let 5 (.binop .add 4 3), .let 6 (.const 1), .let 7 (.binop .add 3 6),
-        .let 8 (.const 10), .let 9 (.binop .lt 7 8)],
-    outputs := #[7, 5], control := .branches 9 1 2 },
-  { inputs := #[10, 11], ops := #[.let 12 (.const 0), .stmt (.sstore 12 11)],
-    control := .stop }]
+def loopSum : Program := sir! {
+  fn init:
+    entry -> i0 acc0 {
+      i0 = const 0
+      acc0 = const 0
+      => @head
+    }
+    head i acc -> i2 acc2 {
+      acc2 = add acc i
+      i2 = add i 1
+      c = lt i2 10
+      => c ? @head : @done
+    }
+    done n total {
+      sstore 0 total
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- An internal call returning two values, whose results are returned as ABI words. -/
-def internalCall : Program := initOnly
-  #[{ ops := #[.let 1 (.const 3), .let 2 (.const 4), .icall 1 #[1, 2] #[3, 4], .let 5 (.const 64),
-      .let 6 (.malloc 5), .stmt (.mstore b32 6 3), .let 7 (.const 32), .let 8 (.binop .add 6 7),
-      .stmt (.mstore b32 8 4)],
-      control := .return 6 5 }]
-  (extra := #[⟨0, .values 2, #[
-    { inputs := #[20, 21], ops := #[.let 22 (.binop .add 20 21), .let 23 (.binop .mul 20 21)],
-      outputs := #[22, 23], control := .iret }]⟩])
+def internalCall : Program := sir! {
+  fn init:
+    entry {
+      x y = icall @pair 3 4
+      n = const 64
+      p = malloc n
+      mstore256 p x
+      q = add p 32
+      mstore256 q y
+      return p n
+    }
+  fn pair -> 2:
+    entry a b -> s m {
+      s = add a b
+      m = mul a b
+      iret
+    }
+  fn main:
+    entry { stop }
+}
 
-def memory : Program := initOnly #[
-  { ops := #[.let 1 (.const 32), .let 2 (.malloc 1), .let 3 (.const ((0xAB : Word) <<< 248)),
-      .stmt (.mstore b32 2 3), .let 4 (.mload b8 2), .let 10 (.const 1),
-      .let 11 (.binop .add 2 10), .let 12 (.const 0xBEEF), .stmt (.mstore b16 11 12),
-      .let 5 (.mload b32 2), .let 6 (.keccak256 2 1), .let 13 (.const 4), .let 7 (.mallocany 1),
-      .stmt (.mcopy 7 2 13), .let 8 (.mload b32bit 7), .let 20 (.const 0), .let 21 (.const 1),
-      .let 22 (.const 2), .let 23 (.const 3), .stmt (.sstore 20 4), .stmt (.sstore 21 5),
-      .stmt (.sstore 22 6), .stmt (.sstore 23 8), .stmt (.log2 2 13 20 21)],
-    control := .stop }]
+def memory : Program := sir! {
+  fn init:
+    entry {
+      n = const 32
+      p = malloc n
+      mstore256 p ((0xAB : Word) <<< 248)
+      a = mload8 p
+      p1 = add p 1
+      mstore16 p1 0xBEEF
+      b = mload256 p
+      h = keccak256 p n
+      four = const 4
+      q = mallocany n
+      mcopy q p four
+      c = mload32 q
+      sstore 0 a
+      sstore 1 b
+      sstore 2 h
+      sstore 3 c
+      log2 p four 0 1
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
-def oobWrite : Program := initOnly #[
-  { ops := #[.let 20 (.const 0), .let 30 (.const 0x10), .stmt (.mstore b8 30 20)], control := .stop }]
+def oobWrite : Program := sir! {
+  fn init:
+    entry {
+      mstore8 0x10 0
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
-def oobRead : Program := initOnly #[
-  { ops := #[.let 1 (.const 4), .let 2 (.malloc 1), .let 3 (.mload b32 2)],
-    control := .stop }]
+def oobRead : Program := sir! {
+  fn init:
+    entry {
+      n = const 4
+      p = malloc n
+      x = mload256 p
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
-def outOfMemory : Program := initOnly #[
-  { ops := #[.let 1 (.const 32), .let 2 (.malloc 1), .let 3 (.const (BitVec.allOnes 256)),
-      .let 4 (.malloc 3)],
-    control := .stop }]
+def outOfMemory : Program := sir! {
+  fn init:
+    entry {
+      p = malloc 32
+      q = malloc (BitVec.allOnes 256)
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
-def revert : Program := initOnly #[
-  { ops := #[.let 1 (.const 2), .let 2 (.malloc 1), .let 3 (.const 0xDEAD),
-      .stmt (.mstore b16 2 3)],
-    control := .revert 2 1 }]
+def revert : Program := sir! {
+  fn init:
+    entry {
+      n = const 2
+      p = malloc n
+      mstore16 p 0xDEAD
+      revert p n
+    }
+  fn main:
+    entry { stop }
+}
 
-def spin : Program := initOnly #[{ control := .continuesTo 0 }]
+def spin : Program := sir! {
+  fn init:
+    entry { => @entry }
+  fn main:
+    entry { stop }
+}
 
-def spinLogging : Program := initOnly #[
-  { ops := #[.let 1 (.const 0), .stmt (.log0 1 1)], control := .continuesTo 0 }]
+def spinLogging : Program := sir! {
+  fn init:
+    entry {
+      z = const 0
+      log0 z z
+      => @entry
+    }
+  fn main:
+    entry { stop }
+}
 
-def spinInCallee : Program := initOnly #[{ ops := #[.icall 1 #[] #[]], control := .stop }]
-  (extra := #[⟨0, .values 0, #[{ control := .continuesTo 0 }]⟩])
+def spinInCallee : Program := sir! {
+  fn init:
+    entry {
+      icall @spin
+      stop
+    }
+  fn spin -> 0:
+    entry { => @entry }
+  fn main:
+    entry { stop }
+}
 
 /-- `init` patches immutable 0 (2 bytes) into an 8-byte runtime copy; `main` reads it. -/
-def immutables : Program where
-  init := 0
-  main := 1
-  functions := #[
-    ⟨0, .never, #[
-      { ops := #[.let 1 .mainLength, .let 2 (.malloc 1), .let 3 (.const 0xABCD),
-          .stmt (.setImmutable 0 2 3)],
-        control := .return 2 1 }]⟩,
-    ⟨0, .never, #[
-      { ops := #[.let 4 (.getImmutable 0), .let 5 (.const 0), .stmt (.sstore 5 4),
-          .let 6 (.getImmutable 0), .let 7 (.const 1), .stmt (.sstore 7 6)],
-        control := .stop }]⟩]
-  mainDatas := []
-  immutables := #[b16]
+def immutables : Program := sir! {
+  immutable value 2
+  fn init:
+    entry {
+      len = runtime_length
+      p = malloc len
+      setimmutable %value p 0xABCD
+      return p len
+    }
+  fn main:
+    entry {
+      a = getimmutable %value
+      sstore 0 a
+      b = getimmutable %value
+      sstore 1 b
+      stop
+    }
+}
 
 theorem imm_fits (o : Nat) (ho : o ≤ 6) :
     ∀ i : Fin immutables.immutables.size, o + immutables.immutables[i].toNat ≤ 8
@@ -152,19 +246,45 @@ def returnDataCopyPastAlloc : Program :=
 def returnDataCopyPastBoth : Program :=
   withBuffer #[.let 3 (.call 10 11 12 2 12 2 12), .stmt (.returndatacopy 14 15 15)]
 
-def switchOn (v : Word) : Program := initOnly #[
-  { ops := #[.let 1 (.const v)], control := .switch 1 #[(1, 1), (7, 2)] none },
-  { ops := #[.let 2 (.const 1), .stmt (.sstore 2 2)], control := .stop },
-  { ops := #[.let 3 (.const 2), .stmt (.sstore 3 3)], control := .stop }]
+def switchOn (v : Word) : Program := sir! {
+  fn init:
+    entry {
+      x = const (v)
+      switch x { 1 => @one 7 => @seven }
+    }
+    one {
+      sstore 1 1
+      stop
+    }
+    seven {
+      sstore 2 2
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
-def environment : Program := { initOnly #[
-  { ops := #[
-      .let 1 (.const 1), .let 2 (.calldataload 1), .let 3 .calldatasize, .let 4 (.dataOffset 0),
-      .let 5 (.const 0), .let 6 (.create2 5 5 5 1), .let 7 (.query .caller),
-      .let 11 (.const 1), .let 12 (.const 2), .let 13 (.const 3), .let 14 (.const 4),
-      .stmt (.sstore 5 2), .stmt (.sstore 11 3), .stmt (.sstore 12 4),
-      .stmt (.sstore 13 6), .stmt (.sstore 14 7)],
-    control := .selfdestruct 7 }] with data := #[⟨#[9]⟩], mainDatas := [⟨0, by decide⟩] }
+def environment : Program := sir! {
+  data nine 0x09
+  fn init:
+    entry { stop }
+  fn main:
+    entry {
+      one = const 1
+      cd = calldataload one
+      sz = calldatasize
+      d = data_offset .nine
+      z = const 0
+      c = create2 z z z one
+      who = caller
+      sstore z cd
+      sstore 1 sz
+      sstore 2 d
+      sstore 3 c
+      sstore 4 who
+      selfdestruct who
+    }
+}
 
 def envLayout : Layout environment where
   init := ⟨#[9]⟩
@@ -179,30 +299,81 @@ def envLayout : Layout environment where
   no_imm_imm_overlap i := absurd i.isLt (Nat.not_lt_zero _)
   no_imm_data_overlap _ im := absurd im.isLt (Nat.not_lt_zero _)
 
-def undefinedVar : Program := initOnly #[
-  { ops := #[.stmt (.sstore 1 2)], control := .stop }]
+def undefinedVar : Program := sir! {
+  fn init:
+    entry {
+      sstore $1 $2
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- `sub`, `shl` and `addmod` take their first input as the EVM top of stack. -/
-def pureOps : Program := initOnly #[
-  { ops := #[.let 1 (.const 10), .let 2 (.const 3), .let 3 (.const 0), .let 4 (.const 4),
-      .let 5 (.binop .sub 1 2), .let 6 (.binop .shl 2 1), .let 7 (.ternop .addmod 1 2 4),
-      .let 8 (.unop .iszero 3), .stmt (.sstore 3 5), .stmt (.sstore 2 6), .stmt (.sstore 4 7),
-      .stmt (.sstore 8 8)],
-    control := .stop }]
+def pureOps : Program := sir! {
+  fn init:
+    entry {
+      a = const 10
+      b = const 3
+      z = const 0
+      f = const 4
+      s = sub a b
+      l = shl b a
+      m = addmod a b f
+      i = iszero z
+      sstore z s
+      sstore b l
+      sstore f m
+      sstore i i
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- Block ids are local: function 0 has one block, so block 1 is out of range even though
 function 1 has a block 1. -/
-def foreignBlock : Program :=
-  initOnly #[{ control := .continuesTo 1 }]
-    (extra := #[⟨0, .never, #[{ control := .stop }, { control := .stop }]⟩])
+def foreignBlock : Program := sir! {
+  fn init:
+    entry { => @1 }
+  fn other:
+    entry { stop }
+    second { stop }
+  fn main:
+    entry { stop }
+}
 
-def neverCallee (returns : ReturnKind) (callee : Control VarId) : Program :=
-  initOnly #[{ control := .icallNever 1 #[] }] (extra := #[⟨0, returns, #[{ control := callee }]⟩])
+def neverCalleeHalts : Program := sir! {
+  fn init:
+    entry { icall_never @callee }
+  fn callee:
+    entry { stop }
+  fn main:
+    entry { stop }
+}
 
-def entryReturns : Program := initOnly #[{ control := .iret }]
+def neverCalleeReturns : Program := sir! {
+  fn init:
+    entry { icall_never @callee }
+  fn callee -> 0:
+    entry { iret }
+  fn main:
+    entry { stop }
+}
 
-def entryReturnsValues : Program :=
-  { initOnly #[] with functions := #[⟨0, .values 0, #[{ control := .iret }]⟩] }
+def entryReturns : Program := sir! {
+  fn init:
+    entry { iret }
+  fn main:
+    entry { stop }
+}
+
+def entryReturnsValues : Program := sir! {
+  fn init -> 0:
+    entry { iret }
+  fn main:
+    entry { stop }
+}
 
 def runOut (p : Program) (l : Layout p := by exact plainLayout _) : Run :=
   runInit p l (world := { callResult := (true, ⟨#[1, 2, 3]⟩) })
@@ -258,9 +429,9 @@ def checks : List (String × Bool) :=
       ([(0x0203 : Word) <<< 240, 3, 0, 0xC2, 0xC0] : List Word)),
     ("UB: undefined variable", (runInit undefinedVar).result == .malformed),
     ("UB: blocks are local to their function", (runInit foreignBlock).result == .malformed),
-    ("icall_never: the callee halts", (runInit (neverCallee .never .stop)).result == .ret []),
+    ("icall_never: the callee halts", (runInit neverCalleeHalts).result == .ret []),
     ("UB: icall_never callee returning",
-      (runInit (neverCallee (.values 0) .iret)).result == .malformed),
+      (runInit neverCalleeReturns).result == .malformed),
     ("UB: returning from an entry",
       (runInit entryReturns).result == .malformed),
     ("UB: an entry function declared to return values returning",
