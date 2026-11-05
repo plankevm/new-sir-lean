@@ -3,20 +3,29 @@ import Host.Effect
 
 namespace Sir
 
-structure MainImmutablesMap (p : Program) : Type where
-  slots : Vector Word p.immutables.size
+structure MainImmutables : Type where
+  slots : Array Word
   tail : ByteArray
-  slot_values_correctly_sized : ∀ i : Fin p.immutables.size, slots[i].HasSize p.immutables[i]
+
+def MainImmutables.WF (p : Program) (m : MainImmutables) : Prop :=
+  ∃ h : m.slots.size = p.immutables.size,
+    ∀ i : Fin p.immutables.size, m.slots[i].HasSize p.immutables[i]
+
+instance {p : Program} {m : MainImmutables} : Decidable (m.WF p) := by
+  unfold MainImmutables.WF; infer_instance
 
 inductive Immutables (p : Program) : Host.ExecutionModeKind → Type
   | init : Immutables p .creation
-  | main : MainImmutablesMap p → Immutables p .call
+  | main (m : MainImmutables) : m.WF p → Immutables p .call
 
-def Immutables.getMain {p : Program} : (imm : Immutables p .call) → MainImmutablesMap p
-  | .main m => m
+def Immutables.getMain {p : Program} : (imm : Immutables p .call) → MainImmutables
+  | .main m _ => m
+
+theorem Immutables.wf {p : Program} : (imm : Immutables p .call) → imm.getMain.WF p
+  | .main _ h => h
 
 instance {p : Program} : GetElem? (Immutables p .call) ImmutableId Word (fun _ => p.ValidImmutableId) where
-  getElem imm i valid := imm.getMain.slots[i.id]
+  getElem imm i valid := imm.getMain.slots[i.id]'(imm.wf.1 ▸ valid)
   getElem? imm i := imm.getMain.slots[i.id]?
 
 abbrev MappingOffset (container bytes : ByteArray) : Type :=
@@ -67,8 +76,9 @@ def Layout.setImmutables {p : Program} (l : Layout p) (slots : Vector Word p.imm
       main := ByteArray.copySlice value 0 main offset.val.toNat value.size
   return main
 
-def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutablesMap p) : ByteArray :=
-  l.setImmutables imms.slots ++ imms.tail
+def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutables) : ByteArray :=
+  if h : imms.slots.size = p.immutables.size then l.setImmutables ⟨imms.slots, h⟩ ++ imms.tail
+  else l.main ++ imms.tail
 
 def Layout.extractImmutables {p : Program} (l : Layout p) (returnedMain : ByteArray)
   : Option (ByteArray × Array Word) := do
@@ -89,12 +99,8 @@ def Layout.extractImmutables {p : Program} (l : Layout p) (returnedMain : ByteAr
   guard (l.setImmutables values ++ tail = returnedMain)
   return (tail, values.toArray)
 
-def Layout.toMainImmutablesMap {p : Program} (l : Layout p) (returnedMain : ByteArray)
-  : Option (MainImmutablesMap p) := do
-  let (tail, values) ← l.extractImmutables returnedMain
-  if h : ∃ hsize : values.size = p.immutables.size,
-      ∀ i : Fin p.immutables.size, values[i].HasSize p.immutables[i] then
-    return ⟨⟨values, h.1⟩, tail, h.2⟩
-  else none
+def Layout.toMainImmutables {p : Program} (l : Layout p) (returnedMain : ByteArray)
+  : Option MainImmutables :=
+  (l.extractImmutables returnedMain).map fun (tail, slots) => ⟨slots, tail⟩
 
 end Sir

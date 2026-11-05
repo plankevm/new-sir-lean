@@ -176,7 +176,8 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
         else malformed "invalid immutable id"
       let imms := ctx.immutables
       have heq : ctx.mode.kind = .call := by simp [ExecutionMode.kind, henv.property]
-      return (heq ▸ imms).getMain.slots[i]
+      let m := heq ▸ imms
+      return m.getMain.slots[i.val]'(by rw [m.wf.1]; exact i.isLt)
 
 
 def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
@@ -280,7 +281,7 @@ def Program.run
     |> Host.interpHost env.address w₀
 
 inductive InitOutcome
-  | ret (p : Program) (imms : MainImmutablesMap p) (store : Store)
+  | ret (imms : MainImmutables) (store : Store)
   | revert (data : ByteArray)
   | invalid
   | selfdestruct (beneficiary : Address) (store : Store)
@@ -294,8 +295,8 @@ def Program.runInit
   : CoFree WorldE MemoryND (UB ⊕ InitOutcome) :=
   p.run layout (.creation ctorArgs) env .init w₀
   |> Functor.map fun
-    | .inr (.ret returnedMain s') => match layout.toMainImmutablesMap returnedMain with
-      | .some m => .inr (.ret p m s')
+    | .inr (.ret returnedMain s') => match layout.toMainImmutables returnedMain with
+      | .some m => .inr (.ret m s')
       | .none => .inl (.malformed "unsound main returned")
     | .inr (.revert d) => .inr (.revert d)
     | .inr .invalid => .inr .invalid
@@ -305,12 +306,13 @@ def Program.runInit
 def Program.runMain
   (p : Program)
   (layout : Layout p)
-  (imms : MainImmutablesMap p)
+  (imms : MainImmutables)
   (static : Bool)
   (calldata : ByteArray)
   (env : Env)
   (w₀ : World)
   : CoFree WorldE MemoryND (UB ⊕ Outcome) :=
-  p.run layout (.call static calldata) env (.main imms) w₀
+  if h : imms.WF p then p.run layout (.call static calldata) env (.main imms h) w₀
+  else pure (.inl (.malformed "ill-formed immutables"))
 
 end Sir

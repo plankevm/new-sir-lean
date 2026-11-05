@@ -291,67 +291,68 @@ lemma foldl_set_const {α : Type} {β : Type} {n : Nat} (xs : List β) (i : Nat)
     · subst h; rfl
     · rw [ih _ h, Vector.set_set]
 
-lemma extract_setImmutables (l : Layout p) (imms : MainImmutablesMap p) (i : Fin p.immutables.size)
+lemma extract_setImmutables (l : Layout p) (v : Vector Word p.immutables.size) (t : ByteArray)
+    (hv : ∀ i : Fin p.immutables.size, v[i].HasSize p.immutables[i]) (i : Fin p.immutables.size)
     (o : MappingOffset l.main (zeros p.immutables[i])) (ho : o ∈ l.immutableOffsets i) :
-    Word.ofBytes ((l.withSetImmutables imms).extract o.val.toNat (o.val.toNat + p.immutables[i].toNat)) =
-      imms.slots[i] := by
-  obtain ⟨hsize, hslot⟩ := setImmutables_facts l imms.slots
+    Word.ofBytes ((l.setImmutables v ++ t).extract o.val.toNat (o.val.toNat + p.immutables[i].toNat)) =
+      v[i] := by
+  obtain ⟨hsize, hslot⟩ := setImmutables_facts l v
   have hle := offset_add_le o
-  rw [Layout.withSetImmutables, ByteArray.extract_append,
-    show o.val.toNat + p.immutables[i].toNat - (l.setImmutables imms.slots).size = 0 by omega,
+  rw [ByteArray.extract_append,
+    show o.val.toNat + p.immutables[i].toNat - (l.setImmutables v).size = 0 by omega,
     show ∀ (b : ByteArray) j, b.extract j 0 = .empty from fun _ _ => by ext1; simp,
     ByteArray.append_empty]
-  conv => rhs; rw [← ofBytes_toBytes _ _ (imms.slot_values_correctly_sized i)]
+  conv => rhs; rw [← ofBytes_toBytes _ _ (hv i)]
   congr 1
   apply ByteArray.ext
   apply Array.ext_getElem?
   intro k
   rw [ByteArray.data_extract, Array.getElem?_extract]
-  have hsize' : (l.setImmutables imms.slots).data.size = l.main.size := hsize
+  have hsize' : (l.setImmutables v).data.size = l.main.size := hsize
   by_cases hk : k < p.immutables[i].toNat
   · rw [ite_eq_left_of_eq_true _ _ (eq_true (by rw [hsize']; omega)), hslot i o ho k hk]
   · rw [ite_eq_right_of_eq_false _ _ (eq_false (by rw [hsize']; omega)), Array.getElem?_eq_none]
-    have := size_toBytes p.immutables[i] imms.slots[i]
+    have := size_toBytes p.immutables[i] v[i]
     simp only [ByteArray.size] at this
     omega
 
-theorem extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutablesMap p) :
-    l.extractImmutables (l.withSetImmutables imms) = some (imms.tail, imms.slots.toArray) := by
-  obtain ⟨hsize, -⟩ := setImmutables_facts l imms.slots
-  have htail : (l.withSetImmutables imms).extract l.main.size (l.withSetImmutables imms).size =
-      imms.tail := by
-    rw [Layout.withSetImmutables]
+lemma extractImmutables_setImmutables (l : Layout p) (v : Vector Word p.immutables.size) (t : ByteArray)
+    (hv : ∀ i : Fin p.immutables.size, v[i].HasSize p.immutables[i]) :
+    l.extractImmutables (l.setImmutables v ++ t) = some (t, v.toArray) := by
+  obtain ⟨hsize, -⟩ := setImmutables_facts l v
+  have htail : (l.setImmutables v ++ t).extract l.main.size (l.setImmutables v ++ t).size =
+      t := by
     exact ByteArray.extract_append_eq_right hsize.symm (by rw [ByteArray.size_append])
   let P : Vector (Option Word) p.immutables.size → Prop :=
-    fun s => ∀ j : Fin p.immutables.size, s[j] = none ∨ s[j] = some imms.slots[j]
+    fun s => ∀ j : Fin p.immutables.size, s[j] = none ∨ s[j] = some v[j]
   have hPset : ∀ (s : Vector (Option Word) p.immutables.size) (x : Fin p.immutables.size), P s →
-      P (s.set x (some imms.slots[x]) x.isLt) := by
+      P (s.set x (some v[x]) x.isLt) := by
     intro s x hs j
     rw [getElem_set_fin]
     split
     · subst_vars; simp
     · exact hs j
-  have hge : ((l.withSetImmutables imms).size ≥ l.main.size) = True :=
-    eq_true (by rw [Layout.withSetImmutables, ByteArray.size_append]; omega)
+  have hge : ((l.setImmutables v ++ t).size ≥ l.main.size) = True :=
+    eq_true (by rw [ByteArray.size_append]; omega)
   simp only [Layout.extractImmutables, htail, hge]
-  rw [forIn_foldl (g := fun s (x : Fin p.immutables.size) => s.set x (some imms.slots[x]) x.isLt) (P := P)]
-  · have hfold : (List.finRange p.immutables.size).foldl (fun s x => s.set x (some imms.slots[x]) x.isLt)
-        (Vector.replicate p.immutables.size none) = imms.slots.map some := by
+  rw [forIn_foldl (g := fun s (x : Fin p.immutables.size) => s.set x (some v[x]) x.isLt) (P := P)]
+  · have hfold : (List.finRange p.immutables.size).foldl (fun s x => s.set x (some v[x]) x.isLt)
+        (Vector.replicate p.immutables.size none) = v.map some := by
       apply Vector.ext
       intro j hj
-      have := getElem_foldl_set (List.finRange p.immutables.size) (fun x => some imms.slots[x])
+      have := getElem_foldl_set (List.finRange p.immutables.size) (fun x => some v[x])
         (Vector.replicate p.immutables.size none) ⟨j, hj⟩
       simpa [List.mem_finRange] using this
-    have hmap : imms.slots.mapM some = some imms.slots :=
-      (Vector.mapM_pure (m := Option) (xs := imms.slots) id).trans (by simp)
+    have hmap : v.mapM some = some v :=
+      (Vector.mapM_pure (m := Option) (xs := v) id).trans (by simp)
     rw [hfold]
-    simp [hmap, guard, Layout.withSetImmutables]
+    simp [hmap, guard]
   · intro x _ s hs
-    rw [forIn_foldl (g := fun s _ => s.set x (some imms.slots[x]) x.isLt) (P := P)]
+    rw [forIn_foldl (g := fun s _ => s.set x (some v[x]) x.isLt) (P := P)]
     · rw [foldl_set_const _ _ _ _ _ (List.ne_nil_of_length_pos (l.atLeastOne_immOffsets x))]
       rfl
     · intro o ho s hs
-      rw [extract_setImmutables l imms x o ho]
+      rw [extract_setImmutables l v t hv x o ho]
       split
       · rename_i v' hv'
         rcases hs x with h | h <;> rw [h] at hv' <;> cases hv'
@@ -361,7 +362,7 @@ theorem extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutable
         congr 2
         apply Vector.ext
         intro j hj
-        show s[(⟨j, hj⟩ : Fin _)] = (s.set x (some imms.slots[x]) x.isLt)[(⟨j, hj⟩ : Fin _)]
+        show s[(⟨j, hj⟩ : Fin _)] = (s.set x (some v[x]) x.isLt)[(⟨j, hj⟩ : Fin _)]
         rw [getElem_set_fin]
         split
         · subst_vars; exact h
@@ -372,41 +373,41 @@ theorem extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutable
   · intro x _ s hs; exact hPset s x hs
   · intro j; simp
 
-theorem extractImmutables_eq_map (l : Layout p) (b : ByteArray) :
-    l.extractImmutables b = (l.toMainImmutablesMap b).map fun m => (m.tail, m.slots.toArray) := by
-  cases he : l.extractImmutables b with
-  | none => simp [Layout.toMainImmutablesMap, he]
-  | some tv =>
-    obtain ⟨t, vs⟩ := tv
-    obtain ⟨values, rfl, -, -, hsz⟩ := extractImmutables_some l b t _ he
-    simpa [Layout.toMainImmutablesMap, he] using hsz
+lemma withSetImmutables_of_wf (l : Layout p) (imms : MainImmutables) (h : imms.WF p) :
+    l.withSetImmutables imms = l.setImmutables ⟨imms.slots, h.1⟩ ++ imms.tail := by
+  simp [Layout.withSetImmutables, h.1]
 
-theorem toMainImmutablesMap_eq_some_iff (l : Layout p) (b : ByteArray) (imms : MainImmutablesMap p) :
-    l.toMainImmutablesMap b = some imms ↔ l.withSetImmutables imms = b := by
+theorem extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutables) (h : imms.WF p) :
+    l.extractImmutables (l.withSetImmutables imms) = some (imms.tail, imms.slots) := by
+  rw [withSetImmutables_of_wf l imms h]
+  exact extractImmutables_setImmutables l _ _ h.2
+
+theorem extractImmutables_eq_map (l : Layout p) (b : ByteArray) :
+    l.extractImmutables b = (l.toMainImmutables b).map fun m => (m.tail, m.slots) := by
+  simp [Layout.toMainImmutables, Option.map_map, Function.comp_def]
+
+theorem toMainImmutables_wf (l : Layout p) (b : ByteArray) (imms : MainImmutables)
+    (h : l.toMainImmutables b = some imms) : imms.WF p := by
+  simp only [Layout.toMainImmutables, Option.map_eq_some_iff] at h
+  obtain ⟨⟨t, vs⟩, he, rfl⟩ := h
+  obtain ⟨values, rfl, -, -, hsz⟩ := extractImmutables_some l b t _ he
+  exact ⟨values.size_toArray, hsz⟩
+
+theorem toMainImmutables_eq_some_iff (l : Layout p) (b : ByteArray) (imms : MainImmutables) :
+    l.toMainImmutables b = some imms ↔ imms.WF p ∧ l.withSetImmutables imms = b := by
   constructor
   · intro h
-    have he := extractImmutables_eq_map l b
-    rw [h] at he
-    obtain ⟨values, hv, hb, -, -⟩ := extractImmutables_some l b _ _ he
-    rw [Layout.withSetImmutables, ← hb, show imms.slots = values from Vector.toArray_inj.1 hv]
-  · rintro rfl
-    have he := extractImmutables_eq_map l (l.withSetImmutables imms)
-    rw [extractImmutables_withSetImmutables] at he
-    cases hm : l.toMainImmutablesMap (l.withSetImmutables imms) with
-    | none => simp [hm] at he
-    | some m =>
-      simp only [hm, Option.map_some, Option.some.injEq, Prod.mk.injEq] at he
-      obtain ⟨ht, hs⟩ := he
-      obtain ⟨ms, mt, mh⟩ := m
-      obtain ⟨is, it, ih⟩ := imms
-      simp only at ht hs
-      subst ht
-      cases Vector.toArray_inj.1 hs
-      rfl
+    refine ⟨toMainImmutables_wf l b imms h, ?_⟩
+    simp only [Layout.toMainImmutables, Option.map_eq_some_iff] at h
+    obtain ⟨⟨t, vs⟩, he, rfl⟩ := h
+    obtain ⟨values, rfl, hb, -, -⟩ := extractImmutables_some l b t _ he
+    simp [Layout.withSetImmutables, hb]
+  · rintro ⟨hwf, rfl⟩
+    simp [Layout.toMainImmutables, extractImmutables_withSetImmutables l imms hwf]
 
 theorem extractImmutables_isSome_iff (l : Layout p) (b : ByteArray) :
-    (l.extractImmutables b).isSome ↔ ∃ imms, l.withSetImmutables imms = b := by
+    (l.extractImmutables b).isSome ↔ ∃ imms : MainImmutables, imms.WF p ∧ l.withSetImmutables imms = b := by
   rw [extractImmutables_eq_map, Option.isSome_map]
-  simp only [Option.isSome_iff_exists, toMainImmutablesMap_eq_some_iff]
+  simp only [Option.isSome_iff_exists, toMainImmutables_eq_some_iff]
 
 end Sir.Proofs
