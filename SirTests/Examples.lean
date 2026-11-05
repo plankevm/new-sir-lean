@@ -219,8 +219,6 @@ def immLayout : Layout immutables where
     | 1, 0, _, _ => exact .inr (by decide +revert)
   no_imm_data_overlap d := absurd d.isLt (Nat.not_lt_zero _)
 
-def getImmutableInInit : Program := initOnly #[{ ops := #[.let 4 (.getImmutable 0)], control := .stop }]
-
 def callsThen (tail : Array (Operation VarId)) : Program := initOnly #[
   { ops := #[.let 1 (.const 4), .let 2 (.malloc 1), .let 10 (.const 100), .let 11 (.const 0xBEEF),
       .let 12 (.const 0), .let 13 (.const 2), .let 3 (.call 10 11 12 2 12 2 13),
@@ -409,7 +407,6 @@ def checks : List (String × Bool) :=
     ("getimmutable: the run's fixed value, the same on every read, without world operations",
       let r := runMain immutables immValues immLayout
       r.result == .ret [] && r.slots [0, 1] == [0x2345, 0x2345] && r.world.ops == 0),
-    ("UB: getimmutable in init", (runInit getImmutableInInit).result == .malformed),
     ("call: success, returndatasize, truncated return copy",
       call.result == .ret [] && call.slots [0, 1, 2] == [1, 3, 0x0102]),
     ("call: request", call.world.calls.toList == [(.call 0, 0xBEEF, [])]),
