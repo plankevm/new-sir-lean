@@ -110,6 +110,18 @@ def mapOps (e : Effect.Map E F) (nd : NonDeterminism.Map N M) : CoFree E N A →
     target j := mapOps e nd (target j)
   }
 
+def interp {σ : Type u} (h : ∀ {X : Type u}, σ → Step E N A X → Step F M B (σ × X)) (st : σ) :
+    CoFree E N A → CoFree F M B
+  | ⟨S, J, s₀, step, target⟩ => {
+    State := σ × S
+    Jump := σ × J
+    initial := (st, s₀)
+    step := fun (st, s) => (h st (step s)).map fun
+      | (st', .inl s') => .inl (st', s')
+      | (st', .inr j) => .inr (st', j)
+    target := fun (st', j) => interp h st' (target j)
+  }
+
 /-! ### Loops -/
 
 section Iter
