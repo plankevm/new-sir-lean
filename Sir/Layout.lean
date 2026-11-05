@@ -16,17 +16,10 @@ instance {p : Program} {m : MainImmutables} : Decidable (m.WF p) := by
 
 inductive Immutables (p : Program) : Host.ExecutionModeKind → Type
   | init : Immutables p .creation
-  | main (m : MainImmutables) : m.WF p → Immutables p .call
+  | main (m : MainImmutables) : Immutables p .call
 
 def Immutables.getMain {p : Program} : (imm : Immutables p .call) → MainImmutables
-  | .main m _ => m
-
-theorem Immutables.wf {p : Program} : (imm : Immutables p .call) → imm.getMain.WF p
-  | .main _ h => h
-
-instance {p : Program} : GetElem? (Immutables p .call) ImmutableId Word (fun _ => p.ValidImmutableId) where
-  getElem imm i valid := imm.getMain.slots[i.id]'(imm.wf.1 ▸ valid)
-  getElem? imm i := imm.getMain.slots[i.id]?
+  | .main m => m
 
 abbrev MappingOffset (container bytes : ByteArray) : Type :=
   { offset : UInt32 // ∀ i, (h : i < bytes.size) → container[offset.toNat + i]? = some bytes[i] }
@@ -76,9 +69,8 @@ def Layout.setImmutables {p : Program} (l : Layout p) (slots : Vector Word p.imm
       main := ByteArray.copySlice value 0 main offset.val.toNat value.size
   return main
 
-def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutables) : ByteArray :=
-  if h : imms.slots.size = p.immutables.size then l.setImmutables ⟨imms.slots, h⟩ ++ imms.tail
-  else l.main ++ imms.tail
+def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutables) : Option ByteArray :=
+  if h : imms.WF p then some (l.setImmutables ⟨imms.slots, h.1⟩ ++ imms.tail) else none
 
 def Layout.extractImmutables {p : Program} (l : Layout p) (returnedMain : ByteArray)
   : Option (ByteArray × Array Word) := do

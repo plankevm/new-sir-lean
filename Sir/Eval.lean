@@ -38,9 +38,12 @@ def Context.checkStateful (ctx : Context) : SirM Unit := do
   if ctx.mode.static then
     Host.halt .invalid
 
-def Context.code (ctx : Context) : ByteArray := match hmode : ctx.mode with
-  | .creation ctorData => ctx.layout.init ++ ctorData
-  | .call _ _ => ctx.layout.withSetImmutables (hmode ▸ ctx.immutables).getMain
+def Context.code (ctx : Context) : SirM ByteArray := match hmode : ctx.mode with
+  | .creation ctorData => pure (ctx.layout.init ++ ctorData)
+  | .call _ _ => do
+      let some code := ctx.layout.withSetImmutables (hmode ▸ ctx.immutables).getMain
+        | malformed "ill-formed immutables"
+      pure code
 
 def mem.writeFromSlice (dst : Word) (src : ByteArray) (offset length : Word) : SirM Unit :=
   write dst (src.slicePad offset.toNat length.toNat)
@@ -124,7 +127,7 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .tload k => Host.transient.load k
   | .calldataload offset => ctx.mode.calldata.slicePad offset.toNat 32 |> Word.ofBytes |> pure
   | .calldatasize => pure ctx.mode.calldata.size
-  | .codesize => pure ctx.code.size
+  | .codesize => return (← ctx.code).size
   | .extcodesize a => (·.size) <$> Host.extcode (.ofWord a)
   | .returndatasize => returndata.size
   | .keccak256 offset length => Word.keccak256 <$> mem.read offset length
@@ -176,8 +179,9 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
         else malformed "invalid immutable id"
       let imms := ctx.immutables
       have heq : ctx.mode.kind = .call := by simp [ExecutionMode.kind, henv.property]
-      let m := heq ▸ imms
-      return m.getMain.slots[i.val]'(by rw [m.wf.1]; exact i.isLt)
+      let some v := (heq ▸ imms).getMain.slots[i.val]? | malformed "missing immutable slot"
+      unless v.HasSize ctx.program.immutables[i] do malformed "immutable value too large for slot"
+      return v
 
 
 def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
@@ -186,7 +190,7 @@ def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
   | .sstore k v => do ctx.checkStateful; persistent.store k v
   | .tstore k v => do ctx.checkStateful; transient.store k v
   | .calldatacopy dst offset length => mem.writeFromSlice dst ctx.mode.calldata offset length
-  | .codecopy dst offset length => mem.writeFromSlice dst ctx.code offset length
+  | .codecopy dst offset length => do mem.writeFromSlice dst (← ctx.code) offset length
   | .extcodecopy a dst offset length => do
       let code ← Host.extcode (.ofWord a)
       mem.writeFromSlice dst code offset length
@@ -312,7 +316,6 @@ def Program.runMain
   (env : Env)
   (w₀ : World)
   : CoFree WorldE MemoryND (UB ⊕ Outcome) :=
-  if h : imms.WF p then p.run layout (.call static calldata) env (.main imms h) w₀
-  else pure (.inl (.malformed "ill-formed immutables"))
+  p.run layout (.call static calldata) env (.main imms) w₀
 
 end Sir

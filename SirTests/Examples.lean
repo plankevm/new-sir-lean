@@ -459,8 +459,8 @@ def runS (p : Program) (l : Layout p := by exact plainLayout _) : Run :=
   runInit p l (world := { after := callee })
 
 def runStatic (p : Program) (l : Layout p := by exact plainLayout _)
-    (imms : MainImmutables := noImmutables) (hwf : imms.WF p := by decide) : Run :=
-  runMain p imms l (static := true) (hwf := hwf)
+    (imms : MainImmutables := noImmutables) : Run :=
+  runMain p imms l (static := true)
 
 def worldChecks : List (String × Bool) :=
   [ ("sload reads the frame's own sstore",
