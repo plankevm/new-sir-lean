@@ -67,5 +67,21 @@ def Layout.withSetImmutables {p : Program} (l : Layout p) (imms : MainImmutables
       main := ByteArray.copySlice value 0 main offset.val.toNat value.size
   return main ++ imms.tail
 
+def Layout.extractImmutables {p : Program} (l : Layout p) (returnedMain : ByteArray)
+  : Option (ByteArray × Array Word) := do
+  guard (returnedMain.size ≥ l.main.size)
+  let tail := returnedMain.extract l.main.size returnedMain.size
+  let mut slots := Vector.replicate p.immutables.size .none
+  have hs : p.immutables.size = slots.size := by grind
+
+  for i in List.finRange p.immutables.size do
+    for slot in l.immutableOffsets i do
+      let offset := slot.val.toNat
+      let value := Word.ofBytes (returnedMain.extract offset p.immutables[i].toNat)
+      match slots[i] with
+      | .some value' => guard (value = value')
+      | .none => slots := slots.set i.val (.some value) i.isLt
+
+  return (tail, ← slots.toArray.mapM id)
 
 end Sir

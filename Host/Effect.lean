@@ -1,7 +1,6 @@
 import Host.Word
 import Host.NatRange
 import Host.World
-import Host.Outcome
 import ITree.Program
 
 open CoFree
@@ -18,6 +17,13 @@ def ExecutionMode.kind : ExecutionMode → ExecutionModeKind
   | creation _ => .creation
   | call _ _ => .call
   
+def ExecutionMode.static : ExecutionMode → Bool
+  | .creation _ => false
+  | .call static _ => static
+
+def ExecutionMode.calldata : ExecutionMode → ByteArray
+  | .creation _ => .empty
+  | .call _ cd => cd
 
 /-- The frame's constants: the transaction, the block, the code being run, and whether the frame
 may change state. -/
@@ -37,15 +43,7 @@ structure Env where
   blobbasefee : Word
   blockhash : Word → Word
   blobhash : Word → Word
-  mode : ExecutionMode
 
-def Env.static (e : Env) : Bool := match e.mode with
-  | .creation _ => false
-  | .call static _ => static
-
-def Env.calldata (e : Env) : ByteArray := match e.mode with
-  | .creation _ => ⟨#[]⟩
-  | .call _ cd => cd
 
 inductive SimplifiedOutcome : Type
   | ret (data : ByteArray)

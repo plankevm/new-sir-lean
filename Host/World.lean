@@ -17,7 +17,7 @@ def Storage.set (s : Storage) (key value : Word) : Storage :=
 
 /-- The running account's storage and transient storage. -/
 structure Store where
-  storage : Storage
+  persistent : Storage
   transient : Storage
   deriving Inhabited
 
@@ -33,6 +33,12 @@ structure State where
   store : Store
   accounts : Accounts
   deriving Inhabited
+
+structure State.Unset (s : State) (a : Address) : Prop where
+  persistent_unset : ∀ k, s.store.persistent k = 0
+  transient_unset : ∀ k, s.store.transient k = 0
+  bal_zero : s.accounts.balance a = 0
+  no_extcode : s.accounts.extcode a = .empty
 
 inductive WorldOp
   | gas

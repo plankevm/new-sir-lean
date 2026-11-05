@@ -7,20 +7,20 @@ open CoFree
 
 namespace Sir
 
-def RunSafe : CoFree Host.HostE MemoryND UB → Prop :=
-  fun sir => Deterministic sir ∧ ¬∃ ub, HasOutcome sir (.res ub)
+def RunSafe : CoFree Host.WorldE MemoryND (UB ⊕ Host.Outcome) → Prop :=
+  fun sir => Deterministic sir ∧ ¬∃ ub : UB, HasOutcome sir (.res (.inl ub))
 
 def MainSafe : (p : Program) → MainImmutablesMap p → Layout p → Prop :=
-  fun p imms l => ∀ env, (h : env.mode.kind = .call) → RunSafe (p.runHost l env (h ▸ Immutables.main imms))
+  fun p imms l => ∀ env static calldata w₀, RunSafe (p.run l (.call static calldata) env (Immutables.main imms) w₀)
 
 def Safe : Program → Prop :=
   fun p =>
-    ∀ l env imm,
-      env.mode.kind = .creation →
-      let run := p.runHost l env imm
+    ∀ l env ctorData imm w₀,
+      w₀.Unset env.address →
+      let run := p.run l (.creation ctorData) env imm w₀
       RunSafe run ∧
-      ∀ mainCode,
-        HasOutcome run (.terminalOp <| .halt (.ret mainCode)) →
+      ∀ mainCode w',
+        HasOutcome run (.res <| .inr (.ret mainCode w')) →
         ∃ imms, l.withSetImmutables imms = mainCode ∧ MainSafe p imms l
 
 end Sir

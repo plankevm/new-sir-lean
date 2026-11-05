@@ -1,7 +1,12 @@
 import Host.Effect
-import Host.Outcome
 
 namespace Host
+
+inductive Outcome : Type
+  | ret (data : ByteArray) (store : Store)
+  | revert (data : ByteArray)
+  | invalid
+  | selfdestruct (beneficiary : Address) (store : Store)
 
 structure HostState where
   world : State
@@ -19,6 +24,7 @@ def SimplifiedOutcome.withStore (store : Store) : SimplifiedOutcome → Outcome
   | .invalid => .invalid
   | .selfdestruct beneficiary => .selfdestruct beneficiary store
 
+
 def hostStep {N : NonDeterminism} {A X : Type} (self : Address) (h : HostState) :
     Step HostE N A X → Step WorldE N (A ⊕ Outcome) (HostState × X)
   | .pure a => .pure (.inl a)
@@ -31,10 +37,10 @@ def hostStep {N : NonDeterminism} {A X : Type} (self : Address) (h : HostState) 
     | .balance a => .silent (h, k (h.accounts.balance a))
     | .extcode a => .silent (h, k (h.accounts.extcode a))
     | .extcodehash a => .silent (h, k (h.accounts.extcodehash a))
-    | .sload key => .silent (h, k (h.store.storage key))
+    | .sload key => .silent (h, k (h.store.persistent key))
     | .tload key => .silent (h, k (h.store.transient key))
     | .sstore key value =>
-      .silent (h.setStore { h.store with storage := h.store.storage.set key value }, k ())
+      .silent (h.setStore { h.store with persistent := h.store.persistent.set key value }, k ())
     | .tstore key value =>
       .silent (h.setStore { h.store with transient := h.store.transient.set key value }, k ())
     | .log topics data => .impure (.log topics data) fun r => (h, k r)
