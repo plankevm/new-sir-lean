@@ -9,7 +9,7 @@ inductive Outcome : Type
   | selfdestruct (beneficiary : Address) (store : Store)
 
 structure HostState where
-  world : State
+  world : World
   returndata : ByteArray
 
 def HostState.store (h : HostState) : Store := h.world.store
@@ -58,7 +58,7 @@ def hostStep {N : NonDeterminism} {A X : Type} (self : Address) (h : HostState) 
         ({ world, returndata := rd }, k addr)
     | .halt outcome => .pure (.inr (outcome.withStore h.store))
 
-def interpHost {N : NonDeterminism} {A : Type} (self : Address) (w₀ : State) :
+def interpHost {N : NonDeterminism} {A : Type} (self : Address) (w₀ : World) :
     CoFree HostE N A → CoFree WorldE N (A ⊕ Outcome) :=
   CoFree.interp (hostStep self) ⟨w₀, .empty⟩
 

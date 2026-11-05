@@ -5,3 +5,4 @@ import Sir.Memory
 import Sir.Layout
 import Sir.Safety
 import Sir.Syntax
+import Sir.Equivalence

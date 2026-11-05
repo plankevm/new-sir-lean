@@ -272,11 +272,45 @@ def Program.run
   (mode : ExecutionMode)
   (env : Env)
   (imm : Immutables p mode.kind)
-  (w₀ : Host.State)
+  (w₀ : World)
   : CoFree WorldE MemoryND (UB ⊕ Outcome) :=
     ⟨p, layout, mode, env, imm⟩
     |> runInner
     |> interpMem
     |> Host.interpHost env.address w₀
+
+inductive InitOutcome
+  | ret (p : Program) (imms : MainImmutablesMap p) (store : Store)
+  | revert (data : ByteArray)
+  | invalid
+  | selfdestruct (beneficiary : Address) (store : Store)
+
+def Program.runInit
+  (p : Program)
+  (layout : Layout p)
+  (ctorArgs : ByteArray)
+  (env : Env)
+  (w₀ : World)
+  : CoFree WorldE MemoryND (UB ⊕ InitOutcome) :=
+  p.run layout (.creation ctorArgs) env .init w₀
+  |> Functor.map fun
+    | .inr (.ret returnedMain s') => match layout.toMainImmutablesMap returnedMain with
+      | .some m => .inr (.ret p m s')
+      | .none => .inl (.malformed "unsound main returned")
+    | .inr (.revert d) => .inr (.revert d)
+    | .inr .invalid => .inr .invalid
+    | .inr (.selfdestruct b s') => .inr (.selfdestruct b s')
+    | .inl ub => .inl ub
+
+def Program.runMain
+  (p : Program)
+  (layout : Layout p)
+  (imms : MainImmutablesMap p)
+  (static : Bool)
+  (calldata : ByteArray)
+  (env : Env)
+  (w₀ : World)
+  : CoFree WorldE MemoryND (UB ⊕ Outcome) :=
+  p.run layout (.call static calldata) env (.main imms) w₀
 
 end Sir

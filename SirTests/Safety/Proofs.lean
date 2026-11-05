@@ -432,7 +432,7 @@ lemma initStops_stop :
       .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (runInner ⟨initStops, stopsLayout, .creation .empty, stopsEnv, .init⟩))) := by
   kernel_rfl
 
-def stopsState : State := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 0, fun _ => .empty⟩⟩
+def stopsState : World := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 0, fun _ => .empty⟩⟩
 
 lemma stopsState_unset : stopsState.Unset stopsEnv.address :=
   ⟨fun _ => rfl, fun _ => rfl, rfl, rfl⟩

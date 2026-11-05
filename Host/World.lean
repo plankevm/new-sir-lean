@@ -29,12 +29,12 @@ structure Accounts where
 
 def Accounts.extcodehash (w : Accounts) (a : Address) : Word := .keccak256 (w.extcode a)
 
-structure State where
+structure World where
   store : Store
   accounts : Accounts
   deriving Inhabited
 
-structure State.Unset (s : State) (a : Address) : Prop where
+structure World.Unset (s : World) (a : Address) : Prop where
   persistent_unset : ∀ k, s.store.persistent k = 0
   transient_unset : ∀ k, s.store.transient k = 0
   bal_zero : s.accounts.balance a = 0
@@ -50,8 +50,8 @@ def WorldOp.Resp : WorldOp → Type
   | .gas => Word
   | .log .. => Unit
   | .call .staticcall .. => Bool × ByteArray
-  | .call .. => Bool × ByteArray × State
-  | .create .. => Address × ByteArray × State
+  | .call .. => Bool × ByteArray × World
+  | .create .. => Address × ByteArray × World
 
 abbrev WorldE : Effect := ⟨WorldOp, WorldOp.Resp⟩
 

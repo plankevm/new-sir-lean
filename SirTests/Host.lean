@@ -21,11 +21,11 @@ inductive Result
   | outOfFuel
   deriving DecidableEq, Repr
 
-def startState : State := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 1, fun _ => .empty⟩⟩
+def startState : World := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 1, fun _ => .empty⟩⟩
 
 structure World where
-  start : State := startState
-  after : Store → State := fun st => { startState with store := st }
+  start : World := startState
+  after : Store → World := fun st => { startState with store := st }
   callResult : Bool × ByteArray := (true, .empty)
   logs : Array (List Word × List UInt8) := #[]
   calls : Array (CallKind × Address × List UInt8) := #[]
@@ -49,15 +49,15 @@ def answer : (op : WorldOp) → TestM (WorldOp.Resp op)
   | .call (.call value) _ account input st => do
     modify fun w => { w with calls := w.calls.push (.call value, account, input.toList) }
     let w ← get
-    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × State)
+    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × World)
   | .call .delegatecall _ account input st => do
     modify fun w => { w with calls := w.calls.push (.delegatecall, account, input.toList) }
     let w ← get
-    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × State)
+    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × World)
   | .create _ salt _ st => do
     let w ← get
     countOp (((if salt.isSome then 0xC2 else 0xC1 : Address), ByteArray.empty, w.after st) :
-      Address × ByteArray × State)
+      Address × ByteArray × World)
 
 /-- Places every allocation after the highest live one, from `0x80`. -/
 def place : (c : MemoryND.Op) → TestM (MemoryND.Resp c)
@@ -102,7 +102,7 @@ def ofOutcome : UB ⊕ Outcome → Result × Option Store
 
 def runWith (p : Program) (l : Layout p) (mode : ExecutionMode) (env : Env) (imm : Immutables p mode.kind)
     (world : World) (fuel : Nat) : Run :=
-  match (CoFree.runM answer place fuel (p.run l mode env imm world.start)).run world with
+  match (CoFree.runM answer place fuel (interpHost env.address world.start (p.runHost l mode env imm))).run world with
   | .ok (none, w) => ⟨.outOfFuel, none, w⟩
   | .ok (some o, w) => let (r, st) := ofOutcome o; ⟨r, st, w⟩
   | .error msg => ⟨.hostError msg, none, world⟩
