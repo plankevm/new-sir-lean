@@ -52,20 +52,8 @@ def hostStep {N : NonDeterminism} {A X : Type} (self : Address) (h : HostState) 
         ({ world, returndata := rd }, k addr)
     | .halt outcome => .pure (.inr (outcome.withStore h.store))
 
-def interpHostFrom {N : NonDeterminism} {A : Type} (self : Address) (h : HostState) :
-    CoFree HostE N A → CoFree WorldE N (A ⊕ Outcome)
-  | ⟨S, J, s₀, step, target⟩ => {
-    State := HostState × S
-    Jump := HostState × J
-    initial := (h, s₀)
-    step := fun (h, s) => (hostStep self h (step s)).map fun
-      | (h', .inl s') => .inl (h', s')
-      | (h', .inr j) => .inr (h', j)
-    target := fun (h', j) => interpHostFrom self h' (target j)
-  }
-
 def interpHost {N : NonDeterminism} {A : Type} (self : Address) (w₀ : State) :
     CoFree HostE N A → CoFree WorldE N (A ⊕ Outcome) :=
-  interpHostFrom self ⟨w₀, .empty⟩
+  CoFree.interp (hostStep self) ⟨w₀, .empty⟩
 
 end Host

@@ -119,17 +119,6 @@ def memStep {X : Type} (mem : MemState) : Step EvalE .none Empty X → Step Host
   | .pure a => nomatch a
   | .branch c _ => nomatch c
 
-def interpMemFrom (mem : MemState) : SirM Empty → CoFree HostE MemoryND UB
-  | ⟨S, J, s₀, step, target⟩ => {
-    State := MemState × S
-    Jump := MemState × J
-    initial := (mem, s₀)
-    step := fun (mem, s) => (memStep mem (step s)).map fun
-      | (mem', .inl s') => .inl (mem', s')
-      | (mem', .inr j) => .inr (mem', j)
-    target := fun (mem', j) => interpMemFrom mem' (target j)
-  }
-
-def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB := interpMemFrom #[] sir
+def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB := CoFree.interp memStep #[] sir
 
 end Sir
