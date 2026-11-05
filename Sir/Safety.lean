@@ -18,6 +18,7 @@ def InitSafe  (p : Program) (l : Layout p) : Prop :=
 
 def Safe : Program → Prop :=
   fun p =>
+    Nonempty (Layout p) ∧
     ∀ l env ctorArgs w₀,
       w₀.Unset env.address →
       let init := p.runInit l ctorArgs env w₀
