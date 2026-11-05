@@ -4,41 +4,24 @@ namespace SirTests.Safety
 
 open Sir Host CoFree
 
-def noop : Program where
-  init := 0
-  main := 1
-  functions := #[
-    {
-      entry := 0,
-      returns := .never,
-      blocks := #[
-        {
-          ops := #[
-            .let 0 .mainLength,
-            .let 1 (.malloc 0),
-            .let 2 .mainStartOffset,
-            .stmt (.codecopy 1 2 0)
-          ]
-          control := .return 1 0
-        }
-      ]
-    },
-    {
-      entry := 0,
-      returns := .never,
-      blocks := #[
-        { control := .stop }
-      ]
+def noop : Program := sir! {
+  fn init:
+    entry {
+      len = runtime_length
+      ptr = malloc len
+      off = runtime_start_offset
+      codecopy ptr off len
+      return ptr len
     }
-  ]
-  mainDatas := []
+  fn main:
+    entry { stop }
+}
 
-def initStops : Program where
-  init := 0
-  main := 1
-  functions := #[
-    { entry := 0, returns := .never, blocks := #[{ control := .stop }] },
-    { entry := 0, returns := .never, blocks := #[{ control := .stop }] }]
-  mainDatas := []
+def initStops : Program := sir! {
+  fn init:
+    entry { stop }
+  fn main:
+    entry { stop }
+}
 
 end SirTests.Safety

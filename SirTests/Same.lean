@@ -123,9 +123,6 @@ lemma not_same_pure_impure {N₁ N₂ : NonDeterminism} {m₁ : CoFree HostE N�
 
 /-! ## Programs -/
 
-def prog (blocks : Array Block) : Program :=
-  { init := 0, main := 0, functions := #[⟨0, .never, blocks⟩], mainDatas := [] }
-
 def run (p : Program) (l : Layout p := by exact plainLayout _) : CoFree HostE MemoryND UB :=
   p.runHost l testEnv .init
 
@@ -140,51 +137,139 @@ def afterStore {A : Type} (t : CoFree HostE MemoryND A) : Unit → CoFree HostE 
 lemma sstore_ne {k v w : Word} (h : v ≠ w) : HostOp.sstore k v ≠ HostOp.sstore k w :=
   fun e => h (HostOp.sstore.inj e).2
 
-def stops : Program := prog #[{ control := .stop }]
+def stops : Program := sir! {
+  fn init:
+    entry { stop }
+  fn main:
+    entry { stop }
+}
 
 /-- Allocates, computes with the pointer, and never observes it. -/
-def mallocs : Program := prog #[
-  { ops := #[.let 1 (.const 32), .let 2 (.malloc 1), .let 3 (.binop .add 2 2)], control := .stop }]
+def mallocs : Program := sir! {
+  fn init:
+    entry {
+      p = malloc 32
+      q = add p p
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
-def mallocsAny : Program := prog #[
-  { ops := #[.let 1 (.const 64), .let 2 (.mallocany 1)], control := .stop }]
+def mallocsAny : Program := sir! {
+  fn init:
+    entry {
+      p = mallocany 64
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
-def stores (v : Word) : Program := prog #[
-  { ops := #[.let 1 (.const 0), .let 2 (.const v), .stmt (.sstore 1 2)], control := .stop }]
+def stores (v : Word) : Program := sir! {
+  fn init:
+    entry {
+      sstore 0 (v)
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- `stores 1` after a jump, which is one more silent step. -/
-def jumpsThenStores : Program := prog #[
-  { control := .continuesTo 1 },
-  { ops := #[.let 1 (.const 0), .let 2 (.const 1), .stmt (.sstore 1 2)], control := .stop }]
+def jumpsThenStores : Program := sir! {
+  fn init:
+    entry { => @store }
+    store {
+      sstore 0 1
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- `stores 1` after reading the environment, which is not a host operation. -/
-def readsEnvThenStores : Program := prog #[
-  { ops := #[.let 1 (.const 0), .let 2 (.const 1), .let 3 (.query .caller),
-      .let 4 (.calldataload 1), .let 5 (.blockhash 1), .stmt (.sstore 1 2)], control := .stop }]
+def readsEnvThenStores : Program := sir! {
+  fn init:
+    entry {
+      k = const 0
+      v = const 1
+      c = caller
+      d = calldataload k
+      b = blockhash k
+      sstore k v
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- `sstore 0 5`, then `sstore 1 (sload 0)`. -/
-def storeLoads : Program := prog #[
-  { ops := #[.let 1 (.const 0), .let 2 (.const 5), .stmt (.sstore 1 2), .let 3 (.sload 1),
-      .let 4 (.const 1), .stmt (.sstore 4 3)], control := .stop }]
+def storeLoads : Program := sir! {
+  fn init:
+    entry {
+      k = const 0
+      sstore k 5
+      x = sload k
+      sstore 1 x
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- Stores the pointer it allocated. -/
-def leaks : Program := prog #[
-  { ops := #[.let 1 (.const 32), .let 2 (.malloc 1), .let 3 (.const 0), .stmt (.sstore 3 2)],
-    control := .stop }]
+def leaks : Program := sir! {
+  fn init:
+    entry {
+      p = malloc 32
+      sstore 0 p
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- UB `switchNoMatch`. -/
-def switchUB : Program := prog #[
-  { ops := #[.let 1 (.const 5)], control := .switch 1 #[(0, 0)] none }]
+def switchUB : Program := sir! {
+  fn init:
+    entry {
+      x = const 5
+      switch x { 0 => @entry }
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- Malformed: `sstore`s an undefined variable. -/
-def undefinedVar : Program := prog #[{ ops := #[.stmt (.sstore 1 1)], control := .stop }]
+def undefinedVar : Program := sir! {
+  fn init:
+    entry {
+      sstore $1 $1
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-- Halts exceptionally, as invalid EVM code does. -/
-def halts : Program := prog #[{ control := .invalid }]
+def halts : Program := sir! {
+  fn init:
+    entry { invalid }
+  fn main:
+    entry { stop }
+}
 
 /-- UB `memoryOutOfBounds`: reads memory that was never allocated. -/
-def readUB : Program := prog #[
-  { ops := #[.let 1 (.const 0), .let 2 (.mload ⟨32, by decide⟩ 1)], control := .stop }]
+def readUB : Program := sir! {
+  fn init:
+    entry {
+      x = mload256 0
+      stop
+    }
+  fn main:
+    entry { stop }
+}
 
 /-! ## Equivalent -/
 
