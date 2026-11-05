@@ -64,8 +64,8 @@ def interpHostFrom {N : NonDeterminism} {A : Type} (self : Address) (h : HostSta
     target := fun (h', j) => interpHostFrom self h' (target j)
   }
 
-def interpHost {N : NonDeterminism} {A : Type} (self : Address) (world : State) :
+def interpHost {N : NonDeterminism} {A : Type} (self : Address) (w₀ : State) :
     CoFree HostE N A → CoFree WorldE N (A ⊕ Outcome) :=
-  interpHostFrom self ⟨world, .empty⟩
+  interpHostFrom self ⟨w₀, .empty⟩
 
 end Host
