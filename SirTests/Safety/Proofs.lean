@@ -404,10 +404,9 @@ lemma noop_stop (l : Layout noop) (st : Bool) (cd : ByteArray) (e : Env) (imm : 
       .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (runInner ⟨noop, l, .call st cd, e, imm⟩))) := by
   kernel_rfl
 
-lemma noop_mainSafe (l : Layout noop) (imms : MainImmutables) (hwf : imms.WF noop) :
+lemma noop_mainSafe (l : Layout noop) (imms : MainImmutables) :
     MainSafe noop imms l := by
   intro env st cd w₀
-  simp only [Program.runMain, hwf, ↓reduceDIte]
   exact (Halts.interpHost ⟨w₀, .empty⟩ (halts_skip 1000 (halts_ret (noop_stop l st cd env _)))).runSafe
 
 def noopLayout : Layout noop where
@@ -465,14 +464,18 @@ lemma stopsState_unset : stopsState.Unset stopsEnv.address :=
 
 
 lemma stopsLayout_withSetImmutables_ne (imms : MainImmutables) :
-    stopsLayout.withSetImmutables imms ≠ .empty := by
-  intro heq
-  have := congrArg ByteArray.size heq
-  have hset : stopsLayout.withSetImmutables imms = ⟨#[0]⟩ ++ imms.tail := by
-    unfold Layout.withSetImmutables; split <;> rfl
-  rw [hset, ByteArray.size_append] at this
-  rw [show (⟨#[0]⟩ : ByteArray).size = 1 from rfl, show ByteArray.empty.size = 0 from rfl] at this
-  omega
+    stopsLayout.withSetImmutables imms ≠ some .empty := by
+  unfold Layout.withSetImmutables
+  split
+  next hwf =>
+    intro heq
+    have := congrArg ByteArray.size (Option.some.inj heq)
+    have hset : stopsLayout.setImmutables ⟨imms.slots, hwf.1⟩ = ⟨#[0]⟩ := rfl
+    rw [ByteArray.size_append, hset] at this
+    rw [show (⟨#[0]⟩ : ByteArray).size = 1 from rfl, show ByteArray.empty.size = 0 from rfl] at this
+    omega
+  next => nofun
+
 lemma Returns.runInit {p : Program} {l : Layout p} {cd : ByteArray} {env : Env} {w₀ : World}
     {main : ByteArray} {s' : Store} (h : Returns (.inr (.ret main s')) (p.run l (.creation cd) env .init w₀)) :
     Returns (match l.toMainImmutables main with
@@ -486,6 +489,6 @@ lemma initStops_halts :
   have h := (Halts.interpHost ⟨stopsState, .empty⟩ (halts_skip 1000 (halts_ret initStops_stop))).runInit
   rcases hm : stopsLayout.toMainImmutables .empty with _ | m
   · rw [hm] at h; exact h.hasOutcome
-  · exact absurd ((Layout.toMainImmutables_eq_some_iff _ _ _).1 hm).2 (stopsLayout_withSetImmutables_ne m)
+  · exact absurd ((Layout.toMainImmutables_eq_some_iff _ _ _).1 hm) (stopsLayout_withSetImmutables_ne m)
 
 end SirTests.Safety

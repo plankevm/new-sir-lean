@@ -13,15 +13,16 @@ theorem Layout.toMainImmutables_wf (l : Layout p) (b : ByteArray) (imms : MainIm
   Proofs.toMainImmutables_wf l b imms h
 
 theorem Layout.toMainImmutables_eq_some_iff (l : Layout p) (b : ByteArray) (imms : MainImmutables) :
-    l.toMainImmutables b = some imms ↔ imms.WF p ∧ l.withSetImmutables imms = b :=
+    l.toMainImmutables b = some imms ↔ l.withSetImmutables imms = some b :=
   Proofs.toMainImmutables_eq_some_iff l b imms
 
-theorem Layout.extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutables) (h : imms.WF p) :
-    l.extractImmutables (l.withSetImmutables imms) = some (imms.tail, imms.slots) :=
-  Proofs.extractImmutables_withSetImmutables l imms h
+theorem Layout.extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutables) (b : ByteArray)
+    (h : l.withSetImmutables imms = some b) :
+    l.extractImmutables b = some (imms.tail, imms.slots) :=
+  Proofs.extractImmutables_withSetImmutables l imms b h
 
 theorem Layout.extractImmutables_isSome_iff (l : Layout p) (b : ByteArray) :
-    (l.extractImmutables b).isSome ↔ ∃ imms : MainImmutables, imms.WF p ∧ l.withSetImmutables imms = b :=
+    (l.extractImmutables b).isSome ↔ ∃ imms : MainImmutables, l.withSetImmutables imms = some b :=
   Proofs.extractImmutables_isSome_iff l b
 
 end Sir

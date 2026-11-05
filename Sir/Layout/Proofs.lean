@@ -373,14 +373,17 @@ lemma extractImmutables_setImmutables (l : Layout p) (v : Vector Word p.immutabl
   · intro x _ s hs; exact hPset s x hs
   · intro j; simp
 
-lemma withSetImmutables_of_wf (l : Layout p) (imms : MainImmutables) (h : imms.WF p) :
-    l.withSetImmutables imms = l.setImmutables ⟨imms.slots, h.1⟩ ++ imms.tail := by
-  simp [Layout.withSetImmutables, h.1]
+lemma withSetImmutables_eq_some (l : Layout p) (imms : MainImmutables) (b : ByteArray) :
+    l.withSetImmutables imms = some b ↔
+      ∃ h : imms.WF p, l.setImmutables ⟨imms.slots, h.1⟩ ++ imms.tail = b := by
+  unfold Layout.withSetImmutables
+  split <;> simp_all
 
-theorem extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutables) (h : imms.WF p) :
-    l.extractImmutables (l.withSetImmutables imms) = some (imms.tail, imms.slots) := by
-  rw [withSetImmutables_of_wf l imms h]
-  exact extractImmutables_setImmutables l _ _ h.2
+theorem extractImmutables_withSetImmutables (l : Layout p) (imms : MainImmutables) (b : ByteArray)
+    (h : l.withSetImmutables imms = some b) :
+    l.extractImmutables b = some (imms.tail, imms.slots) := by
+  obtain ⟨hwf, rfl⟩ := (withSetImmutables_eq_some l imms b).1 h
+  exact extractImmutables_setImmutables l _ _ hwf.2
 
 theorem extractImmutables_eq_map (l : Layout p) (b : ByteArray) :
     l.extractImmutables b = (l.toMainImmutables b).map fun m => (m.tail, m.slots) := by
@@ -394,19 +397,19 @@ theorem toMainImmutables_wf (l : Layout p) (b : ByteArray) (imms : MainImmutable
   exact ⟨values.size_toArray, hsz⟩
 
 theorem toMainImmutables_eq_some_iff (l : Layout p) (b : ByteArray) (imms : MainImmutables) :
-    l.toMainImmutables b = some imms ↔ imms.WF p ∧ l.withSetImmutables imms = b := by
+    l.toMainImmutables b = some imms ↔ l.withSetImmutables imms = some b := by
   constructor
   · intro h
-    refine ⟨toMainImmutables_wf l b imms h, ?_⟩
+    refine (withSetImmutables_eq_some l imms b).2 ⟨toMainImmutables_wf l b imms h, ?_⟩
     simp only [Layout.toMainImmutables, Option.map_eq_some_iff] at h
     obtain ⟨⟨t, vs⟩, he, rfl⟩ := h
     obtain ⟨values, rfl, hb, -, -⟩ := extractImmutables_some l b t _ he
-    simp [Layout.withSetImmutables, hb]
-  · rintro ⟨hwf, rfl⟩
-    simp [Layout.toMainImmutables, extractImmutables_withSetImmutables l imms hwf]
+    exact hb
+  · intro h
+    simp [Layout.toMainImmutables, extractImmutables_withSetImmutables l imms b h]
 
 theorem extractImmutables_isSome_iff (l : Layout p) (b : ByteArray) :
-    (l.extractImmutables b).isSome ↔ ∃ imms : MainImmutables, imms.WF p ∧ l.withSetImmutables imms = b := by
+    (l.extractImmutables b).isSome ↔ ∃ imms : MainImmutables, l.withSetImmutables imms = some b := by
   rw [extractImmutables_eq_map, Option.isSome_map]
   simp only [Option.isSome_iff_exists, toMainImmutables_eq_some_iff]
 
