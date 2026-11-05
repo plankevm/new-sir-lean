@@ -48,17 +48,17 @@ lemma deployOutcomeEquiv_trans {p₁ p₂ p₃ : Program} {l₁ : Layout p₁} {
   all_goals simp_all
 
 lemma equiv_symm {p₁ p₂ : Program} (h : Equiv p₁ p₂) : Equiv p₂ p₁ :=
-  ⟨h.1.symm, fun l₁ l₂ e c w₀ hu =>
+  ⟨h.2.1, h.1, fun l₁ l₂ e c w₀ hu =>
     Same.mono (fun _ _ => definedAnd_symm (r := DeployOutcomeEquiv l₂ l₁) fun _ _ => deployOutcomeEquiv_symm)
-      (Same.symm (h.2 l₂ l₁ e c w₀ hu))⟩
+      (Same.symm (h.2.2 l₂ l₁ e c w₀ hu))⟩
 
 lemma equiv_trans {p₁ p₂ p₃ : Program} (h₁ : Equiv p₁ p₂) (h₂ : Equiv p₂ p₃) :
     Equiv p₁ p₃ := by
-  refine ⟨h₁.1.trans h₂.1, fun l₁ l₃ e c w₀ hu => ?_⟩
-  obtain ⟨l₂⟩ := h₁.1.mp ⟨l₁⟩
+  refine ⟨h₁.1, h₂.2.1, fun l₁ l₃ e c w₀ hu => ?_⟩
+  obtain ⟨l₂⟩ := h₁.2.1
   exact Same.mono (fun _ _ ⟨_, hab, hbc⟩ => definedAnd_trans (r₁ := DeployOutcomeEquiv l₁ l₂)
       (r₂ := DeployOutcomeEquiv l₂ l₃) (fun _ _ _ => deployOutcomeEquiv_trans) hab hbc)
-    (Same.trans (h₁.2 l₁ l₂ e c w₀ hu) (h₂.2 l₂ l₃ e c w₀ hu))
+    (Same.trans (h₁.2.2 l₁ l₂ e c w₀ hu) (h₂.2.2 l₂ l₃ e c w₀ hu))
 
 lemma equiv_refl_left {p₁ p₂ : Program} (h : Equiv p₁ p₂) : Equiv p₁ p₁ :=
   equiv_trans h (equiv_symm h)
