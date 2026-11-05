@@ -23,6 +23,6 @@ def Safe : Program → Prop :=
       w₀.Unset env.address →
       let init := p.runInit l ctorArgs env w₀
       RunSafe init ∧
-      ∀ imms w', HasResOutcome init (.inr (.ret imms w')) → imms.WF p → MainSafe p imms l
+      ∀ imms w', HasResOutcome init (.inr (.ret imms w')) → imms.WF p ∧ MainSafe p imms l
 
 end Sir
