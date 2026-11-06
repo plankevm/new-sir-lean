@@ -74,6 +74,14 @@ theorem Bisim.forIn_array : ∀ {α₁ α₂ β₁ β₂ : Type u} (RB : β₁ �
     ∀ {b₁ b₂}, RB b₁ b₂ → Bisim ρ RB (forIn xs b₁ f₁) (forIn (xs.map φ) b₂ f₂) :=
   fun RB φ _ _ xs hf _ _ h => Proofs.Bisim.forIn_array RB φ xs hf h
 
+theorem Bisim.forIn_array_filter : ∀ {α β₁ β₂ : Type u} (RB : β₁ → β₂ → Prop) (keep : α → Bool)
+    {f₁ : α → β₁ → CoFree E N (ForInStep β₁)} {f₂ : α → β₂ → CoFree E N (ForInStep β₂)}
+    (xs : Array α),
+    (∀ a ∈ xs, keep a → ∀ b₁ b₂, RB b₁ b₂ → Bisim ρ (ForInRel RB) (f₁ a b₁) (f₂ a b₂)) →
+    (∀ a ∈ xs, keep a = false → ∀ b, (f₁ a b).observe = .pure (.yield b)) →
+    ∀ {b₁ b₂}, RB b₁ b₂ → Bisim ρ RB (forIn xs b₁ f₁) (forIn (xs.filter keep) b₂ f₂) :=
+  fun RB keep _ _ xs hk hd _ _ h => Proofs.Bisim.forIn_array_filter RB keep xs hk hd h
+
 theorem Bisim.fix : ∀ {I O : Type u} {RI : I → I → Prop}
     {f₁ f₂ : (I → CoFree (Effect.Rec I O E) N O) → I → CoFree (Effect.Rec I O E) N O},
     (∀ i₁ i₂, RI i₁ i₂ → Bisim (OpRel.calls RI ρ) Eq

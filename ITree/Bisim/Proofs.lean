@@ -204,6 +204,40 @@ theorem Bisim.forIn_array {α₁ α₂ β₁ β₂ : Type u} (RB : β₁ → β�
   rw [← Array.forIn_toList, ← Array.forIn_toList, Array.toList_map]
   exact Bisim.forIn_list RB φ xs.toList (fun a ha => hf a (Array.mem_toList_iff.1 ha)) h
 
+theorem Bisim.forIn_list_filter {α β₁ β₂ : Type u} (RB : β₁ → β₂ → Prop) (keep : α → Bool)
+    {f₁ : α → β₁ → CoFree E N (ForInStep β₁)} {f₂ : α → β₂ → CoFree E N (ForInStep β₂)} :
+    ∀ (l : List α),
+    (∀ a ∈ l, keep a → ∀ b₁ b₂, RB b₁ b₂ → Bisim ρ (ForInRel RB) (f₁ a b₁) (f₂ a b₂)) →
+    (∀ a ∈ l, keep a = false → ∀ b, (f₁ a b).observe = .pure (.yield b)) →
+    ∀ {b₁ : β₁} {b₂ : β₂}, RB b₁ b₂ → Bisim ρ RB (forIn l b₁ f₁) (forIn (l.filter keep) b₂ f₂)
+  | [], _, _, _, _, h => by
+    rw [List.filter_nil, List.forIn_nil, List.forIn_nil]; exact Bisim.pure h
+  | a :: l, hk, hd, b₁, _, h => by
+    have ih : ∀ {b₁ b₂}, RB b₁ b₂ → _ := fun {b₁ b₂} => Bisim.forIn_list_filter RB keep l
+      (fun a ha => hk a (List.mem_cons_of_mem _ ha)) (fun a ha => hd a (List.mem_cons_of_mem _ ha))
+      (b₁ := b₁) (b₂ := b₂)
+    rw [List.forIn_cons, List.filter_cons]
+    cases hka : keep a
+    · simp only [Bool.false_eq_true, ↓reduceIte]
+      refine Bisim.congr ?_ rfl (ih h)
+      exact ((observe_bind (f₁ a b₁) _).trans (by rw [hd a (List.mem_cons_self ..) hka b₁]; rfl)).symm
+    · simp only [↓reduceIte, List.forIn_cons]
+      refine Bisim.bind (hk a (List.mem_cons_self ..) hka _ _ h) fun x y hxy => ?_
+      cases x <;> cases y <;> simp only [ForInRel] at hxy
+      · exact Bisim.pure hxy
+      · exact ih hxy
+
+theorem Bisim.forIn_array_filter {α β₁ β₂ : Type u} (RB : β₁ → β₂ → Prop) (keep : α → Bool)
+    {f₁ : α → β₁ → CoFree E N (ForInStep β₁)} {f₂ : α → β₂ → CoFree E N (ForInStep β₂)}
+    (xs : Array α)
+    (hk : ∀ a ∈ xs, keep a → ∀ b₁ b₂, RB b₁ b₂ → Bisim ρ (ForInRel RB) (f₁ a b₁) (f₂ a b₂))
+    (hd : ∀ a ∈ xs, keep a = false → ∀ b, (f₁ a b).observe = .pure (.yield b))
+    {b₁ : β₁} {b₂ : β₂} (h : RB b₁ b₂) :
+    Bisim ρ RB (forIn xs b₁ f₁) (forIn (xs.filter keep) b₂ f₂) := by
+  rw [← Array.forIn_toList, ← Array.forIn_toList, Array.toList_filter]
+  exact Bisim.forIn_list_filter RB keep xs.toList (fun a ha => hk a (Array.mem_toList_iff.1 ha))
+    (fun a ha => hd a (Array.mem_toList_iff.1 ha)) h
+
 end Loops
 
 section Fix

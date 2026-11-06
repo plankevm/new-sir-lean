@@ -12,5 +12,7 @@ import Sir.Equivalence.Theorems
 import Sir.Passes
 import Sir.Passes.DeadCode
 import Sir.Passes.DeadCode.Theorems
+import Sir.Passes.RemoveNoops
+import Sir.Passes.RemoveNoops.Theorems
 import Sir.WellFormed
 import Sir.WellFormed.Theorems
