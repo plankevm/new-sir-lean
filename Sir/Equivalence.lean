@@ -4,21 +4,16 @@ import Sir.Ir
 
 namespace Sir
 
-def DefinedAnd {α : Type} (r : α → α → Prop) : UB ⊕ α → UB ⊕ α → Prop
-  | .inl _ub, _ => False
-  | _, .inl _ub => False
-  | .inr a, .inr b => r a b
-
 def MainEquiv
   {p₁ p₂ : Program}
   (l₁ : Layout p₁)
   (l₂ : Layout p₂)
   (imms₁ imms₂ : MainImmutables)
   : Prop :=
-  ∀ static calldata e w₀,
+  ∀ static cd e w₀,
     CoFree.Same (DefinedAnd Eq)
-      (p₁.runMain l₁ imms₁ static calldata e w₀)
-      (p₂.runMain l₂ imms₂ static calldata e w₀)
+      (p₁.runMain l₁ imms₁ static cd e w₀)
+      (p₂.runMain l₂ imms₂ static cd e w₀)
 
 def DeployOutcomeEquiv {p₁ p₂ : Program} (l₁ : Layout p₁) (l₂ : Layout p₂)
   : InitOutcome → InitOutcome → Prop

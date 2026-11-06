@@ -223,9 +223,18 @@ structure Function where
   returns : ReturnKind
   blocks : Array Block
 
-instance : GetElem? Function BlockId Block (fun fn bi => bi.id < fn.blocks.size) where
+namespace Function
+
+def ValidBlockId (fn : Function) (id : BlockId) : Prop := id.id < fn.blocks.size
+
+structure WF (fn : Function) : Prop where
+  entry_valid : fn.ValidBlockId fn.entry
+
+instance : GetElem? Function BlockId Block ValidBlockId where
   getElem fn bid v := fn.blocks[bid.id]
   getElem? fn bid := fn.blocks[bid.id]?
+
+end Function
 
 structure Program where
   init : FunctionId
@@ -247,18 +256,10 @@ instance {p : Program} : DecidablePred p.ValidImmutableId := by
 instance {p : Program} : DecidablePred p.ValidDataId := by
   unfold ValidDataId; infer_instance
 
-end Program
+structure WF (p : Program) : Prop where
+  fn_wf : ∀ fn ∈ p.functions, fn.WF
 
-instance : GetElem? Program Host.ExecutionModeKind FunctionId (fun _ _ => True) where
-  getElem p
-    | .creation, _ => p.init
-    | .call, _ => p.main
-  getElem? p
-    | .creation => some p.init
-    | .call => some p.main
-  getElem! p
-    | .creation => p.init
-    | .call => p.main
+end Program
 
 instance : GetElem? Program FunctionId Function Program.ValidFunctionId where
   getElem p id valid := p.functions[id.id]
@@ -271,5 +272,6 @@ instance : GetElem? Program ImmutableId ByteSize Program.ValidImmutableId where
 instance : GetElem? Program DataId ByteArray Program.ValidDataId where
   getElem p id valid := p.data[id.id]
   getElem? p id := p.data[id.id]?
+
 
 end Sir

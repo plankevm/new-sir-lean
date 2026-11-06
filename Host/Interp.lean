@@ -10,7 +10,7 @@ inductive Outcome : Type
 
 structure HostState where
   world : World
-  returndata : ByteArray
+  returndata : BytesX32
 
 def HostState.store (h : HostState) : Store := h.world.store
 def HostState.accounts (h : HostState) : Accounts := h.world.accounts

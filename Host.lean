@@ -1,3 +1,4 @@
+import Host.Bytes
 import Host.Word
 import Host.Keccak
 import Host.NatRange

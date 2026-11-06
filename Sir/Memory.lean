@@ -1,7 +1,7 @@
 import Sir.Effect
 
 open Host
-open CoFree (perform)
+open CoFree (perform branch)
 
 namespace Sir
 
@@ -15,76 +15,79 @@ def Allocation.end (a : Allocation) : Nat := a.start.toNat + a.size
 
 def Allocation.contains (a : Allocation) (addr : Nat) : Prop := addr ∈ a.range
 
-/-- `[start, start + size)` fits in the address space and misses every live allocation `(start, size)`. -/
-def ValidAlloc  (live : List Allocation)  (size : Nat) : Allocation → Prop :=
-  fun a' => a'.size = size ∧ a'.end ≤ Word.size ∧ ∀ a ∈ live, a.range.Disjoint a'.range
+structure MemState where
+  reserved : NatRange
+  live : Array Allocation
 
-instance (live : List Allocation) (size : Nat) : DecidablePred (ValidAlloc live size) := by
+namespace MemState
+
+def push (s : MemState) (a' :  Allocation) : MemState := { s with live := s.live.push a' }
+def allocCount (s : MemState) : Nat := s.live.size
+def taken (s : MemState) : List NatRange := s.reserved :: s.live.toList.map Allocation.range
+
+/-- Evidence that one allocation of `m` holds all of `[offset, offset + length)`. -/
+abbrev Region (m : MemState) (offset : Word) (length : Nat) :=
+  { j : Fin m.live.size // m.live[j].start.toNat ≤ offset.toNat ∧ offset.toNat + length ≤ m.live[j].end }
+
+def inBounds (m : MemState) (offset : Word) (length : Nat) : Option (m.Region offset length) :=
+  (List.finRange m.allocCount).findSome? fun j =>
+    if h : m.live[j].start.toNat ≤ offset.toNat ∧ offset.toNat + length ≤ m.live[j].end then some ⟨j, h⟩
+    else none
+
+def read (m : MemState) {offset : Word} {length : Nat} (r : m.Region offset length) : ByteArray :=
+  let start := (offset - m.live[r.val].start).toNat
+  m.live[r.val].bytes.extract start (start + length)
+
+def write (m : MemState) {offset : Word} {length : Nat} (bytes : ByteArray) (r : m.Region offset length) : MemState :=
+  { m with live := m.live.modify r.val fun a => { a with bytes := bytes.copySlice 0 a.bytes (offset - a.start).toNat length } }
+
+def ValidAlloc (m : MemState) (size : Nat) (a' : Allocation) : Prop :=
+  a'.size = size ∧ a'.end ≤ Word.size ∧ ∀ r ∈ m.taken, r.Disjoint a'.range
+
+instance (m : MemState) (size : Nat) : DecidablePred (m.ValidAlloc size) := by
   unfold ValidAlloc; infer_instance
 
 private def zeroedAt (size start : Nat) : Allocation := ⟨Word.ofNat start, ⟨.replicate size 0⟩⟩
 
-instance (live : List Allocation) (size : Nat) : Decidable (∃ a', ValidAlloc live size a') :=
-  decidable_of_iff (∃ s ∈ (0 : Nat) :: live.map Allocation.end, s < Word.size ∧
-      s + size ≤ Word.size ∧ ∀ a ∈ live, a.range.Disjoint ⟨s, size⟩) <| by
-    have valid {t} (ht : t < Word.size) : ValidAlloc live size (zeroedAt size t) ↔
-        t + size ≤ Word.size ∧ ∀ a ∈ live, a.range.Disjoint ⟨t, size⟩ := by
+instance (m : MemState) (size : Nat) : Decidable (∃ a', m.ValidAlloc size a') :=
+  decidable_of_iff (∃ s ∈ (0 : Nat) :: m.taken.map NatRange.end, s < Word.size ∧
+      s + size ≤ Word.size ∧ ∀ r ∈ m.taken, r.Disjoint ⟨s, size⟩) <| by
+    have valid {t} (ht : t < Word.size) : m.ValidAlloc size (zeroedAt size t) ↔
+        t + size ≤ Word.size ∧ ∀ r ∈ m.taken, r.Disjoint ⟨t, size⟩ := by
       have : (Word.ofNat t).toNat = t := Nat.mod_eq_of_lt ht
       have hsz : (⟨.replicate size 0⟩ : ByteArray).size = size := by simp [ByteArray.size]
       simp [ValidAlloc, Allocation.range, Allocation.end, Allocation.size, zeroedAt, hsz, this]
     refine ⟨fun ⟨_, _, ht, h⟩ => ⟨_, (valid ht).2 h⟩, fun ⟨a', hsize, hfit, hdisj⟩ => ?_⟩
     have hlt : a'.start.toNat < Word.size := a'.start.isLt
-    replace hdisj : ∀ a ∈ live, a.range.Disjoint ⟨a'.start.toNat, size⟩ := by
+    replace hdisj : ∀ r ∈ m.taken, r.Disjoint ⟨a'.start.toNat, size⟩ := by
       simpa [Allocation.range, hsize] using hdisj
     replace hfit : a'.start.toNat + size ≤ Word.size := by simpa [Allocation.end, hsize] using hfit
     generalize a'.start.toNat = t at hlt hdisj hfit
     induction t with
     | zero => exact ⟨0, .head _, hlt, hfit, hdisj⟩
     | succ t ih =>
-      by_cases he : ∃ a ∈ live, a.end = t + 1
+      by_cases he : ∃ r ∈ m.taken, r.end = t + 1
       · exact ⟨t + 1, .tail _ (List.mem_map.2 he), hlt, hfit, hdisj⟩
-      · refine ih (by omega) (fun a ha => ?_) (by omega)
-        have := hdisj a ha
-        have : a.end ≠ t + 1 := fun h => he ⟨a, ha, h⟩
-        simp only [NatRange.Disjoint, NatRange.end, Allocation.range, Allocation.end,
-          Allocation.size] at *
+      · refine ih (by omega) (fun r hr => ?_) (by omega)
+        have := hdisj r hr
+        have : r.end ≠ t + 1 := fun h => he ⟨r, hr, h⟩
+        simp only [NatRange.Disjoint, NatRange.end] at *
         omega
 
+end MemState
+
 inductive MemoryBranchOp
-  | alloc (size : Word) (live : List Allocation) (ha : ∃ a', ValidAlloc live size.toNat a')
+  | pick (n : Nat) (h : 0 < n)
+  | alloc (size : Word) (mem : MemState) (ha : ∃ a', mem.ValidAlloc size.toNat a')
 
 abbrev MemoryND : NonDeterminism where
   Op := MemoryBranchOp
   Resp
-    | .alloc size live _ha => { a' : Allocation // ValidAlloc live size.toNat a' }
+    | .pick n _ => Fin n
+    | .alloc size mem _ha => { a' : Allocation // mem.ValidAlloc size.toNat a' }
   resp_nonempty
+    | .pick _ h => ⟨0, h⟩
     | .alloc _ _ ha => let ⟨a, h⟩ := ha; ⟨a, h⟩
-
-abbrev MemState := Array Allocation
-
-def MemState.live : MemState → Array Allocation := id
-def MemState.push : MemState → Allocation → MemState := Array.push
-
-namespace MemState
-
-/-- Evidence that one allocation of `m` holds all of `[offset, offset + length)`. -/
-abbrev Region (m : MemState) (offset : Word) (length : Nat) :=
-  { j : Fin m.size // m[j].start.toNat ≤ offset.toNat ∧ offset.toNat + length ≤ m[j].end }
-
-def inBounds (m : MemState) (offset : Word) (length : Nat) : Option (m.Region offset length) :=
-  (List.finRange m.size).findSome? fun j =>
-    if h : m[j].start.toNat ≤ offset.toNat ∧ offset.toNat + length ≤ m[j].end then some ⟨j, h⟩
-    else none
-
-def read (m : MemState) {offset : Word} {length : Nat} (r : m.Region offset length) : ByteArray :=
-  let start := (offset - m[r.1].start).toNat
-  m[r.1].bytes.extract start (start + length)
-
-def write (m : MemState) {offset : Word} {length : Nat} (bytes : ByteArray)
-    (r : m.Region offset length) : MemState :=
-  m.modify r.1 fun a => { a with bytes := bytes.copySlice 0 a.bytes (offset - a.start).toNat length }
-
-end MemState
 
 def memStep {X : Type} (mem : MemState) : Step EvalE .none Empty X → Step HostE MemoryND UB (MemState × X)
   | .silent x => .silent (mem, x)
@@ -92,8 +95,8 @@ def memStep {X : Type} (mem : MemState) : Step EvalE .none Empty X → Step Host
   | .impure (.inr sirOp) k => match sirOp with
     | .ub ub => .pure ub
     | .alloc kind size =>
-      if h : ∃ a', ValidAlloc mem.live.toList size.toNat a'
-      then .branch (.alloc size mem.live.toList h) fun ⟨a', _⟩ =>
+      if h : ∃ a', mem.ValidAlloc size.toNat a' then
+        .branch (.alloc size mem h) fun ⟨a', _⟩ =>
         let a' := match kind with
           | .zeroed => { a' with bytes := ⟨.replicate a'.size 0⟩ }
           | .uninitialized => a'
@@ -119,6 +122,11 @@ def memStep {X : Type} (mem : MemState) : Step EvalE .none Empty X → Step Host
   | .pure a => nomatch a
   | .branch c _ => nomatch c
 
-def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB := CoFree.interp memStep #[] sir
+
+def CompilerReservedBytes : Nat := 2^32
+
+def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB := do
+  let start ← branch (N := MemoryND) (.pick (Word.size - CompilerReservedBytes) (by decide))
+  CoFree.interp memStep { live := #[], reserved := ⟨start.val, CompilerReservedBytes⟩ } sir
 
 end Sir

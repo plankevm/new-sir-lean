@@ -11,7 +11,7 @@ inductive ExecutionModeKind : Type | creation | call deriving DecidableEq
 
 inductive ExecutionMode : Type
   | creation (constructorData : ByteArray)
-  | call (static : Bool) (calldata : ByteArray)
+  | call (static : Bool) (calldata : BytesX32)
 
 def ExecutionMode.kind : ExecutionMode → ExecutionModeKind
   | creation _ => .creation
@@ -23,7 +23,7 @@ def ExecutionMode.static : ExecutionMode → Bool
 
 def ExecutionMode.calldata : ExecutionMode → ByteArray
   | .creation _ => .empty
-  | .call _ cd => cd
+  | .call _ cd => cd.val
 
 /-- The frame's constants: the transaction, the block, the code being run, and whether the frame
 may change state. -/
@@ -70,7 +70,7 @@ inductive HostOp
 
 def HostOp.Resp : HostOp → Type
   | .gas | .selfbalance => Word
-  | .returndata => ByteArray
+  | .returndata => BytesX32
   | .balance _ | .extcodehash _ => Word
   | .extcode _ => ByteArray
   | .sload _ | .tload _ => Word

@@ -1,3 +1,4 @@
+import Host.Bytes
 import Host.Word
 import Host.Keccak
 import ITree.Effect
@@ -37,7 +38,6 @@ structure World where
 structure World.Unset (s : World) (a : Address) : Prop where
   persistent_unset : ∀ k, s.store.persistent k = 0
   transient_unset : ∀ k, s.store.transient k = 0
-  bal_zero : s.accounts.balance a = 0
   no_extcode : s.accounts.extcode a = .empty
 
 inductive WorldOp
@@ -49,9 +49,9 @@ inductive WorldOp
 def WorldOp.Resp : WorldOp → Type
   | .gas => Word
   | .log .. => Unit
-  | .call .staticcall .. => Bool × ByteArray
-  | .call .. => Bool × ByteArray × World
-  | .create .. => Address × ByteArray × World
+  | .call .staticcall .. => Bool × BytesX32
+  | .call .. => Bool × BytesX32 × World
+  | .create .. => Address × BytesX32 × World
 
 abbrev WorldE : Effect := ⟨WorldOp, WorldOp.Resp⟩
 

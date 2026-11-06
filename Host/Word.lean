@@ -146,6 +146,3 @@ theorem toWord_lt (a : Address) : a.toWord.toNat < 2 ^ 160 := by
 
 end Address
 
-/-- `len` bytes of `b` from `off`, zero past its end (calldata/code/returndata reads). -/
-def ByteArray.slicePad (b : ByteArray) (off len : Nat) : ByteArray :=
-  ⟨(Array.range len).map fun i => if h : off + i < b.size then b[off + i] else 0⟩

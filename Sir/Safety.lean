@@ -1,28 +1,22 @@
 import Sir.Ir
 import Sir.Layout
 import Sir.Eval
+import Sir.Equivalence
 import ITree.Outcome
 
 open CoFree
 
 namespace Sir
 
-def RunSafe {O : Type}: CoFree Host.WorldE MemoryND (UB ⊕ O) → Prop :=
-  fun sir => Deterministic sir ∧ ¬∃ ub : UB, HasResOutcome sir (.inl ub)
+def MainSafe  (p : Program) (l : Layout p) (imms : MainImmutables) : Prop :=
+  ∀ e static cd w₀, Deterministic (p.runMain l imms static cd e w₀)
 
-def MainSafe  (p : Program) (imms : MainImmutables) (l : Layout p) : Prop :=
-  ∀ env static calldata w₀, RunSafe (p.runMain l imms static calldata env w₀)
-
-def InitSafe  (p : Program) (l : Layout p) : Prop :=
-  ∀ env ctorArgs w₀, RunSafe (p.runInit l ctorArgs env w₀)
-
-def Safe : Program → Prop :=
-  fun p =>
-    Nonempty (Layout p) ∧
-    ∀ l env ctorArgs w₀,
-      w₀.Unset env.address →
-      let init := p.runInit l ctorArgs env w₀
-      RunSafe init ∧
-      ∀ imms w', HasResOutcome init (.inr (.ret imms w')) → imms.WF p ∧ MainSafe p imms l
+def Safe (p : Program) : Prop :=
+  Equiv p p ∧
+  ∀ l e c w₀,
+    w₀.Unset e.address →
+    let init := p.runInit l c e w₀
+    Deterministic init ∧
+    ∀ imms w', HasResOutcome init (.inr (.ret imms w')) → imms.WF p ∧ MainSafe p l imms
 
 end Sir

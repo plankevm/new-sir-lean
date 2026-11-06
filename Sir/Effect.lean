@@ -40,6 +40,8 @@ abbrev SirE : Effect := ⟨SirOp, SirOp.Resp⟩
 abbrev EvalE := Host.HostE ⊕ₑ SirE
 abbrev SirM (α : Type) : Type 1 := CoFree EvalE .none α
 
+universe u
+
 private def sir_op (op : SirE.Op) : SirM (SirE.Resp op) := CoFree.perform (E := EvalE) (Sum.inr op)
 def alloc_zeroed (size : Word) := sir_op (.alloc .zeroed size)
 def alloc_uninit (size : Word) := sir_op (.alloc .uninitialized size)
@@ -48,6 +50,6 @@ def mem.write (offset : Word) (bytes : ByteArray) := sir_op (.write offset bytes
 def mem.copy (copy : MemCopy)  := sir_op (.copy copy)
 def ub {α : Type} (ub : UB) : SirM α := do nomatch ← sir_op (.ub ub)
 def malformed {α : Type} (reason : String) := ub (α := α) <| .malformed reason
-def returndata.size : SirM Word := (·.size) <$> Host.returndata
+def returndata.size : SirM Word := (·.val.size) <$> Host.returndata
 
 end Sir

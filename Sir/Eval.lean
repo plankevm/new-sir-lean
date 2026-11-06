@@ -38,15 +38,16 @@ def Context.checkStateful (ctx : Context) : SirM Unit := do
   if ctx.mode.static then
     Host.halt .invalid
 
-def Context.code (ctx : Context) : SirM ByteArray := match hmode : ctx.mode with
-  | .creation ctorData => pure (ctx.layout.init ++ ctorData)
-  | .call _ _ => do
-      let some code := ctx.layout.withSetImmutables (hmode ▸ ctx.immutables).getMain
-        | malformed "ill-formed immutables"
-      pure code
+def Context.code (ctx : Context) : SirM ByteArray := do
+  match hmode : ctx.mode with
+  | .creation ctorData => return (ctx.layout.init ++ ctorData)
+  | .call _ _ =>
+    let imms := (hmode ▸ ctx.immutables).getMain
+    let some code := ctx.layout.withSetImmutables imms | malformed "ill-formed immutables"
+    return code
 
 def mem.writeFromSlice (dst : Word) (src : ByteArray) (offset length : Word) : SirM Unit :=
-  write dst (src.slicePad offset.toNat length.toNat)
+  write dst (src.slicePadded offset.toNat length.toNat)
 
 def UnOp.eval : UnOp → Word → Word
   | .iszero, a => Word.iszero a
@@ -109,23 +110,29 @@ def execCall (ctx : Context) (ck : CallKind) (gas to inOff inLen outOff outLen :
   let succ : Bool ← Host.host <| .call ck gas (.ofWord to) input
   let retSize ← returndata.size
   let copiedOutLen := if retSize ≤ outLen then retSize else outLen
-  mem.writeFromSlice outOff (← Host.returndata) 0 copiedOutLen
+  mem.writeFromSlice outOff (← Host.returndata).val 0 copiedOutLen
   return .ofBool succ
 
 def Context.getImmutable (ctx : Context) (id : ImmutableId) : SirM Word := do
-  let henv : { p : Bool × ByteArray // ctx.mode = .call p.1 p.2 }
-    ← match henv : ctx.mode with
-    | .creation _ => malformed "getting immutable in init"
-    | .call a b => pure ⟨(a, b), henv⟩
-  let i : Fin ctx.program.immutables.size
-    ← if hvalid : id.id < ctx.program.immutables.size
-    then pure ⟨id.id, hvalid⟩
-    else malformed "invalid immutable id"
-  let imms := ctx.immutables
-  have heq : ctx.mode.kind = .call := by simp [ExecutionMode.kind, henv.property]
-  let some v := (heq ▸ imms).getMain.slots[i.val]? | malformed "missing immutable slot"
-  unless v.HasSize ctx.program.immutables[i] do malformed "immutable value too large for slot"
+  let imm_slots ← match heq : ctx.mode.kind with
+    | .creation => malformed "getting immutable in init"
+    | .call => pure (heq ▸ ctx.immutables).getMain.slots
+  let some imm_size := ctx.program[id]?  | malformed  "invalid immutable id"
+  let some v := imm_slots[id.id]? | malformed "missing immutable slot"
+  unless v.HasSize imm_size do malformed "immutable value too large for slot"
   return v
+
+def Context.getDataOffset (ctx : Context) (id : DataId) : SirM Word := do
+  let i :=
+    ← if hvalid : ctx.program.ValidDataId id
+    then pure ⟨id.id, hvalid⟩
+    else malformed "undefined data id"
+  match ctx.mode.kind with
+  | .creation => pure <| (.ofU32 ·.val) <| ctx.layout.initDataOffsets i
+  | .call => do
+    if hmd : i ∈ ctx.program.mainDatas then
+      return (.ofU32 ·.val) <| ctx.layout.mainDataOffsets i hmd
+    else malformed "data not defined in main"
 
 def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .unop op a => pure (op.eval a)
@@ -140,7 +147,7 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .blobhash i => pure (ctx.env.blobhash i)
   | .sload k => Host.persistent.load k
   | .tload k => Host.transient.load k
-  | .calldataload offset => ctx.mode.calldata.slicePad offset.toNat 32 |> Word.ofBytes |> pure
+  | .calldataload offset => ctx.mode.calldata.slicePadded offset.toNat 32 |> Word.ofBytes |> pure
   | .calldatasize => pure ctx.mode.calldata.size
   | .codesize => return (← ctx.code).size
   | .extcodesize a => (·.size) <$> Host.extcode (.ofWord a)
@@ -165,17 +172,8 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
       execCall ctx .delegatecall gas to inOff inLen outOff outLen
   | .staticcall gas to inOff inLen outOff outLen => do
       execCall ctx .staticcall gas to inOff inLen outOff outLen
-  | .dataOffset d => do
-      let i :=
-        ← if hvalid : ctx.program.ValidDataId d
-        then pure ⟨d.id, hvalid⟩
-        else malformed "undefined data id"
-      match ctx.mode with
-      | .creation _ => pure <| (.ofU32 ·.val) <| ctx.layout.initDataOffsets i
-      | .call _ _ => do
-          if hmd : i ∈ ctx.program.mainDatas then
-            return (.ofU32 ·.val) <| ctx.layout.mainDataOffsets i hmd
-          else malformed "data not defined in main"
+  | .dataOffset d =>
+    ctx.getDataOffset d
   | .mainStartOffset => do
       unless (ctx.mode.kind = .creation) do malformed "accessing main start outside of init"
       return .ofU32 ctx.layout.mainStartOffset.val
@@ -199,7 +197,7 @@ def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
   | .returndatacopy dst offset length => do
       unless (offset.toNat + length.toNat ≤ (← returndata.size))
         do Host.halt .invalid
-      mem.writeFromSlice dst (← Host.returndata) offset length
+      mem.writeFromSlice dst (← Host.returndata).val offset length
   | .log0 offset length => log ctx offset length #[]
   | .log1 offset length t0 => log ctx offset length #[t0]
   | .log2 offset length t0 t1 => log ctx offset length #[t0, t1]
@@ -250,26 +248,34 @@ def evalFn (ctx : Context) : CallI → SirM CallO := CoFree.fix fun evalFn (fn, 
           vars ← vars.assignAll outs results
     let ctrl ← liftM (block.control.resolve vars.lookup)
     bi ← match ctrl with
-      | .iret => return ← vars.lookupAll block.outputs
+      | .iret =>
+        let .values count := fn.returns | malformed "iret from never function"
+        let outs ← vars.lookupAll block.outputs
+        unless count = outs.size do malformed "iret outs != return value count"
+        return outs
       | .continuesTo dst => pure dst
       | .branches cond nonZero zero => pure (if cond ≠ 0 then nonZero else zero)
       | .switch cond cases fallback => evalSwitch cond cases fallback
       | .stop => Host.halt (.ret .empty)
-      | .return offset length => do
+      | .return offset length =>
           let data ← mem.read offset length
           Host.halt (.ret data)
-      | .revert offset length => do
+      | .revert offset length =>
           let data ← mem.read offset length
           Host.halt (.revert data)
       | .invalid => Host.halt .invalid
-      | .selfdestruct a => Host.halt (.selfdestruct (.ofWord a))
-      | .icallNever fn args => do
+      | .selfdestruct a =>
+        ctx.checkStateful
+        Host.halt (.selfdestruct (.ofWord a))
+      | .icallNever fn args =>
           let _ ← evalFn (fn, args)
           malformed "icall never returned"
     inputs ← vars.lookupAll block.outputs
 
 def runInner (ctx : Context) : SirM Empty := do
-  let entryFn := ctx.program[ctx.mode.kind]
+  let entryFn := match ctx.mode.kind with
+    | .creation => ctx.program.init
+    | .call => ctx.program.main
   let _ ← evalFn ctx (entryFn, #[])
   malformed "top-level entry point returned instead of terminating"
 
@@ -314,10 +320,15 @@ def Program.runMain
   (layout : Layout p)
   (imms : MainImmutables)
   (static : Bool)
-  (calldata : ByteArray)
+  (calldata : BytesX32)
   (env : Env)
   (w₀ : World)
   : CoFree WorldE MemoryND (UB ⊕ Outcome) :=
   p.run layout (.call static calldata) env (.main imms) w₀
+
+def DefinedAnd {α : Type} (r : α → α → Prop) : UB ⊕ α → UB ⊕ α → Prop
+  | .inl _ub, _ => False
+  | _, .inl _ub => False
+  | .inr a, .inr b => r a b
 
 end Sir
