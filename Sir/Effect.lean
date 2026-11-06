@@ -9,6 +9,7 @@ open CoFree
 
 inductive UB
   | malformed (reason : String)
+  | unsoundMain
   | switchNoMatch
   | illegalOverflow
   | memoryOutOfBounds (offset : Word) (length : Nat)

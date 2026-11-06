@@ -209,7 +209,6 @@ def Stmt.exec (ctx : Context) : Stmt Word → SirM Unit
         if h : ctx.program.ValidImmutableId id
         then pure ⟨id.id, h⟩
         else malformed "invalid immutable id"
-      unless v.HasSize ctx.program.immutables[i] do malformed "immutable value too large for slot"
       for ⟨offset, _⟩ in ctx.layout.immutableOffsets i do
         -- Unsure if overflow would already implicitly be UB here to making it explicit
         let slotPtr := ptr + Word.ofU32 offset
@@ -309,7 +308,7 @@ def Program.runInit
   |> Functor.map fun
     | .inr (.ret returnedMain s') => match layout.toMainImmutables returnedMain with
       | .some m => .inr (.ret m s')
-      | .none => .inl (.malformed "unsound main returned")
+      | .none => .inl .unsoundMain
     | .inr (.revert d) => .inr (.revert d)
     | .inr .invalid => .inr .invalid
     | .inr (.selfdestruct b s') => .inr (.selfdestruct b s')

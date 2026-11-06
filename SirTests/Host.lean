@@ -26,7 +26,7 @@ def startState : World := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 1, fun _ 
 structure TestWorld where
   start : World := startState
   after : Store → World := fun st => { startState with store := st }
-  callResult : Bool × ByteArray := (true, .empty)
+  callResult : Bool × BytesX32 := (true, .empty)
   logs : Array (List Word × List UInt8) := #[]
   calls : Array (CallKind × Address × List UInt8) := #[]
   ops : Nat := 0
@@ -45,26 +45,27 @@ def answer : (op : WorldOp) → TestM (WorldOp.Resp op)
   | .call .staticcall _ account input _ => do
     modify fun w => { w with calls := w.calls.push (.staticcall, account, input.toList) }
     let w ← get
-    countOp (w.callResult : Bool × ByteArray)
+    countOp (w.callResult : Bool × BytesX32)
   | .call (.call value) _ account input st => do
     modify fun w => { w with calls := w.calls.push (.call value, account, input.toList) }
     let w ← get
-    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × World)
+    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × BytesX32 × World)
   | .call .delegatecall _ account input st => do
     modify fun w => { w with calls := w.calls.push (.delegatecall, account, input.toList) }
     let w ← get
-    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × ByteArray × World)
+    countOp ((w.callResult.1, w.callResult.2, w.after st) : Bool × BytesX32 × World)
   | .create _ salt _ st => do
     let w ← get
-    countOp (((if salt.isSome then 0xC2 else 0xC1 : Address), ByteArray.empty, w.after st) :
-      Address × ByteArray × World)
+    countOp (((if salt.isSome then 0xC2 else 0xC1 : Address), BytesX32.empty, w.after st) :
+      Address × BytesX32 × World)
 
 /-- Places every allocation after the highest live one, from `0x80`. -/
 def place : (c : MemoryND.Op) → TestM (MemoryND.Resp c)
-  | .alloc size live _ => do
-    let start := live.foldl (fun s a => max s a.end) 0x80
+  | .pick n _ => if h : 0x80 < n then pure ⟨0x80, h⟩ else throw "pick"
+  | .alloc size mem _ => do
+    let start := mem.taken.foldl (fun s r => max s r.end) 0x80
     let a : Allocation := ⟨Word.ofNat start, ⟨.replicate size.toNat 0⟩⟩
-    if h : ValidAlloc live size.toNat a then pure ⟨a, h⟩ else throw "alloc"
+    if h : mem.ValidAlloc size.toNat a then pure ⟨a, h⟩ else throw "alloc"
 
 def testEnv : Env where
   address := 0xA0
@@ -128,7 +129,7 @@ def runInit (p : Program) (l : Layout p := by exact plainLayout _) (env : Env :=
   runWith p l (.creation .empty) env .init world fuel
 
 def runMain (p : Program) (imms : MainImmutables) (l : Layout p := by exact plainLayout _)
-    (env : Env := testEnv) (static : Bool := false) (calldata : ByteArray := .empty)
+    (env : Env := testEnv) (static : Bool := false) (calldata : BytesX32 := ⟨.empty, by simp⟩)
     (world : TestWorld := {}) (fuel : Nat := 100000) : Run :=
   runWith p l (.call static calldata) env (.main imms) world fuel
 

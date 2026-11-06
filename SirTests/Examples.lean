@@ -375,7 +375,7 @@ def entryReturnsValues : Program := sir! {
 }
 
 def runOut (p : Program) (l : Layout p := by exact plainLayout _) : Run :=
-  runInit p l (world := { callResult := (true, ⟨#[1, 2, 3]⟩) })
+  runInit p l (world := { callResult := (true, ⟨⟨#[1, 2, 3]⟩, by decide⟩) })
 
 def wordBytes (n : Nat) : List UInt8 := (Word.toBytes b32 (BitVec.ofNat 256 n)).toList
 
@@ -385,7 +385,7 @@ def checks : List (String × Bool) :=
   let mem := runInit memory
   let call := runOut (callsThen #[])
   let spun := runInit spinLogging (fuel := 1000)
-  let env := runMain environment noImmutables envLayout (calldata := ⟨#[1, 2, 3]⟩)
+  let env := runMain environment noImmutables envLayout (calldata := ⟨⟨#[1, 2, 3]⟩, by decide⟩)
   [ ("loop sums 0..9", (runInit loopSum).result == .ret [] && (runInit loopSum).slot 0 == 45),
     ("pure ops in stack order", (runInit pureOps).result == .ret [] &&
       (runInit pureOps).slots [0, 3, 4, 1] == [7, 80, 1, 1]),
@@ -394,7 +394,7 @@ def checks : List (String × Bool) :=
     ("memory: mload8, partial mstore16, keccak, mcopy into mallocany",
       mem.result == .ret [] && mem.slots [0, 1, 2, 3] == ([0xAB, (0xABBEEF : Word) <<< 232,
        0x3e889ef1ce94d5e823a41b0e65c5e971dcd08e9d92a3dff1038a5eeefc54f39d, 0xABBEEF00] : List Word)),
-    ("UB: out-of-allocation read", (runInit oobRead).result == .ub (.memoryOutOfBounds 0x80 32)),
+    ("UB: out-of-allocation read", (runInit oobRead).result == .ub (.memoryOutOfBounds (Sir.CompilerReservedBytes + 0x80) 32)),
     ("UB: no placement for an allocation",
       (runInit outOfMemory).result == .ub (.outOfMemory (BitVec.allOnes 256))),
     ("memory: log2", mem.world.logs.toList == [([0, 1], [0xAB, 0xBE, 0xEF, 0])]),
@@ -414,11 +414,11 @@ def checks : List (String × Bool) :=
     ("returndatacopy out of bounds is invalid",
       (runOut (callsThen #[.stmt (.returndatacopy 2 13 13)])).result == .invalid),
     ("UB: call output written past the allocation",
-      (runOut callOutputPastAlloc).result == .ub (.memoryOutOfBounds 0x83 2)),
+      (runOut callOutputPastAlloc).result == .ub (.memoryOutOfBounds (Sir.CompilerReservedBytes + 0x83) 2)),
     ("call writes only the bytes returned, not the whole requested range",
       (runOut callShortOutput).result == .ret []),
     ("UB: returndatacopy destination past the allocation",
-      (runOut returnDataCopyPastAlloc).result == .ub (.memoryOutOfBounds 0x83 2)),
+      (runOut returnDataCopyPastAlloc).result == .ub (.memoryOutOfBounds (Sir.CompilerReservedBytes + 0x83) 2)),
     ("returndatacopy source past the return data is invalid even if the destination is too",
       (runOut returnDataCopyPastBoth).result == .invalid),
     ("switch takes the matching case", (runInit (switchOn 7)).slots [1, 2] == [0, 2]),

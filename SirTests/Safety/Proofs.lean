@@ -29,13 +29,13 @@ section Returns
 
 variable {E : Effect.{u}} {N N₁ N₂ : NonDeterminism.{u}} {A : Type u} {a : A}
 
-lemma Returns.same {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ A} (h₁ : Returns a m₁) (h₂ : Returns a m₂) :
-    Same Eq m₁ m₂ := by
-  refine ⟨fun x y => Returns a x ∧ Returns a y, ⟨h₁, h₂⟩, fun x y ⟨hx, hy⟩ => ?_⟩
+lemma Returns.same {B : Type u} {b : B} {R : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+    (h₁ : Returns a m₁) (h₂ : Returns b m₂) (hr : R a b) : Same R m₁ m₂ := by
+  refine ⟨fun x y => Returns a x ∧ Returns b y, ⟨h₁, h₂⟩, fun x y ⟨hx, hy⟩ => ?_⟩
   induction hx with
   | now hx =>
     induction hy with
-    | now hy => exact .ret a a hx hy rfl
+    | now hy => exact .ret a b hx hy hr
     | silent hy hy' ih => exact .silentR hy (ih ⟨.now hx, hy'⟩)
     | branch hy hy' ih => exact .branchR _ hy fun r => ih r ⟨.now hx, hy' r⟩
   | silent hx hx' ih => exact .silentL hx (ih ⟨hx', hy⟩)
@@ -79,9 +79,23 @@ lemma Returns.map {B : Type u} {b : B} (f : A → B) {m : CoFree E N A} (h : Ret
   | silent hm _ ih => exact .silent (by rw [e, observe_bind, hm]; rfl) ih
   | branch hm _ ih => exact .branch (by rw [e, observe_bind, hm]; rfl) ih
 
-lemma Returns.runSafe {O : Type} {m : CoFree WorldE MemoryND (UB ⊕ O)} {o : O}
-    (h : Returns (.inr o) m) : RunSafe m :=
-  ⟨h.same h, fun ⟨_, ho⟩ => by cases h.outcome ho⟩
+lemma Returns.deterministic {m : CoFree E N A} (h : Returns a m) : Deterministic m :=
+  h.same h rfl
+
+lemma Returns.same_inv {B : Type u} {b : B} {R : A → B → Prop} {m₁ : CoFree E N₁ A} {m₂ : CoFree E N₂ B}
+    (h : Same R m₁ m₂) (h₁ : Returns a m₁) (h₂ : Returns b m₂) : R a b := by
+  induction h₁ with
+  | now hx =>
+    induction h₂ with
+    | now hy => exact h.ret_inv hx hy
+    | silent hy _ ih => exact ih (h.silentR_inv hy)
+    | branch hy _ ih =>
+      obtain ⟨r⟩ := N₂.resp_nonempty _
+      exact ih r (h.branchR_inv hy r)
+  | silent hx _ ih => exact ih (h.silentL_inv hx)
+  | branch hx _ ih =>
+    obtain ⟨r⟩ := N₁.resp_nonempty _
+    exact ih r (h.branchL_inv hx r)
 
 end Returns
 
@@ -185,14 +199,14 @@ def initRun (l : Layout noop) (cd : ByteArray) (e : Env) : SirM Empty :=
   skip 1000 (runInner ⟨noop, l, .creation cd, e, .init⟩)
 
 def copied (l : Layout noop) (cd : ByteArray) : ByteArray :=
-  (l.init ++ cd).slicePad (Word.ofU32 l.mainStartOffset.val).toNat (l.main.size : Word).toNat
+  (l.init ++ cd).slicePadded (Word.ofU32 l.mainStartOffset.val).toNat (l.main.size : Word).toNat
 
 variable {X : Type} {mem : MemState}
 
 lemma memStep_alloc_zeroed {size : Word} {k : Word → X}
-    (h : ∃ a', ValidAlloc mem.live.toList size.toNat a') :
+    (h : ∃ a', mem.ValidAlloc size.toNat a') :
     memStep mem (.impure (.inr (.alloc .zeroed size)) k) =
-      .branch (.alloc size mem.live.toList h) fun x =>
+      .branch (.alloc size mem h) fun x =>
         (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem, k x.1.start) := by
   show dite _ _ _ = _
   simp only [h, ↓reduceDIte]
@@ -219,9 +233,9 @@ lemma memStep_read {w len : Word} {k : ByteArray → X} (h : len ≠ 0)
   show ite _ _ _ = _
   simp only [h, hr, ↓reduceIte]
 
-lemma inBounds_singleton (a : Allocation) {w : Word} {len : Nat}
+lemma inBounds_singleton (r : NatRange) (a : Allocation) {w : Word} {len : Nat}
     (h : a.start.toNat ≤ w.toNat ∧ w.toNat + len ≤ a.end) :
-    MemState.inBounds #[a] w len = some ⟨⟨0, Nat.zero_lt_one⟩, h⟩ := by
+    MemState.inBounds ⟨r, #[a]⟩ w len = some ⟨⟨0, Nat.zero_lt_one⟩, h⟩ := by
   unfold MemState.inBounds
   show List.findSome? _ [(⟨0, Nat.zero_lt_one⟩ : Fin 1)] = _
   simp [h]
@@ -244,8 +258,8 @@ lemma halts_ret {o : SimplifiedOutcome} {k : Empty → SirM Empty}
 
 lemma halts_alloc {size : Word} {k : Word → SirM Empty}
     (h : t.observe = .impure (.inr (.alloc .zeroed size)) k)
-    (hex : ∃ a', ValidAlloc mem.live.toList size.toNat a')
-    (hk : ∀ x : { a' // ValidAlloc mem.live.toList size.toNat a' },
+    (hex : ∃ a', mem.ValidAlloc size.toNat a')
+    (hk : ∀ x : { a' // mem.ValidAlloc size.toNat a' },
       Halts op (CoFree.interp memStep (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem)
         (k x.1.start))) :
     Halts op (CoFree.interp memStep mem t) := by
@@ -282,6 +296,30 @@ lemma halts_read {w len : Word} {k : ByteArray → SirM Empty}
   obtain ⟨k', hk', ho⟩ := observe_interpMem_impure (mem := mem) h
   exact .silent (ho.trans (congrArg (Step.map _) (memStep_read hl hr)))
     (Halts.of_eq (congrArg (CoFree.interp memStep _) (hk' _)) hk)
+
+lemma Halts.of_observe {m m' : CoFree HostE MemoryND UB} (h : m.observe = m'.observe) (hm : Halts op m') :
+    Halts op m := by
+  cases hm with
+  | now h' => exact .now (h.trans h')
+  | silent h' hm => exact .silent (h.trans h') hm
+  | branch h' hk => exact .branch (h.trans h') hk
+
+lemma observe_interpMem_reserve : ∀ (t : SirM Empty) (hn : 0 < Word.size - CompilerReservedBytes),
+    (interpMem t).observe = .branch (MemoryBranchOp.pick (Word.size - CompilerReservedBytes) hn) fun s =>
+      CoFree.bind (CoFree.pure (E := HostE) (N := MemoryND) s)
+        fun s => CoFree.interp (fun {X} => memStep (X := X))
+          { live := #[], reserved := ⟨s.val, CompilerReservedBytes⟩ } t := by
+  intro t hn
+  kernel_rfl
+
+lemma halts_interpMem :
+    (∀ s : Fin (Word.size - CompilerReservedBytes), Halts (E := HostE) op
+      (CoFree.interp memStep { live := #[], reserved := ⟨s.val, CompilerReservedBytes⟩ } t)) →
+    Halts (E := HostE) op (interpMem t) := by
+  intro h
+  refine .branch (observe_interpMem_reserve t (by decide)) fun s => Halts.of_observe ?_ (h s)
+  rw [observe_bind, observe_pure]
+  rfl
 
 end Steps
 
@@ -330,20 +368,61 @@ lemma copied_eq (l : Layout noop) (cd : ByteArray) : copied l cd = l.main := by
     exact Option.some.inj hm
   have h2 : l.mainStartOffset.val.toNat + i < (l.init ++ cd).size := by
     rw [ByteArray.size_append]; omega
-  simp only [copied, ByteArray.slicePad, ByteArray.getElem_eq_getElem_data, Array.getElem_map, Array.getElem_range,
+  simp only [copied, ByteArray.slicePadded, ByteArray.getElem_eq_getElem_data, Array.getElem_map, Array.getElem_range,
     hoff, h2, ↓reduceDIte]
   rw [← ByteArray.getElem_eq_getElem_data, ByteArray.getElem_append_left hlt, hm',
     ByteArray.getElem_eq_getElem_data]
 
+lemma inBounds_second (r : NatRange) (a b : Allocation) {w : Word} {len : Nat}
+    (ha : ¬(a.start.toNat ≤ w.toNat ∧ w.toNat + len ≤ a.end))
+    (hb : b.start.toNat ≤ w.toNat ∧ w.toNat + len ≤ b.end) :
+    MemState.inBounds ⟨r, #[a, b]⟩ w len = some ⟨⟨1, Nat.one_lt_two⟩, hb⟩ := by
+  unfold MemState.inBounds
+  show List.findSome? _ [(⟨0, by decide⟩ : Fin 2), ⟨1, by decide⟩] = _
+  simp [ha, hb]
+
+lemma not_within_reserved {res a : Allocation} {len : Nat} (hlen : 0 < len)
+    (hd : res.range.Disjoint ⟨a.start.toNat, len⟩) :
+    ¬(res.start.toNat ≤ a.start.toNat ∧ a.start.toNat + len ≤ res.end) := by
+  simp only [NatRange.Disjoint, NatRange.end, Allocation.range, Allocation.end, Allocation.size] at *
+  omega
+
+lemma exists_alloc_after_reserved : ∀ {s : Nat}, s < Word.size - CompilerReservedBytes →
+    ∀ {n : Nat}, n < UInt32.size →
+    ∃ a', ({ live := #[], reserved := ⟨s, CompilerReservedBytes⟩ } : MemState).ValidAlloc n a' := by
+  intro s hs n hn
+  have hc : CompilerReservedBytes = 2 ^ 32 := rfl
+  generalize CompilerReservedBytes = c at hs hc ⊢
+  have hW : Word.size = 2 ^ 256 := rfl
+  have hU : UInt32.size = 2 ^ 32 := rfl
+  have hrep : (⟨.replicate n 0⟩ : ByteArray).size = n := Array.size_replicate
+  have htaken : ({ live := #[], reserved := ⟨s, c⟩ } : MemState).taken = [⟨s, c⟩] := rfl
+  rw [hW] at hs
+  rw [hU] at hn
+  by_cases hfit : s + c + n < 2 ^ 256
+  · have hlt : s + c < 2 ^ 256 := by omega
+    have hto : (BitVec.ofNat 256 (s + c)).toNat = s + c := by rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt hlt
+    refine ⟨⟨BitVec.ofNat 256 (s + c), ⟨.replicate n 0⟩⟩, hrep, ?_, ?_⟩
+    · simp only [Allocation.end, Allocation.size, hrep, hto, hW]; omega
+    · rw [htaken]
+      intro x hx
+      obtain rfl := List.mem_singleton.1 hx
+      simp only [NatRange.Disjoint, NatRange.end, Allocation.range, Allocation.size, hrep, hto]; omega
+  · refine ⟨⟨0, ⟨.replicate n 0⟩⟩, hrep, ?_, ?_⟩
+    · simp only [Allocation.end, Allocation.size, hrep, hW]; show 0 + n ≤ _; omega
+    · rw [htaken]
+      intro x hx
+      obtain rfl := List.mem_singleton.1 hx
+      simp only [NatRange.Disjoint, NatRange.end, Allocation.range, Allocation.size, hrep]
+      show _ ∨ 0 + n ≤ _; omega
+
 lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
     Halts (HostOp.halt (.ret l.main)) (interpMem (runInner ⟨noop, l, .creation cd, e, .init⟩)) := by
+  refine halts_interpMem fun s => ?_
   refine halts_skip 1000 (t := runInner ⟨noop, l, .creation cd, e, .init⟩) ?_
-  have hsz : (⟨.replicate l.main.size 0⟩ : ByteArray).size = l.main.size := Array.size_replicate
-  have hex : ∃ a', ValidAlloc (MemState.live #[]).toList (l.main.size : Word).toNat a' :=
-    ⟨⟨0, ⟨.replicate l.main.size 0⟩⟩, by rw [toNat_mainSize]; exact hsz, by
-      show 0 + (⟨.replicate l.main.size 0⟩ : ByteArray).size ≤ _
-      rw [hsz, Nat.zero_add]
-      exact Nat.le_of_lt (Nat.lt_trans l.main_u32 (by decide)), nofun⟩
+  have hex : ∃ a', ({ live := #[], reserved := ⟨s.val, CompilerReservedBytes⟩ } : MemState).ValidAlloc
+      (l.main.size : Word).toNat a' := by
+    rw [toNat_mainSize]; exact exists_alloc_after_reserved s.isLt l.main_u32
   refine halts_alloc (noop_alloc l cd e) hex fun ⟨a, ha⟩ => ?_
   refine halts_skip 1000 ?_
   by_cases hn : l.main.size = 0
@@ -363,12 +442,13 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
     have has : a.size = l.main.size := ha.1.trans (toNat_mainSize l)
     have hsa : (⟨.replicate a.size 0⟩ : ByteArray).size = l.main.size := Array.size_replicate.trans has
     have hss : (a.start - a.start).toNat = 0 := by rw [BitVec.sub_self]; rfl
-    have hw : MemState.inBounds #[⟨a.start, ⟨.replicate a.size 0⟩⟩] a.start (copied l cd).size =
+    let res : NatRange := ⟨s.val, CompilerReservedBytes⟩
+    have hw : MemState.inBounds ⟨res, #[⟨a.start, ⟨.replicate a.size 0⟩⟩]⟩ a.start (copied l cd).size =
         some ⟨⟨0, Nat.zero_lt_one⟩, Nat.le_refl _, by
           show a.start.toNat + _ ≤ a.start.toNat + (⟨.replicate a.size 0⟩ : ByteArray).size
           rw [size_copied, hsa]
           exact Nat.le_refl _⟩ :=
-      inBounds_singleton _ _
+      inBounds_singleton _ _ _
     refine halts_write (noop_write l cd e a.start) (by rw [size_copied]; exact hn) hw (halts_skip 1000 ?_)
     have hcs : (copied l cd).copySlice 0 ⟨.replicate a.size 0⟩ (a.start - a.start).toNat
         (copied l cd).size = copied l cd := by
@@ -377,37 +457,37 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
       rw [ByteArray.copySlice_eq_append, hss, ByteArray.extract_same, ByteArray.empty_append,
         Nat.zero_add, ByteArray.extract_zero_size, ByteArray.size_data, Nat.sub_zero, Nat.min_self, Nat.zero_add,
         hd, ByteArray.extract_same, ByteArray.append_empty]
-    have hm2 : ∀ r : MemState.Region #[⟨a.start, ⟨.replicate a.size 0⟩⟩] a.start (copied l cd).size,
-        MemState.write #[⟨a.start, ⟨.replicate a.size 0⟩⟩] (copied l cd) r = #[⟨a.start, copied l cd⟩] := by
-      intro ⟨j, _⟩
-      obtain rfl : j = ⟨0, Nat.zero_lt_one⟩ := Fin.ext (Nat.lt_one_iff.1 j.isLt)
-      exact congrArg (fun b : ByteArray => #[({ start := a.start, bytes := b } : Allocation)]) hcs
+    have hm2 : ∀ h, MemState.write ⟨res, #[⟨a.start, ⟨.replicate a.size 0⟩⟩]⟩ (copied l cd) ⟨⟨0, Nat.zero_lt_one⟩, h⟩ =
+        ⟨res, #[⟨a.start, copied l cd⟩]⟩ := fun _ =>
+      congrArg (fun b : ByteArray => (⟨res, #[({ start := a.start, bytes := b } : Allocation)]⟩ : MemState)) hcs
     refine Halts.of_eq (congrArg (fun m => CoFree.interp memStep m _) (hm2 _)) ?_
-    have hr : MemState.inBounds #[⟨a.start, copied l cd⟩] a.start (l.main.size : Word).toNat =
+    have hr : MemState.inBounds ⟨res, #[⟨a.start, copied l cd⟩]⟩ a.start (l.main.size : Word).toNat =
         some ⟨⟨0, Nat.zero_lt_one⟩, Nat.le_refl _, by
           show a.start.toNat + _ ≤ a.start.toNat + (copied l cd).size
           rw [size_copied, toNat_mainSize]
           exact Nat.le_refl _⟩ :=
-      inBounds_singleton _ _
+      inBounds_singleton _ _ _
     refine halts_read (noop_read l cd e a.start ()) (fun h => hn (by rw [← toNat_mainSize l, h]; rfl)) hr
       (halts_skip 1000 ?_)
-    have hb : ∀ r : MemState.Region #[⟨a.start, copied l cd⟩] a.start (l.main.size : Word).toNat,
-        MemState.read #[⟨a.start, copied l cd⟩] r = l.main := by
-      intro ⟨j, _⟩
-      obtain rfl : j = ⟨0, Nat.zero_lt_one⟩ := Fin.ext (Nat.lt_one_iff.1 j.isLt)
+    have hb : ∀ h, MemState.read ⟨res, #[⟨a.start, copied l cd⟩]⟩
+        (⟨⟨0, Nat.zero_lt_one⟩, h⟩ : MemState.Region ⟨res, #[⟨a.start, copied l cd⟩]⟩ a.start (l.main.size : Word).toNat) =
+        l.main := by
+      intro _
       show (copied l cd).extract (a.start - a.start).toNat ((a.start - a.start).toNat + _) = _
       rw [hss, Nat.zero_add, toNat_mainSize, ← size_copied l cd, ByteArray.extract_zero_size, copied_eq]
     exact Halts.op_eq (congrArg (fun b => HostOp.halt (.ret b)) (hb _)) (halts_ret (noop_ret l cd e a.start () _))
 
-lemma noop_stop (l : Layout noop) (st : Bool) (cd : ByteArray) (e : Env) (imm : Immutables noop .call) :
+lemma noop_stop (l : Layout noop) (st : Bool) (cd : BytesX32) (e : Env) (imm : Immutables noop .call) :
     (skip 1000 (runInner ⟨noop, l, .call st cd, e, imm⟩)).observe =
       .impure (.inl (.halt (.ret .empty))) (afterHalt (skip 1000 (runInner ⟨noop, l, .call st cd, e, imm⟩))) := by
   kernel_rfl
 
-lemma noop_mainSafe (l : Layout noop) (imms : MainImmutables) :
-    MainSafe noop imms l := by
-  intro env st cd w₀
-  exact (Halts.interpHost ⟨w₀, .empty⟩ (halts_skip 1000 (halts_ret (noop_stop l st cd env _)))).runSafe
+lemma noop_main_returns (l : Layout noop) (imms : MainImmutables) (st : Bool) (cd : BytesX32) (e : Env)
+    (w₀ : World) : Returns (.inr (.ret .empty w₀.store)) (noop.runMain l imms st cd e w₀) :=
+  Halts.interpHost ⟨w₀, .empty⟩ (halts_interpMem fun _ => halts_skip 1000 (halts_ret (noop_stop l st cd e _)))
+
+lemma noop_mainSafe (l : Layout noop) (imms : MainImmutables) : MainSafe noop l imms :=
+  fun e st cd w₀ => (noop_main_returns l imms st cd e w₀).deterministic
 
 def noopLayout : Layout noop where
   init := ⟨#[0]⟩
@@ -460,7 +540,7 @@ lemma initStops_stop :
 def stopsState : World := ⟨⟨fun _ => 0, fun _ => 0⟩, ⟨fun _ => 0, fun _ => .empty⟩⟩
 
 lemma stopsState_unset : stopsState.Unset stopsEnv.address :=
-  ⟨fun _ => rfl, fun _ => rfl, rfl, rfl⟩
+  ⟨fun _ => rfl, fun _ => rfl, rfl⟩
 
 
 lemma stopsLayout_withSetImmutables_ne (imms : MainImmutables) :
@@ -480,15 +560,28 @@ lemma Returns.runInit {p : Program} {l : Layout p} {cd : ByteArray} {env : Env} 
     {main : ByteArray} {s' : Store} (h : Returns (.inr (.ret main s')) (p.run l (.creation cd) env .init w₀)) :
     Returns (match l.toMainImmutables main with
       | some m => .inr (.ret m s')
-      | none => .inl (.malformed "unsound main returned")) (p.runInit l cd env w₀) := by
+      | none => .inl .unsoundMain) (p.runInit l cd env w₀) := by
   exact h.map _ rfl
 
-lemma initStops_halts :
-    HasOutcome (initStops.runInit stopsLayout .empty stopsEnv stopsState)
-      (.res (.inl (.malformed "unsound main returned"))) := by
-  have h := (Halts.interpHost ⟨stopsState, .empty⟩ (halts_skip 1000 (halts_ret initStops_stop))).runInit
+lemma noop_init_returns (l : Layout noop) (cd : ByteArray) (e : Env) (w₀ : World) :
+    Returns (.inr (.ret ⟨#[], .empty⟩ w₀.store)) (noop.runInit l cd e w₀) := by
+  have h := ((noop_init_halts l cd e).interpHost (self := e.address) ⟨w₀, .empty⟩).runInit
+  have hm : l.toMainImmutables l.main = some ⟨#[], .empty⟩ :=
+    (Layout.toMainImmutables_eq_some_iff _ _ _).2
+      (by
+        simp only [Layout.withSetImmutables, show (⟨#[], .empty⟩ : MainImmutables).WF noop by decide, ↓reduceDIte]
+        exact congrArg some (congrArg (· ++ ByteArray.empty) (rfl : l.setImmutables #v[] = l.main) |>.trans
+          ByteArray.append_empty))
+  rw [hm] at h
+  exact h
+
+lemma initStops_returns :
+    Returns (.inl .unsoundMain)
+      (initStops.runInit stopsLayout .empty stopsEnv stopsState) := by
+  have h := (Halts.interpHost ⟨stopsState, .empty⟩
+    (halts_interpMem fun _ => halts_skip 1000 (halts_ret initStops_stop))).runInit
   rcases hm : stopsLayout.toMainImmutables .empty with _ | m
-  · rw [hm] at h; exact h.hasOutcome
+  · rw [hm] at h; exact h
   · exact absurd ((Layout.toMainImmutables_eq_some_iff _ _ _).1 hm) (stopsLayout_withSetImmutables_ne m)
 
 end SirTests.Safety

@@ -54,7 +54,7 @@ def checks : List (String × Bool) :=
     ("UnOp.eval not", Sir.UnOp.eval .not 0 == max),
     ("toBytes 2", (Word.toBytes ⟨2, by decide⟩ 0x12345).toList == [0x23, 0x45]),
     ("ofBytes", Word.ofBytes (bytes [1, 2]) == 0x0102),
-    ("slicePad", ((bytes [1, 2, 3]).slicePad 1 4).toList == [2, 3, 0, 0]),
+    ("slicePadded", ((bytes [1, 2, 3]).slicePadded 1 4).toList == [2, 3, 0, 0]),
     ("keccak empty", Word.keccak256 .empty
       == 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470),
     ("keccak abc", Word.keccak256 (bytes [0x61, 0x62, 0x63])

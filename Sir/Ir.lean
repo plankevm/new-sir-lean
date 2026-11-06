@@ -227,9 +227,6 @@ namespace Function
 
 def ValidBlockId (fn : Function) (id : BlockId) : Prop := id.id < fn.blocks.size
 
-structure WF (fn : Function) : Prop where
-  entry_valid : fn.ValidBlockId fn.entry
-
 instance : GetElem? Function BlockId Block ValidBlockId where
   getElem fn bid v := fn.blocks[bid.id]
   getElem? fn bid := fn.blocks[bid.id]?
@@ -255,9 +252,6 @@ instance {p : Program} : DecidablePred p.ValidImmutableId := by
 
 instance {p : Program} : DecidablePred p.ValidDataId := by
   unfold ValidDataId; infer_instance
-
-structure WF (p : Program) : Prop where
-  fn_wf : ∀ fn ∈ p.functions, fn.WF
 
 end Program
 
