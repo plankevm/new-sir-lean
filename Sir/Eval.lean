@@ -142,7 +142,10 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .copy x => pure x
   | .query q => q.eval ctx.env
   | .balance a => Host.balance (.ofWord a)
-  | .extcodehash a => Host.extcodehash (.ofWord a)
+  | .extcodehash a => do
+    if Address.ofWord a = ctx.env.address
+    then return .keccak256 (← ctx.code)
+    else Host.extcodehash (.ofWord a)
   | .blockhash n => pure (ctx.env.blockhash n)
   | .blobhash i => pure (ctx.env.blobhash i)
   | .sload k => Host.persistent.load k
@@ -150,7 +153,11 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .calldataload offset => ctx.mode.calldata.slicePadded offset.toNat 32 |> Word.ofBytes |> pure
   | .calldatasize => pure ctx.mode.calldata.size
   | .codesize => return (← ctx.code).size
-  | .extcodesize a => (·.size) <$> Host.extcode (.ofWord a)
+  | .extcodesize a => do
+    let code ← if Address.ofWord a = ctx.env.address
+      then ctx.code
+      else Host.extcode (.ofWord a)
+    return code.size
   | .returndatasize => returndata.size
   | .keccak256 offset length => Word.keccak256 <$> mem.read offset length
   | .malloc size => alloc_zeroed size
