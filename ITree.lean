@@ -3,6 +3,7 @@ import ITree.Step.Theorems
 import ITree.Machine.Theorems
 import ITree.Program
 import ITree.Same.Theorems
+import ITree.Bisim.Theorems
 import ITree.Outcome
 import ITree.Run
 import ITree.Returns

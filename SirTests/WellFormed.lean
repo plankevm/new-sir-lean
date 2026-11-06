@@ -10,8 +10,8 @@ lemma noop_noCalls : ∀ fn ∈ Safety.noop.functions, ∀ b ∈ fn.blocks,
   decide +kernel
 
 lemma noop_noCallEdge : ∀ f g, ¬ Safety.noop.CallEdge f g := by
-  rintro _ g ⟨fn, hf, b, hb, hc⟩
-  obtain ⟨hops, hctrl⟩ := noop_noCalls _ (Array.mem_of_getElem? hf) _ hb
+  rintro _ g ⟨fn, hf, _, _, b, _, hb, hc⟩
+  obtain ⟨hops, hctrl⟩ := noop_noCalls _ (Array.mem_of_getElem? hf) _ (Array.mem_of_getElem? hb)
   rcases hc with ⟨op, hop, hg⟩ | hg
   · rw [hops op hop] at hg; cases hg
   · rw [hctrl] at hg; cases hg
@@ -46,16 +46,18 @@ theorem noop_wf : Safety.noop.WF where
     · cases h : b.control <;> rw [h] at hctrl <;> first | trivial | cases hctrl
   initEntry := ⟨_, rfl, rfl, _, rfl, rfl⟩
   mainEntry := ⟨_, rfl, rfl, _, rfl, rfl⟩
-  initOps f fn hr hf b hb op hop := by
+  initOps f fn hr hf _ _ b _ hb op hop := by
     obtain rfl := noop_reachable hr
     cases hf
+    replace hb := Array.mem_of_getElem? hb
     simp [Safety.noop, OfNat.ofNat] at hb
     subst hb
     simp at hop
     rcases hop with rfl | rfl | rfl | rfl <;> trivial
-  mainOps f fn hr hf b hb op hop := by
+  mainOps f fn hr hf _ _ b _ hb op hop := by
     obtain rfl := noop_reachable hr
     cases hf
+    replace hb := Array.mem_of_getElem? hb
     simp [Safety.noop, OfNat.ofNat] at hb
     subst hb
     simp at hop

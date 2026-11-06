@@ -1002,7 +1002,7 @@ lemma good_evalFn {x : CallI} (hwf : ctx.program.WF)
       obtain ⟨rfl, hsz'⟩ := hc
       obtain ⟨f, hf, hnever, e, he, hes⟩ := hcalls
       have hpre : Pre ctx root (g', args') :=
-        ⟨f, hf, .call hreach ⟨_, hfn, _, hmem, .inr (by rw [hcb]; rfl)⟩, e, he, by rw [hsz']; exact hes⟩
+        ⟨f, hf, .call hreach ⟨_, hfn, _, _, _, hpath, hblk, .inr (by rw [hcb]; rfl)⟩, e, he, by rw [hsz']; exact hes⟩
       refine good_bind (good_perform (E := RecE) (op := .inl (g', args'))
         (Q := Post ctx (g', args')) (fun h => h hpre) fun _ hr => hr) fun _ hr => ?_
       obtain ⟨f', hf', hr'⟩ := hr
@@ -1011,10 +1011,10 @@ lemma good_evalFn {x : CallI} (hwf : ctx.program.WF)
       rw [hnever] at hr'
       cases hr'
   · have hop_mem : blk.ops[i] ∈ blk.ops := Array.getElem_mem hi
-    have hvalid := hroot fid fn hreach hfn blk hmem _ hop_mem
+    have hvalid := hroot fid fn hreach hfn prev _ blk hpath hblk _ hop_mem
     have hcall := (hwf.validCalls fn (mem_functions hfn) blk hmem).1 _ hop_mem
     have hreach' : ∀ g, blk.ops[i].callee? = some g → ctx.program.Reachable root g :=
-      fun g hg => .call hreach ⟨_, hfn, _, hmem, .inl ⟨_, hop_mem, hg⟩⟩
+      fun g hg => .call hreach ⟨_, hfn, _, _, _, hpath, hblk, .inl ⟨_, hop_mem, hg⟩⟩
     refine good_bind (goodR_lift (goodS_opResolve fun x hx => hv x (hdbu.1 i hi x hx)))
       fun op' hop => ?_
     simp only [definedBefore_succ blk hi, ← List.append_assoc]

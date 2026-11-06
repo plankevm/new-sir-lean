@@ -137,14 +137,15 @@ def Operation.ValidIn (p : Program) (k : ExecutionModeKind) : Operation α → P
 namespace Program
 
 def CallEdge (p : Program) (caller callee : FunctionId) : Prop :=
-  ∃ fn, p[caller]? = some fn ∧ ∃ b ∈ fn.blocks, b.Calls callee
+  ∃ fn, p[caller]? = some fn ∧ ∃ prev b blk, fn.PathTo prev b ∧ fn[b]? = some blk ∧ blk.Calls callee
 
 inductive Reachable (p : Program) (root : FunctionId) : FunctionId → Prop
   | root : p.Reachable root root
   | call {f g} : p.Reachable root f → p.CallEdge f g → p.Reachable root g
 
 def ValidFrom (p : Program) (k : ExecutionModeKind) (root : FunctionId) : Prop :=
-  ∀ f fn, p.Reachable root f → p[f]? = some fn → ∀ b ∈ fn.blocks, ∀ op ∈ b.ops, op.ValidIn p k
+  ∀ f fn, p.Reachable root f → p[f]? = some fn →
+    ∀ prev b blk, fn.PathTo prev b → fn[b]? = some blk → ∀ op ∈ blk.ops, op.ValidIn p k
 
 structure WF (p : Program) : Prop where
   functions : ∀ fn ∈ p.functions, fn.WF

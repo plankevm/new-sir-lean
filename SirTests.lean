@@ -4,3 +4,4 @@ import SirTests.Same
 import SirTests.Safety
 import SirTests.Syntax
 import SirTests.WellFormed
+import SirTests.DeadCode
