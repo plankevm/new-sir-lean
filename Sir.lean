@@ -2,6 +2,7 @@ import Sir.Ir
 import Sir.Effect
 import Sir.Eval
 import Sir.Memory
+import Sir.Memory.Theorems
 import Sir.Layout
 import Sir.Layout.Theorems
 import Sir.Safety
