@@ -46,6 +46,11 @@ def Context.code (ctx : Context) : SirM ByteArray := do
     let some code := ctx.layout.withSetImmutables imms | malformed "ill-formed immutables"
     return code
 
+def Context.deployedCode (ctx : Context) : SirM ByteArray :=
+  match ctx.mode with
+  | .creation _ => return .empty
+  | .call _ _ => ctx.code
+
 def mem.writeFromSlice (dst : Word) (src : ByteArray) (offset length : Word) : SirM Unit :=
   write dst (src.slicePadded offset.toNat length.toNat)
 
@@ -144,7 +149,7 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .balance a => Host.balance (.ofWord a)
   | .extcodehash a => do
     if Address.ofWord a = ctx.env.address
-    then return .keccak256 (← ctx.code)
+    then return .keccak256 (← ctx.deployedCode)
     else Host.extcodehash (.ofWord a)
   | .blockhash n => pure (ctx.env.blockhash n)
   | .blobhash i => pure (ctx.env.blobhash i)
@@ -155,7 +160,7 @@ def Expr.eval (ctx : Context) : Expr Word → SirM Word
   | .codesize => return (← ctx.code).size
   | .extcodesize a => do
     let code ← if Address.ofWord a = ctx.env.address
-      then ctx.code
+      then ctx.deployedCode
       else Host.extcode (.ofWord a)
     return code.size
   | .returndatasize => returndata.size

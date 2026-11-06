@@ -828,6 +828,13 @@ lemma goodS_exprEval {ctx : Context} {e : Expr Word} (he : e.ValidIn ctx.program
       revert he; cases ctx.mode.kind <;> simp [Expr.ValidIn]
     simp only [hk, ↓reduceIte]
     good_auto
+  case extcodehash a | extcodesize a =>
+    by_cases hs : Address.ofWord a = ctx.env.address <;> simp only [hs, ↓reduceIte]
+    · refine good_bind (Q₁ := fun _ => True) ?_ fun _ _ => good_pure trivial
+      unfold Context.deployedCode; split
+      · exact good_pure trivial
+      · exact goodS_code hI
+    · good_auto
   all_goals first
     | exact goodS_execCall _ _ _ _ _ _ _ _
     | exact goodS_query _ _
