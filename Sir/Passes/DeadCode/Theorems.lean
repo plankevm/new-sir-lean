@@ -1,3 +1,4 @@
+import Sir.Passes
 import Sir.Passes.DeadCode.Proofs
 
 namespace Sir
@@ -18,5 +19,8 @@ theorem Program.removeDeadCode_safe : ∀ (p : Program), Safe p → Safe p.remov
 
 theorem Program.removeDeadCode_wf : ∀ (p : Program), p.WF → p.removeDeadCode.WF :=
   fun _ => Proofs.DeadCode.removeDeadCode_wf
+
+theorem Program.removeDeadCode_sound : TotalPassSound removeDeadCode :=
+  fun p h_wf h_safe => ⟨p.removeDeadCode_equiv h_safe, ⟨p.removeDeadCode_safe h_safe, p.removeDeadCode_wf h_wf⟩⟩
 
 end Sir

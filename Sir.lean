@@ -9,6 +9,7 @@ import Sir.Safety
 import Sir.Syntax
 import Sir.Equivalence
 import Sir.Equivalence.Theorems
+import Sir.Passes
 import Sir.Passes.DeadCode
 import Sir.Passes.DeadCode.Theorems
 import Sir.WellFormed
