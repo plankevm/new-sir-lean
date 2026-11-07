@@ -17,11 +17,13 @@ def Allocation.contains (a : Allocation) (addr : Nat) : Prop := addr ∈ a.range
 
 structure MemState where
   reserved : NatRange
-  live : Array Allocation
+  cumAlloced : UInt64 := 0
+  live : Array Allocation := #[]
 
 namespace MemState
 
-def push (s : MemState) (a' :  Allocation) : MemState := { s with live := s.live.push a' }
+def push (s : MemState) (a' :  Allocation) : MemState :=
+  { s with live := s.live.push a', cumAlloced := s.cumAlloced + .ofNat a'.size }
 def allocCount (s : MemState) : Nat := s.live.size
 def taken (s : MemState) : List NatRange := s.reserved :: s.live.toList.map Allocation.range
 
@@ -95,7 +97,9 @@ def memStep {X : Type} (mem : MemState) : Step EvalE .none Empty X → Step Host
   | .impure (.inr sirOp) k => match sirOp with
     | .ub ub => .pure ub
     | .alloc kind size =>
-      if h : ∃ a', mem.ValidAlloc size.toNat a' then
+      if mem.cumAlloced.toNat + size ≥ UInt64.size
+      then .pure (.outOfMemory size)
+      else if h : ∃ a', mem.ValidAlloc size.toNat a' then
         .branch (.alloc size mem h) fun ⟨a', _⟩ =>
         let a' := match kind with
           | .zeroed => { a' with bytes := ⟨.replicate a'.size 0⟩ }
@@ -127,6 +131,6 @@ def CompilerReservedBytes : Nat := 2^32
 
 def interpMem (sir : SirM Empty) : CoFree HostE MemoryND UB := do
   let start ← branch (N := MemoryND) (.pick (Word.size - CompilerReservedBytes) (by decide))
-  CoFree.interp memStep { live := #[], reserved := ⟨start.val, CompilerReservedBytes⟩ } sir
+  CoFree.interp memStep { reserved := ⟨start.val, CompilerReservedBytes⟩ } sir
 
 end Sir
