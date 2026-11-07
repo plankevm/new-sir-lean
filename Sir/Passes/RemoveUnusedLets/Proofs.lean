@@ -2,7 +2,7 @@ import Sir.Passes.RemoveUnusedLets
 import Sir.WellFormed.Proofs
 import ITree.Skip.Theorems
 import Sir.Passes.DeadCode.Proofs
-import Sir.Memory.DeadAlloc.Theorems
+import Sir.Passes.RemoveUnusedLets.DeadAlloc.Theorems
 import ITree.Refute.Theorems
 
 open Host CoFree

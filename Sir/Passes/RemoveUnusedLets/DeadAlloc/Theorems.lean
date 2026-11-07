@@ -1,4 +1,4 @@
-import Sir.Memory.DeadAlloc.Proofs
+import Sir.Passes.RemoveUnusedLets.DeadAlloc.Proofs
 
 open Host CoFree
 

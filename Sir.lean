@@ -3,8 +3,8 @@ import Sir.Effect
 import Sir.Eval
 import Sir.Memory
 import Sir.Memory.Theorems
-import Sir.Memory.DeadAlloc
-import Sir.Memory.DeadAlloc.Theorems
+import Sir.Passes.RemoveUnusedLets.DeadAlloc
+import Sir.Passes.RemoveUnusedLets.DeadAlloc.Theorems
 import Sir.Layout
 import Sir.Layout.Theorems
 import Sir.Safety

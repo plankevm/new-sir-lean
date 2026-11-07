@@ -1,4 +1,4 @@
-import Sir.Memory.DeadAlloc
+import Sir.Passes.RemoveUnusedLets.DeadAlloc
 import Sir.Memory.Proofs
 import Sir.Passes.DeadCode.Proofs
 import ITree.Refute.Theorems
