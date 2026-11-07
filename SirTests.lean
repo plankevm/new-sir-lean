@@ -6,3 +6,4 @@ import SirTests.Syntax
 import SirTests.WellFormed
 import SirTests.DeadCode
 import SirTests.RemoveNoops
+import SirTests.RemoveUnusedLets

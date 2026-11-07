@@ -4,6 +4,8 @@ import ITree.Machine.Theorems
 import ITree.Program
 import ITree.Same.Theorems
 import ITree.Bisim.Theorems
+import ITree.Skip.Theorems
+import ITree.Refute.Theorems
 import ITree.Outcome
 import ITree.Run
 import ITree.Returns
