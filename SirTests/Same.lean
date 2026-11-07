@@ -146,7 +146,7 @@ def memAfter (kind : AllocKind) (size : Word) (mem : MemState) (a' : Allocation)
 
 lemma observe_interp_alloc : ∀ {mem : MemState} {t : SirM Empty} {kind : AllocKind} {size : Word}
     {k : Word → SirM Empty}, t.observe = .impure (.inr (.alloc kind size)) k →
-    ¬ (mem.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word) →
+    ¬ mem.cumAlloced.toNat + size.toNat ≥ UInt64.size →
     ∀ hex : ∃ a', mem.ValidAlloc size.toNat a',
     (CoFree.interp memStep mem t).observe = .branch (.alloc size mem hex) fun x =>
       CoFree.interp memStep (memAfter kind size mem x.1) (k x.1.start) := by
@@ -242,14 +242,11 @@ lemma exists_alloc_memAt : ∀ (s : Reserved) (n : Word), n.toNat < UInt32.size 
   exact Safety.exists_alloc_after_reserved s.isLt hn
 
 lemma memAt_fits : ∀ (s : Reserved) (n : Word), n.toNat < UInt32.size →
-    ¬ ((memAt s).cumAlloced.toNat : Word) + n ≥ (UInt64.size : Word) := by
+    ¬ (memAt s).cumAlloced.toNat + n.toNat ≥ UInt64.size := by
   intro s n hn
-  have h0 : (((memAt s).cumAlloced.toNat : Nat) : Word) = 0 := rfl
-  have h64 : ((UInt64.size : Nat) : Word).toNat = 2 ^ 64 := rfl
-  rw [h0, ge_iff_le, BitVec.le_def, BitVec.toNat_add, h64]
-  have hz : (0 : Word).toNat = 0 := rfl
-  rw [hz, Nat.zero_add, Nat.mod_eq_of_lt n.isLt]
+  have h0 : (memAt s).cumAlloced.toNat = 0 := rfl
   unfold UInt32.size at hn
+  simp only [h0, UInt64.size]
   omega
 
 /-- `stop`, which is `ret` with no data. -/

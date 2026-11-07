@@ -99,7 +99,7 @@ def memStep {X : Type} (mem : MemState) : Step EvalE .none Empty X → Step Host
   | .impure (.inr sirOp) k => match sirOp with
     | .ub ub => .pure ub
     | .alloc kind size =>
-      if mem.cumAlloced.toNat + size ≥ UInt64.size
+      if mem.cumAlloced.toNat + size.toNat ≥ UInt64.size
       then .pure (.outOfMemory size)
       else if h : ∃ a', mem.ValidAlloc size.toNat a' then
         .branch (.alloc size mem h) fun ⟨a', _⟩ =>

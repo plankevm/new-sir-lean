@@ -204,7 +204,7 @@ def copied (l : Layout noop) (cd : ByteArray) : ByteArray :=
 variable {X : Type} {mem : MemState}
 
 lemma memStep_alloc_zeroed {size : Word} {k : Word → X}
-    (hc : ¬ (mem.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word)) (h : ∃ a', mem.ValidAlloc size.toNat a') :
+    (hc : ¬ mem.cumAlloced.toNat + size.toNat ≥ UInt64.size) (h : ∃ a', mem.ValidAlloc size.toNat a') :
     memStep mem (.impure (.inr (.alloc .zeroed size)) k) =
       .branch (.alloc size mem h) fun x =>
         (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem, k x.1.start) := by
@@ -258,7 +258,7 @@ lemma halts_ret {o : SimplifiedOutcome} {k : Empty → SirM Empty}
 
 lemma halts_alloc {size : Word} {k : Word → SirM Empty}
     (h : t.observe = .impure (.inr (.alloc .zeroed size)) k)
-    (hc : ¬ (mem.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word))
+    (hc : ¬ mem.cumAlloced.toNat + size.toNat ≥ UInt64.size)
     (hex : ∃ a', mem.ValidAlloc size.toNat a')
     (hk : ∀ x : { a' // mem.ValidAlloc size.toNat a' },
       Halts op (CoFree.interp memStep (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem)
@@ -424,13 +424,10 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
   have hex : ∃ a', ({ live := #[], reserved := ⟨s.val, CompilerReservedBytes⟩ } : MemState).ValidAlloc
       (l.main.size : Word).toNat a' := by
     rw [toNat_mainSize]; exact exists_alloc_after_reserved s.isLt l.main_u32
-  have hc : ¬ ((0 : UInt64).toNat : Word) + (l.main.size : Word) ≥ (UInt64.size : Word) := by
+  have hc : ¬ (0 : UInt64).toNat + (l.main.size : Word).toNat ≥ UInt64.size := by
     have := l.main_u32
-    simp only [ge_iff_le, BitVec.le_def, BitVec.toNat_add, toNat_mainSize]
-    have h0 : ((0 : UInt64).toNat : Word).toNat = 0 := rfl
-    have h64 : ((UInt64.size : Nat) : Word).toNat = 2 ^ 64 := rfl
-    rw [h0, h64]
-    unfold UInt32.size at this; omega
+    rw [toNat_mainSize]
+    unfold UInt32.size at this; simp only [UInt64.toNat_zero, UInt64.size]; omega
   refine halts_alloc (noop_alloc l cd e) hc hex fun ⟨a, ha⟩ => ?_
   refine halts_skip 1000 ?_
   by_cases hn : l.main.size = 0

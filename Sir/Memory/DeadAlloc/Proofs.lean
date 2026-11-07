@@ -132,7 +132,6 @@ structure MemInv (m : MemState) : Prop where
   small : ∀ r ∈ m.taken, r.size ≤ 2 ^ 64
   count : m.taken.length ≤ m.cumAlloced.toNat + 1
   bound : ∀ r ∈ m.taken, r.end ≤ Word.size
-  sum : (m.taken.map NatRange.size).sum = m.cumAlloced.toNat + CompilerReservedBytes
 
 def Sub (L L' : List NatRange) : Prop := ∀ r ∈ L, r ∈ L'
 
@@ -270,7 +269,6 @@ lemma inv_write {m : MemState} (hI : MemInv m) {o : Word} {len : Nat} (bytes : B
   small := by rw [taken_write]; exact hI.small
   count := by rw [taken_write]; exact hI.count
   bound := by rw [taken_write]; exact hI.bound
-  sum := by rw [taken_write]; exact hI.sum
 
 lemma cum_push (m : MemState) (a : Allocation) (h : m.cumAlloced.toNat + a.size < 2 ^ 64) :
     (m.push a).cumAlloced.toNat = m.cumAlloced.toNat + a.size := by
@@ -308,10 +306,6 @@ lemma inv_push {m : MemState} {a : Allocation} (hI : MemInv m) (hv : ∀ r ∈ m
     rcases List.mem_append.1 hr with hr | hr
     · exact hI.bound r hr
     · rw [List.mem_singleton.1 hr]; exact hend
-  sum := by
-    rw [taken_push, cum_push m a hcum, List.map_append, List.sum_append, hI.sum]
-    simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Allocation.range]
-    omega
 
 lemma inv_init (s : Nat) (hs : s < Word.size - CompilerReservedBytes) :
     MemInv { reserved := ⟨s, CompilerReservedBytes⟩ } where
@@ -326,61 +320,6 @@ lemma inv_init (s : Nat) (hs : s < Word.size - CompilerReservedBytes) :
     · simp only [NatRange.end, Word.size, Word.bits, CompilerReservedBytes] at *
       omega
     · simp at hr
-  sum := by simp [MemState.taken]
-
-lemma sum_filter {α : Type} (f : α → Nat) (p : α → Bool) : ∀ l : List α,
-    (l.map f).sum = ((l.filter p).map f).sum + ((l.filter fun a => !p a).map f).sum
-  | [] => rfl
-  | a :: l => by
-    have := sum_filter f p l
-    cases h : p a <;> simp [h] <;> omega
-
-lemma sum_le : ∀ (n : Nat) (l : List NatRange) (lo hi : Nat), l.length ≤ n →
-    l.Pairwise NatRange.Disjoint → (∀ r ∈ l, lo ≤ r.start ∧ r.end ≤ hi) → (l.map NatRange.size).sum + lo ≤ hi ∨ l = []
-  | _, [], _, _, _, _, _ => .inr rfl
-  | 0, _ :: _, _, _, h, _, _ => absurd h (by simp)
-  | n + 1, r :: rest, lo, hi, hlen, hp, hb => by
-    left
-    rw [List.pairwise_cons] at hp
-    have hlr := hb r List.mem_cons_self
-    let p : NatRange → Bool := fun r' => decide (r'.end ≤ r.start)
-    have hB := sum_le n (rest.filter p) lo r.start
-      (Nat.le_trans (List.length_filter_le _ _) (by simpa using hlen)) (hp.2.filter _) fun r' hr' => by
-        obtain ⟨hr', hpr⟩ := List.mem_filter.1 hr'
-        exact ⟨(hb r' (List.mem_cons_of_mem _ hr')).1, of_decide_eq_true hpr⟩
-    have hA := sum_le n (rest.filter fun a => !p a) r.end hi
-      (Nat.le_trans (List.length_filter_le _ _) (by simpa using hlen)) (hp.2.filter _) fun r' hr' => by
-        obtain ⟨hr', hpr⟩ := List.mem_filter.1 hr'
-        have hd := hp.1 r' hr'
-        simp only [p, Bool.not_eq_true', decide_eq_false_iff_not] at hpr
-        simp only [NatRange.Disjoint] at hd
-        exact ⟨by omega, (hb r' (List.mem_cons_of_mem _ hr')).2⟩
-    have hB' : ((rest.filter p).map NatRange.size).sum + lo ≤ r.start := by
-      rcases hB with h | h
-      · exact h
-      · rw [h]; simp only [List.map_nil, List.sum_nil]; omega
-    have hA' : ((rest.filter fun a => !p a).map NatRange.size).sum + r.end ≤ hi := by
-      rcases hA with h | h
-      · exact h
-      · rw [h]; simp only [List.map_nil, List.sum_nil]; omega
-    rw [List.map_cons, List.sum_cons, sum_filter _ p rest]
-    simp only [NatRange.end] at hlr hB' hA' ⊢
-    omega
-
-lemma no_wrap {m : MemState} (hI : MemInv m) {n : Nat} {a : Allocation} (hv : m.ValidAlloc n a)
-    (hpos : 0 < n) : m.cumAlloced.toNat + CompilerReservedBytes + n ≤ Word.size := by
-  obtain ⟨hsz, hend, hd⟩ := hv
-  have hp : (m.taken ++ [a.range]).Pairwise NatRange.Disjoint := by
-    rw [List.pairwise_append]
-    exact ⟨hI.pairwise, List.pairwise_singleton _ _, fun r hr _ hb => (List.mem_singleton.1 hb) ▸ hd hpos r hr⟩
-  rcases sum_le _ (m.taken ++ [a.range]) 0 Word.size (Nat.le_refl _) hp (fun r hr => by
-      rcases List.mem_append.1 hr with hr | hr
-      · exact ⟨Nat.zero_le _, hI.bound r hr⟩
-      · rw [List.mem_singleton.1 hr]; exact ⟨Nat.zero_le _, hend⟩) with h | h
-  · rw [List.map_append, List.sum_append, hI.sum] at h
-    simp only [List.map_cons, List.map_nil, List.sum_cons, List.sum_nil, Allocation.range, hsz] at h
-    omega
-  · simp at h
 
 lemma corr_init (L : List NatRange) (m : MemState) : MemCorr L m m :=
   ⟨rfl, Nat.le_refl _, [], by simp, by simp⟩
@@ -616,13 +555,6 @@ lemma zeroed_range (a : Allocation) :
   unfold Allocation.range
   rw [zeroed_size]
 
-lemma check_iff {c : Nat} {size : Word} (hc : c + size.toNat < Word.size) :
-    ((c : Word) + size ≥ (UInt64.size : Word)) ↔ 2 ^ 64 ≤ c + size.toNat := by
-  simp only [Word.size, Word.bits] at hc
-  simp only [GE.ge, BitVec.le_def, BitVec.toNat_add, BitVec.natCast_eq_ofNat, BitVec.toNat_ofNat,
-    UInt64.size]
-  rw [Nat.mod_eq_of_lt (a := c) (by omega), Nat.mod_eq_of_lt hc]
-
 lemma valid_of_corr (hc : MemCorr L mem₁ mem₂) {n : Nat} {a : Allocation} (hv : mem₁.ValidAlloc n a) :
     mem₂.ValidAlloc n a :=
   ⟨hv.1, hv.2.1, fun hp r hr => hv.2.2 hp r (corr_sub hc r hr)⟩
@@ -648,24 +580,15 @@ lemma match_alloc (hc : MemCorr L mem₁ mem₂) (i₁ : MemInv mem₁) (i₂ : 
     TRel L cov (post self hs k₁ (memStep mem₁ (.impure (.inr (.alloc kind size)) id)))
       (post self hs k₂ (memStep mem₂ (.impure (.inr (.alloc kind size)) id))) := by
   simp only [memStep]
-  by_cases hck₁ : (mem₁.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word)
+  by_cases hck₁ : mem₁.cumAlloced.toNat + size.toNat ≥ UInt64.size
   · simp only [hck₁, ↓reduceIte, post, hostStep, Step.map]; exact trel_bad
   by_cases hnv : ¬∃ a', mem₁.ValidAlloc size.toNat a'
   · simp only [hck₁, hnv, ↓reduceIte, ↓reduceDIte, post, hostStep, Step.map]; exact trel_bad
   have hv₁ := Classical.not_not.1 hnv
-  have hnw₁ : mem₁.cumAlloced.toNat + size.toNat < Word.size := by
-    by_cases hp : 0 < size.toNat
-    · obtain ⟨a, ha⟩ := hv₁
-      have := no_wrap i₁ ha hp
-      simp only [CompilerReservedBytes] at this
-      omega
-    · have := mem₁.cumAlloced.toNat_lt
-      simp only [Word.size, Word.bits]; omega
   have hn₁ : mem₁.cumAlloced.toNat + size.toNat < 2 ^ 64 := by
-    have := mt (check_iff hnw₁).2 hck₁; omega
-  have hck₂ : ¬((mem₂.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word)) := by
-    have := hc.cum
-    rw [check_iff (by omega)]; omega
+    simp only [UInt64.size] at hck₁; omega
+  have hck₂ : ¬mem₂.cumAlloced.toNat + size.toNat ≥ UInt64.size := by
+    have := hc.cum; simp only [UInt64.size]; omega
   have hv₂ : ∃ a', mem₂.ValidAlloc size.toNat a' := let ⟨a, ha⟩ := hv₁; ⟨a, valid_of_corr hc ha⟩
   simp only [hck₁, hck₂, hv₁, hv₂, ↓reduceIte, ↓reduceDIte, post, hostStep, Step.map]
   refine trel_branch fun ⟨a₂, ha₂⟩ hsub => ?_
@@ -728,7 +651,7 @@ lemma extra_alloc (hc : MemCorr L mem₁ mem₂) (i₁ : MemInv mem₁) (hL : Sm
     (size : Word) {k : Word → SirM Empty} :
     EStep L mem₂ hs k (post self hs k (memStep mem₁ (.impure (.inr (.alloc kind size)) id))) := by
   simp only [memStep]
-  by_cases hck₁ : (mem₁.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word)
+  by_cases hck₁ : mem₁.cumAlloced.toNat + size.toNat ≥ UInt64.size
   · simp only [hck₁, ↓reduceIte, post, hostStep, Step.map]; exact .inl ⟨_, rfl⟩
   by_cases hnv : ¬∃ a', mem₁.ValidAlloc size.toNat a'
   · simp only [hck₁, hnv, ↓reduceIte, ↓reduceDIte, post, hostStep, Step.map]; exact .inl ⟨_, rfl⟩
@@ -736,13 +659,8 @@ lemma extra_alloc (hc : MemCorr L mem₁ mem₂) (i₁ : MemInv mem₁) (hL : Sm
   simp only [hck₁, hv₁, ↓reduceIte, ↓reduceDIte, post, hostStep, Step.map]
   refine .inr (.inr ?_)
   by_cases hp : 0 < size.toNat
-  · have hnw₁ : mem₁.cumAlloced.toNat + size.toNat < Word.size := by
-      obtain ⟨a, ha⟩ := hv₁
-      have := no_wrap i₁ ha hp
-      simp only [CompilerReservedBytes] at this
-      omega
-    have hn₁ : mem₁.cumAlloced.toNat + size.toNat < 2 ^ 64 := by
-      have := mt (check_iff hnw₁).2 hck₁; omega
+  · have hn₁ : mem₁.cumAlloced.toNat + size.toNat < 2 ^ 64 := by
+      simp only [UInt64.size] at hck₁; omega
     obtain ⟨st, hst, hdis⟩ := exists_fresh (L ++ mem₁.taken) size.toNat
       (by have := hL.1; have := i₁.count; rw [List.length_append]; omega)
       (fun r hr => by
@@ -891,7 +809,7 @@ lemma memStep_succ {mem : MemState} (hI : MemInv mem) {op : EvalE.Op}
         · exact h.elim
     | alloc kind size =>
       simp only [memStep] at h
-      by_cases hck : (mem.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word)
+      by_cases hck : mem.cumAlloced.toNat + size.toNat ≥ UInt64.size
       · simp only [hck, ↓reduceIte] at h; exact h.elim
       by_cases hnv : ¬∃ a', mem.ValidAlloc size.toNat a'
       · simp only [hck, hnv, ↓reduceIte, ↓reduceDIte] at h; exact h.elim
@@ -899,12 +817,8 @@ lemma memStep_succ {mem : MemState} (hI : MemInv mem) {op : EvalE.Op}
       simp only [hck, hv, ↓reduceIte, ↓reduceDIte] at h
       obtain ⟨⟨a, ha⟩, rfl⟩ := h
       by_cases hp : 0 < size.toNat
-      · have hnw : mem.cumAlloced.toNat + size.toNat < Word.size := by
-          have := no_wrap hI ha hp
-          simp only [CompilerReservedBytes] at this
-          omega
-        have hn : mem.cumAlloced.toNat + size.toNat < 2 ^ 64 := by
-          have := mt (check_iff hnw).2 hck; omega
+      · have hn : mem.cumAlloced.toNat + size.toNat < 2 ^ 64 := by
+          simp only [UInt64.size] at hck; omega
         have hp' : size > 0 := by simpa [BitVec.lt_def] using hp
         cases kind
         · simp only [hp', ↓reduceIte]
