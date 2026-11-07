@@ -44,7 +44,7 @@ def write (m : MemState) {offset : Word} {length : Nat} (bytes : ByteArray) (r :
   { m with live := m.live.modify r.val fun a => { a with bytes := bytes.copySlice 0 a.bytes (offset - a.start).toNat length } }
 
 def ValidAlloc (m : MemState) (size : Nat) (a' : Allocation) : Prop :=
-  a'.size = size ∧ a'.end ≤ Word.size ∧ ∀ r ∈ m.taken, r.Disjoint a'.range
+  a'.size = size ∧ a'.end ≤ Word.size ∧ (0 < size → ∀ r ∈ m.taken, r.Disjoint a'.range)
 
 instance (m : MemState) (size : Nat) : DecidablePred (m.ValidAlloc size) := by
   unfold ValidAlloc; infer_instance
@@ -53,23 +53,25 @@ private def zeroedAt (size start : Nat) : Allocation := ⟨Word.ofNat start, ⟨
 
 instance (m : MemState) (size : Nat) : Decidable (∃ a', m.ValidAlloc size a') :=
   decidable_of_iff (∃ s ∈ (0 : Nat) :: m.taken.map NatRange.end, s < Word.size ∧
-      s + size ≤ Word.size ∧ ∀ r ∈ m.taken, r.Disjoint ⟨s, size⟩) <| by
+      s + size ≤ Word.size ∧ (0 < size → ∀ r ∈ m.taken, r.Disjoint ⟨s, size⟩)) <| by
     have valid {t} (ht : t < Word.size) : m.ValidAlloc size (zeroedAt size t) ↔
-        t + size ≤ Word.size ∧ ∀ r ∈ m.taken, r.Disjoint ⟨t, size⟩ := by
+        t + size ≤ Word.size ∧ (0 < size → ∀ r ∈ m.taken, r.Disjoint ⟨t, size⟩) := by
       have : (Word.ofNat t).toNat = t := Nat.mod_eq_of_lt ht
       have hsz : (⟨.replicate size 0⟩ : ByteArray).size = size := by simp [ByteArray.size]
       simp [ValidAlloc, Allocation.range, Allocation.end, Allocation.size, zeroedAt, hsz, this]
     refine ⟨fun ⟨_, _, ht, h⟩ => ⟨_, (valid ht).2 h⟩, fun ⟨a', hsize, hfit, hdisj⟩ => ?_⟩
     have hlt : a'.start.toNat < Word.size := a'.start.isLt
-    replace hdisj : ∀ r ∈ m.taken, r.Disjoint ⟨a'.start.toNat, size⟩ := by
-      simpa [Allocation.range, hsize] using hdisj
     replace hfit : a'.start.toNat + size ≤ Word.size := by simpa [Allocation.end, hsize] using hfit
+    rcases Nat.eq_zero_or_pos size with hz | hpos
+    · exact ⟨0, .head _, by decide, by omega, by omega⟩
+    replace hdisj : ∀ r ∈ m.taken, r.Disjoint ⟨a'.start.toNat, size⟩ := by
+      simpa [Allocation.range, hsize] using hdisj hpos
     generalize a'.start.toNat = t at hlt hdisj hfit
     induction t with
-    | zero => exact ⟨0, .head _, hlt, hfit, hdisj⟩
+    | zero => exact ⟨0, .head _, hlt, hfit, fun _ => hdisj⟩
     | succ t ih =>
       by_cases he : ∃ r ∈ m.taken, r.end = t + 1
-      · exact ⟨t + 1, .tail _ (List.mem_map.2 he), hlt, hfit, hdisj⟩
+      · exact ⟨t + 1, .tail _ (List.mem_map.2 he), hlt, hfit, fun _ => hdisj⟩
       · refine ih (by omega) (fun r hr => ?_) (by omega)
         have := hdisj r hr
         have : r.end ≠ t + 1 := fun h => he ⟨r, hr, h⟩

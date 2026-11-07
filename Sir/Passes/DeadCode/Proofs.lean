@@ -1139,6 +1139,8 @@ lemma memStep_nat {X Y : Type} (mem : MemState) (s : Step EvalE .none Empty X) (
     | alloc kind size =>
       simp only [Step.map, memStep]
       split
+      · rfl
+      split
       · congr
         funext ⟨a', _⟩
         cases kind <;> rfl

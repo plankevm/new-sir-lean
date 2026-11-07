@@ -28,12 +28,12 @@ lemma taken_write (m : MemState) {offset : Word} {length : Nat} (bytes : ByteArr
   · rfl
 
 lemma pairwise_push (m : MemState) (a : Allocation) (size : Nat)
-    (hI : m.taken.Pairwise NatRange.Disjoint) (hv : m.ValidAlloc size a) :
+    (hI : m.taken.Pairwise NatRange.Disjoint) (hv : m.ValidAlloc size a) (hpos : 0 < size) :
     (m.push a).taken.Pairwise NatRange.Disjoint := by
   have : (m.push a).taken = m.taken ++ [a.range] := by
     simp [MemState.taken, MemState.push]
   rw [this, List.pairwise_append]
-  exact ⟨hI, List.pairwise_singleton _ _, fun r hr _ hb => (List.mem_singleton.1 hb) ▸ hv.2.2 r hr⟩
+  exact ⟨hI, List.pairwise_singleton _ _, fun r hr _ hb => (List.mem_singleton.1 hb) ▸ hv.2.2 hpos r hr⟩
 
 lemma validAlloc_zeroed (m : MemState) (size : Nat) (a : Allocation) (hv : m.ValidAlloc size a) :
     m.ValidAlloc size { a with bytes := ⟨.replicate a.size 0⟩ } := by
@@ -73,9 +73,9 @@ lemma memStep_branch {X : Type} (mem : MemState) (s : Step EvalE .none Empty X) 
     subst hc
     cases hk
     obtain ⟨a', hv⟩ := r
-  · exact pairwise_push _ _ _ hI (validAlloc_zeroed _ _ _ hv)
+  · exact pairwise_push _ _ _ hI (validAlloc_zeroed _ _ _ hv) ‹_ > 0›
   · exact hI
-  · exact pairwise_push _ _ _ hI hv
+  · exact pairwise_push _ _ _ hI hv ‹_ > 0›
   · exact hI
 
 theorem interp_memStep_taken_pairwise (mem : MemState) (sir : SirM Empty)

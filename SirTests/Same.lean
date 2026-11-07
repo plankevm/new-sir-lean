@@ -146,14 +146,15 @@ def memAfter (kind : AllocKind) (size : Word) (mem : MemState) (a' : Allocation)
 
 lemma observe_interp_alloc : ∀ {mem : MemState} {t : SirM Empty} {kind : AllocKind} {size : Word}
     {k : Word → SirM Empty}, t.observe = .impure (.inr (.alloc kind size)) k →
+    ¬ (mem.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word) →
     ∀ hex : ∃ a', mem.ValidAlloc size.toNat a',
     (CoFree.interp memStep mem t).observe = .branch (.alloc size mem hex) fun x =>
       CoFree.interp memStep (memAfter kind size mem x.1) (k x.1.start) := by
-  intro mem t kind size k h hex
+  intro mem t kind size k h hc hex
   obtain ⟨k', hk', ho⟩ := Safety.observe_interpMem_impure (mem := mem) h
   rw [ho]
-  show Step.map _ (dite _ _ _) = _
-  simp only [hex, ↓reduceDIte, Step.map]
+  show Step.map _ (ite _ _ _) = _
+  simp only [hc, hex, ↓reduceIte, ↓reduceDIte, Step.map]
   congr
   funext ⟨a', _⟩
   cases kind <;> exact congrArg (CoFree.interp memStep _) (hk' _)
@@ -239,6 +240,17 @@ lemma exists_alloc_memAt : ∀ (s : Reserved) (n : Word), n.toNat < UInt32.size 
     ∃ a', (memAt s).ValidAlloc n.toNat a' := by
   intro s n hn
   exact Safety.exists_alloc_after_reserved s.isLt hn
+
+lemma memAt_fits : ∀ (s : Reserved) (n : Word), n.toNat < UInt32.size →
+    ¬ ((memAt s).cumAlloced.toNat : Word) + n ≥ (UInt64.size : Word) := by
+  intro s n hn
+  have h0 : (((memAt s).cumAlloced.toNat : Nat) : Word) = 0 := rfl
+  have h64 : ((UInt64.size : Nat) : Word).toNat = 2 ^ 64 := rfl
+  rw [h0, ge_iff_le, BitVec.le_def, BitVec.toNat_add, h64]
+  have hz : (0 : Word).toNat = 0 := rfl
+  rw [hz, Nat.zero_add, Nat.mod_eq_of_lt n.isLt]
+  unfold UInt32.size at hn
+  omega
 
 /-- `stop`, which is `ret` with no data. -/
 abbrev stopOp : HostOp := .halt (.ret .empty)
@@ -392,9 +404,10 @@ theorem mallocs_same_mallocsAny : Same Eq (run mallocs) (run mallocsAny) := by
   refine same_run fun s₁ s₂ => ?_
   apply same_skipSL 100; apply same_skipSR 100
   have h₁ := observe_interp_alloc (mem := memAt s₁) (t := Safety.skip 100 (initOf mallocs)) (kind := .zeroed)
-    (size := 32) (k := allocCont mallocs) (by kernel_rfl) (exists_alloc_memAt s₁ 32 (by decide))
+    (size := 32) (k := allocCont mallocs) (by kernel_rfl) (memAt_fits _ _ (by decide))
+    (exists_alloc_memAt s₁ 32 (by decide))
   have h₂ := observe_interp_alloc (mem := memAt s₂) (t := Safety.skip 100 (initOf mallocsAny))
-    (kind := .uninitialized) (size := 64) (k := allocCont mallocsAny) (by kernel_rfl)
+    (kind := .uninitialized) (size := 64) (k := allocCont mallocsAny) (by kernel_rfl) (memAt_fits _ _ (by decide))
     (exists_alloc_memAt s₂ 64 (by decide))
   refine Same.branch h₁ h₂ fun r₁ r₂ => ?_
   apply same_skipL 100; apply same_skipR 100
@@ -406,7 +419,8 @@ theorem mallocs_same_stops : Same Eq (run mallocs) (run stops) := by
   refine same_run fun s₁ s₂ => ?_
   apply same_skipSL 100; apply same_skipR 100
   have h₁ := observe_interp_alloc (mem := memAt s₁) (t := Safety.skip 100 (initOf mallocs)) (kind := .zeroed)
-    (size := 32) (k := allocCont mallocs) (by kernel_rfl) (exists_alloc_memAt s₁ 32 (by decide))
+    (size := 32) (k := allocCont mallocs) (by kernel_rfl) (memAt_fits _ _ (by decide))
+    (exists_alloc_memAt s₁ 32 (by decide))
   refine Same.branchL _ h₁ fun r => ?_
   apply same_skipL 100
   exact Same.impure (op := stopOp) (observe_of_headOp (by kernel_rfl))
@@ -423,7 +437,8 @@ theorem mallocs_same_stopsTarget : Same Eq (run mallocs) stopsTarget := by
   refine same_runL fun s => ?_
   apply same_skipSL 100
   have h₁ := observe_interp_alloc (mem := memAt s) (t := Safety.skip 100 (initOf mallocs)) (kind := .zeroed)
-    (size := 32) (k := allocCont mallocs) (by kernel_rfl) (exists_alloc_memAt s 32 (by decide))
+    (size := 32) (k := allocCont mallocs) (by kernel_rfl) (memAt_fits _ _ (by decide))
+    (exists_alloc_memAt s 32 (by decide))
   refine Same.branchL _ h₁ fun r => ?_
   apply same_skipL 100
   refine Same.impure stopOp (k₂ := fun r => (CoFree.pure r).bind nofun)
@@ -500,7 +515,7 @@ theorem leaks_not_deterministic : ¬Deterministic (run leaks) := by
   have h := skipSR_inv 100 (skipSL_inv 100 h)
   have hex := exists_alloc_memAt reserved₀ 32 (by decide)
   have hal := observe_interp_alloc (mem := memAt reserved₀) (t := Safety.skip 100 (initOf leaks))
-    (kind := .zeroed) (size := 32) (k := allocCont leaks) (by kernel_rfl) hex
+    (kind := .zeroed) (size := 32) (k := allocCont leaks) (by kernel_rfl) (memAt_fits _ _ (by decide)) hex
   have h := Same.branchL_inv h hal ⟨⟨(2 ^ 32 : Nat), ⟨.replicate 32 0⟩⟩, by decide⟩
   have h := Same.branchR_inv h hal ⟨⟨(2 ^ 32 + 32 : Nat), ⟨.replicate 32 0⟩⟩, by decide⟩
   have h := skipR_inv 100 (skipL_inv 100 h)

@@ -204,12 +204,12 @@ def copied (l : Layout noop) (cd : ByteArray) : ByteArray :=
 variable {X : Type} {mem : MemState}
 
 lemma memStep_alloc_zeroed {size : Word} {k : Word → X}
-    (h : ∃ a', mem.ValidAlloc size.toNat a') :
+    (hc : ¬ (mem.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word)) (h : ∃ a', mem.ValidAlloc size.toNat a') :
     memStep mem (.impure (.inr (.alloc .zeroed size)) k) =
       .branch (.alloc size mem h) fun x =>
         (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem, k x.1.start) := by
-  show dite _ _ _ = _
-  simp only [h, ↓reduceDIte]
+  show ite _ _ _ = _
+  simp only [hc, h, ↓reduceIte, ↓reduceDIte]
 
 lemma memStep_write_empty {w : Word} {bytes : ByteArray} {k : Unit → X} (h : bytes.size = 0) :
     memStep mem (.impure (.inr (.write w bytes)) k) = .silent (mem, k ()) := by
@@ -233,9 +233,9 @@ lemma memStep_read {w len : Word} {k : ByteArray → X} (h : len ≠ 0)
   show ite _ _ _ = _
   simp only [h, hr, ↓reduceIte]
 
-lemma inBounds_singleton (r : NatRange) (a : Allocation) {w : Word} {len : Nat}
+lemma inBounds_singleton (r : NatRange) (c : UInt64) (a : Allocation) {w : Word} {len : Nat}
     (h : a.start.toNat ≤ w.toNat ∧ w.toNat + len ≤ a.end) :
-    MemState.inBounds ⟨r, #[a]⟩ w len = some ⟨⟨0, Nat.zero_lt_one⟩, h⟩ := by
+    MemState.inBounds ⟨r, c, #[a]⟩ w len = some ⟨⟨0, Nat.zero_lt_one⟩, h⟩ := by
   unfold MemState.inBounds
   show List.findSome? _ [(⟨0, Nat.zero_lt_one⟩ : Fin 1)] = _
   simp [h]
@@ -258,13 +258,14 @@ lemma halts_ret {o : SimplifiedOutcome} {k : Empty → SirM Empty}
 
 lemma halts_alloc {size : Word} {k : Word → SirM Empty}
     (h : t.observe = .impure (.inr (.alloc .zeroed size)) k)
+    (hc : ¬ (mem.cumAlloced.toNat : Word) + size ≥ (UInt64.size : Word))
     (hex : ∃ a', mem.ValidAlloc size.toNat a')
     (hk : ∀ x : { a' // mem.ValidAlloc size.toNat a' },
       Halts op (CoFree.interp memStep (if size > 0 then mem.push ⟨x.1.start, ⟨.replicate x.1.size 0⟩⟩ else mem)
         (k x.1.start))) :
     Halts op (CoFree.interp memStep mem t) := by
   obtain ⟨k', hk', ho⟩ := observe_interpMem_impure (mem := mem) h
-  exact .branch (ho.trans (congrArg (Step.map _) (memStep_alloc_zeroed hex)))
+  exact .branch (ho.trans (congrArg (Step.map _) (memStep_alloc_zeroed hc hex)))
     fun x => Halts.of_eq (congrArg (CoFree.interp memStep _) (hk' _)) (hk x)
 
 lemma halts_write_empty {w : Word} {bytes : ByteArray} {k : Unit → SirM Empty}
@@ -373,10 +374,10 @@ lemma copied_eq (l : Layout noop) (cd : ByteArray) : copied l cd = l.main := by
   rw [← ByteArray.getElem_eq_getElem_data, ByteArray.getElem_append_left hlt, hm',
     ByteArray.getElem_eq_getElem_data]
 
-lemma inBounds_second (r : NatRange) (a b : Allocation) {w : Word} {len : Nat}
+lemma inBounds_second (r : NatRange) (c : UInt64) (a b : Allocation) {w : Word} {len : Nat}
     (ha : ¬(a.start.toNat ≤ w.toNat ∧ w.toNat + len ≤ a.end))
     (hb : b.start.toNat ≤ w.toNat ∧ w.toNat + len ≤ b.end) :
-    MemState.inBounds ⟨r, #[a, b]⟩ w len = some ⟨⟨1, Nat.one_lt_two⟩, hb⟩ := by
+    MemState.inBounds ⟨r, c, #[a, b]⟩ w len = some ⟨⟨1, Nat.one_lt_two⟩, hb⟩ := by
   unfold MemState.inBounds
   show List.findSome? _ [(⟨0, by decide⟩ : Fin 2), ⟨1, by decide⟩] = _
   simp [ha, hb]
@@ -405,13 +406,13 @@ lemma exists_alloc_after_reserved : ∀ {s : Nat}, s < Word.size - CompilerReser
     refine ⟨⟨BitVec.ofNat 256 (s + c), ⟨.replicate n 0⟩⟩, hrep, ?_, ?_⟩
     · simp only [Allocation.end, Allocation.size, hrep, hto, hW]; omega
     · rw [htaken]
-      intro x hx
+      intro _ x hx
       obtain rfl := List.mem_singleton.1 hx
       simp only [NatRange.Disjoint, NatRange.end, Allocation.range, Allocation.size, hrep, hto]; omega
   · refine ⟨⟨0, ⟨.replicate n 0⟩⟩, hrep, ?_, ?_⟩
     · simp only [Allocation.end, Allocation.size, hrep, hW]; show 0 + n ≤ _; omega
     · rw [htaken]
-      intro x hx
+      intro _ x hx
       obtain rfl := List.mem_singleton.1 hx
       simp only [NatRange.Disjoint, NatRange.end, Allocation.range, Allocation.size, hrep]
       show _ ∨ 0 + n ≤ _; omega
@@ -423,7 +424,14 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
   have hex : ∃ a', ({ live := #[], reserved := ⟨s.val, CompilerReservedBytes⟩ } : MemState).ValidAlloc
       (l.main.size : Word).toNat a' := by
     rw [toNat_mainSize]; exact exists_alloc_after_reserved s.isLt l.main_u32
-  refine halts_alloc (noop_alloc l cd e) hex fun ⟨a, ha⟩ => ?_
+  have hc : ¬ ((0 : UInt64).toNat : Word) + (l.main.size : Word) ≥ (UInt64.size : Word) := by
+    have := l.main_u32
+    simp only [ge_iff_le, BitVec.le_def, BitVec.toNat_add, toNat_mainSize]
+    have h0 : ((0 : UInt64).toNat : Word).toNat = 0 := rfl
+    have h64 : ((UInt64.size : Nat) : Word).toNat = 2 ^ 64 := rfl
+    rw [h0, h64]
+    unfold UInt32.size at this; omega
+  refine halts_alloc (noop_alloc l cd e) hc hex fun ⟨a, ha⟩ => ?_
   refine halts_skip 1000 ?_
   by_cases hn : l.main.size = 0
   · have hw : (l.main.size : Word) = 0 := by rw [hn]; rfl
@@ -443,12 +451,13 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
     have hsa : (⟨.replicate a.size 0⟩ : ByteArray).size = l.main.size := Array.size_replicate.trans has
     have hss : (a.start - a.start).toNat = 0 := by rw [BitVec.sub_self]; rfl
     let res : NatRange := ⟨s.val, CompilerReservedBytes⟩
-    have hw : MemState.inBounds ⟨res, #[⟨a.start, ⟨.replicate a.size 0⟩⟩]⟩ a.start (copied l cd).size =
+    let c : UInt64 := 0 + .ofNat (Allocation.size ⟨a.start, ⟨.replicate a.size 0⟩⟩)
+    have hw : MemState.inBounds ⟨res, c, #[⟨a.start, ⟨.replicate a.size 0⟩⟩]⟩ a.start (copied l cd).size =
         some ⟨⟨0, Nat.zero_lt_one⟩, Nat.le_refl _, by
           show a.start.toNat + _ ≤ a.start.toNat + (⟨.replicate a.size 0⟩ : ByteArray).size
           rw [size_copied, hsa]
           exact Nat.le_refl _⟩ :=
-      inBounds_singleton _ _ _
+      inBounds_singleton _ _ _ _
     refine halts_write (noop_write l cd e a.start) (by rw [size_copied]; exact hn) hw (halts_skip 1000 ?_)
     have hcs : (copied l cd).copySlice 0 ⟨.replicate a.size 0⟩ (a.start - a.start).toNat
         (copied l cd).size = copied l cd := by
@@ -457,20 +466,20 @@ lemma noop_init_halts (l : Layout noop) (cd : ByteArray) (e : Env) :
       rw [ByteArray.copySlice_eq_append, hss, ByteArray.extract_same, ByteArray.empty_append,
         Nat.zero_add, ByteArray.extract_zero_size, ByteArray.size_data, Nat.sub_zero, Nat.min_self, Nat.zero_add,
         hd, ByteArray.extract_same, ByteArray.append_empty]
-    have hm2 : ∀ h, MemState.write ⟨res, #[⟨a.start, ⟨.replicate a.size 0⟩⟩]⟩ (copied l cd) ⟨⟨0, Nat.zero_lt_one⟩, h⟩ =
-        ⟨res, #[⟨a.start, copied l cd⟩]⟩ := fun _ =>
-      congrArg (fun b : ByteArray => (⟨res, #[({ start := a.start, bytes := b } : Allocation)]⟩ : MemState)) hcs
+    have hm2 : ∀ h, MemState.write ⟨res, c, #[⟨a.start, ⟨.replicate a.size 0⟩⟩]⟩ (copied l cd) ⟨⟨0, Nat.zero_lt_one⟩, h⟩ =
+        ⟨res, c, #[⟨a.start, copied l cd⟩]⟩ := fun _ =>
+      congrArg (fun b : ByteArray => (⟨res, c, #[({ start := a.start, bytes := b } : Allocation)]⟩ : MemState)) hcs
     refine Halts.of_eq (congrArg (fun m => CoFree.interp memStep m _) (hm2 _)) ?_
-    have hr : MemState.inBounds ⟨res, #[⟨a.start, copied l cd⟩]⟩ a.start (l.main.size : Word).toNat =
+    have hr : MemState.inBounds ⟨res, c, #[⟨a.start, copied l cd⟩]⟩ a.start (l.main.size : Word).toNat =
         some ⟨⟨0, Nat.zero_lt_one⟩, Nat.le_refl _, by
           show a.start.toNat + _ ≤ a.start.toNat + (copied l cd).size
           rw [size_copied, toNat_mainSize]
           exact Nat.le_refl _⟩ :=
-      inBounds_singleton _ _ _
+      inBounds_singleton _ _ _ _
     refine halts_read (noop_read l cd e a.start ()) (fun h => hn (by rw [← toNat_mainSize l, h]; rfl)) hr
       (halts_skip 1000 ?_)
-    have hb : ∀ h, MemState.read ⟨res, #[⟨a.start, copied l cd⟩]⟩
-        (⟨⟨0, Nat.zero_lt_one⟩, h⟩ : MemState.Region ⟨res, #[⟨a.start, copied l cd⟩]⟩ a.start (l.main.size : Word).toNat) =
+    have hb : ∀ h, MemState.read ⟨res, c, #[⟨a.start, copied l cd⟩]⟩
+        (⟨⟨0, Nat.zero_lt_one⟩, h⟩ : MemState.Region ⟨res, c, #[⟨a.start, copied l cd⟩]⟩ a.start (l.main.size : Word).toNat) =
         l.main := by
       intro _
       show (copied l cd).extract (a.start - a.start).toNat ((a.start - a.start).toNat + _) = _
